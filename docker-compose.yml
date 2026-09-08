@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: transporte_db
+    restart: always
+    environment:
+      POSTGRES_USER: admin_transporte
+      POSTGRES_PASSWORD: transporte_seguro_2026
+      POSTGRES_DB: db_transporte_liquidacion
+    ports:
+      - "5455:5432"
+    volumes:
+      - transporte_pgdata:/var/lib/postgresql/data
+    networks:
+      - transporte_network
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: transporte_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@transporte.com
+      PGADMIN_DEFAULT_PASSWORD: transporte_seguro_2026
+    ports:
+      - "5055:80"
+    depends_on:
+      - db
+    networks:
+      - transporte_network
+
+  backend:
+    build:
+      context: ./backend
+    container_name: transporte_backend
+    restart: always
+    environment:
+      POSTGRES_SERVER: db
+      POSTGRES_USER: admin_transporte
+      POSTGRES_PASSWORD: transporte_seguro_2026
+      POSTGRES_DB: db_transporte_liquidacion
+      POSTGRES_PORT: 5432
+      SECRET_KEY: super_secret_jwt_key_transporte_rengifo_2026
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./backend/exports:/app/exports
+    depends_on:
+      - db
+    networks:
+      - transporte_network
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8001
+    container_name: transporte_frontend
+    restart: always
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8001
+    ports:
+      - "3001:3000"
+    depends_on:
+      - backend
+    networks:
+      - transporte_network
+
+networks:
+  transporte_network:
+    driver: bridge
+
+volumes:
+  transporte_pgdata:

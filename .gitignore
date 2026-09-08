@@ -1,0 +1,53 @@
+# ==========================================
+# GITIGNORE - SISTEMA DE LIQUIDACION
+# ==========================================
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/venv/
+backend/env/
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Node.js & Next.js
+frontend/node_modules/
+node_modules/
+frontend/.next/
+.next/
+frontend/out/
+frontend/build/
+frontend/.vercel/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# Generated Exports & Uploads (keep directory with .gitkeep)
+backend/exports/*.xlsx
+backend/exports/*.pdf
+!backend/exports/.gitkeep
+
+# IDE & OS Files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
