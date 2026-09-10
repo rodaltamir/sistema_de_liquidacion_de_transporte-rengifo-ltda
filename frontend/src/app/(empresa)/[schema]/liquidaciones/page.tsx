@@ -90,7 +90,14 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
 
   const handleGenerate = async () => {
     if (!selectedPlaca || !periodo) {
-      Swal.fire({ icon: "warning", title: "Atención", text: "Selecciona placa y mes.", background: "#0f172a", color: "#fff" });
+      Swal.fire({
+        icon: "warning",
+        title: "Atención",
+        text: "Selecciona placa y mes.",
+        background: "#ffffff",
+        color: "#0f172a",
+        confirmButtonColor: "#2563eb"
+      });
       return;
     }
 
@@ -110,8 +117,8 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
         text: `Planilla para ${selectedPlaca} (${periodo}) procesada con éxito.`,
         timer: 1500,
         showConfirmButton: false,
-        background: "#0f172a",
-        color: "#fff"
+        background: "#ffffff",
+        color: "#0f172a"
       });
 
       const detalle = await apiFetch(`/tenants/${schema}/liquidaciones/${res.id}`);
@@ -125,8 +132,9 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
         icon: "error",
         title: "No se pudo generar",
         text: err.message || "Verifica que existan viajes para esta placa en el periodo.",
-        background: "#0f172a",
-        color: "#fff"
+        background: "#ffffff",
+        color: "#0f172a",
+        confirmButtonColor: "#2563eb"
       });
     } finally {
       setLoading(false);
@@ -146,7 +154,7 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err: any) {
-      Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#0f172a", color: "#fff" });
+      Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#ffffff", color: "#0f172a", confirmButtonColor: "#2563eb" });
     }
   };
 
@@ -163,7 +171,7 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err: any) {
-      Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#0f172a", color: "#fff" });
+      Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#ffffff", color: "#0f172a", confirmButtonColor: "#2563eb" });
     }
   };
 
@@ -195,12 +203,19 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
         })
       });
 
-      Swal.fire({ icon: "success", title: "Deducciones actualizadas", background: "#0f172a", color: "#fff", timer: 1500, showConfirmButton: false });
+      Swal.fire({
+        icon: "success",
+        title: "Deducciones actualizadas",
+        background: "#ffffff",
+        color: "#0f172a",
+        timer: 1500,
+        showConfirmButton: false
+      });
       setShowAdjustModal(false);
       const detalle = await apiFetch(`/tenants/${schema}/liquidaciones/${res.id}`);
       setActiveLiq(detalle);
     } catch (err: any) {
-      Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#0f172a", color: "#fff" });
+      Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#ffffff", color: "#0f172a", confirmButtonColor: "#2563eb" });
     }
   };
 
@@ -211,22 +226,29 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
       text: "Los viajes quedarán en estado Pendiente para poder volver a liquidarse.",
       icon: "warning",
       showCancelButton: true,
-      confirmButtonColor: "#ef4444",
-      cancelButtonColor: "#334155",
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
       confirmButtonText: "Sí, eliminar",
       cancelButtonText: "Cancelar",
-      background: "#0f172a",
-      color: "#fff"
+      background: "#ffffff",
+      color: "#0f172a"
     });
 
     if (result.isConfirmed) {
       try {
         await apiFetch(`/tenants/${schema}/liquidaciones/${activeLiq.id}`, { method: "DELETE" });
-        Swal.fire({ icon: "success", title: "Liquidación eliminada", background: "#0f172a", color: "#fff", timer: 1500, showConfirmButton: false });
+        Swal.fire({
+          icon: "success",
+          title: "Liquidación eliminada",
+          background: "#ffffff",
+          color: "#0f172a",
+          timer: 1500,
+          showConfirmButton: false
+        });
         setActiveLiq(null);
         loadInitialData();
       } catch (err: any) {
-        Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#0f172a", color: "#fff" });
+        Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#ffffff", color: "#0f172a", confirmButtonColor: "#2563eb" });
       }
     }
   };
@@ -244,43 +266,45 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
       {/* Encabezado */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
         <div>
-          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
-            <FileSpreadsheet className="w-7 h-7 text-cyan-400" />
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+              <FileSpreadsheet className="w-6 h-6" />
+            </div>
             <span>Planillas de Liquidación Mensual por Camión</span>
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className="text-sm text-slate-500 mt-1">
             Generación oficial fiel al formato Excel (Páginas 2 y 3 del PDF) con detalle de viajes, deducciones y firmas
           </p>
         </div>
       </div>
 
       {/* Barra de Controles y Generación */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col lg:flex-row items-center justify-between gap-4 no-print">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4 no-print">
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
           {/* Mes */}
-          <div className="flex items-center gap-2 bg-slate-800 px-3 py-2 rounded-xl border border-slate-700 text-xs">
-            <Calendar className="w-4 h-4 text-cyan-400" />
-            <span className="text-slate-400 font-medium">Mes:</span>
+          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
+            <Calendar className="w-4 h-4 text-blue-600" />
+            <span className="text-slate-500 font-medium">Mes:</span>
             <input
               type="month"
               value={periodo}
               onChange={(e) => setPeriodo(e.target.value)}
-              className="bg-transparent text-white font-bold focus:outline-none cursor-pointer text-xs"
+              className="bg-transparent text-slate-900 font-semibold focus:outline-none cursor-pointer text-xs"
             />
           </div>
 
           {/* Placa */}
-          <div className="flex items-center gap-2 bg-slate-800 px-3 py-2 rounded-xl border border-slate-700 text-xs">
-            <Truck className="w-4 h-4 text-cyan-400" />
-            <span className="text-slate-400 font-medium">Placa:</span>
+          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
+            <Truck className="w-4 h-4 text-blue-600" />
+            <span className="text-slate-500 font-medium">Placa:</span>
             <select
               value={selectedPlaca}
               onChange={(e) => setSelectedPlaca(e.target.value)}
-              className="bg-transparent text-white font-bold focus:outline-none cursor-pointer text-xs"
+              className="bg-transparent text-slate-900 font-semibold focus:outline-none cursor-pointer text-xs"
             >
-              <option value="" className="bg-slate-800">-- Seleccionar Placa --</option>
+              <option value="">-- Seleccionar Placa --</option>
               {unidades.map((u) => (
-                <option key={u.id} value={u.placa} className="bg-slate-800">
+                <option key={u.id} value={u.placa}>
                   {u.placa}
                 </option>
               ))}
@@ -289,7 +313,7 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
 
           <button
             onClick={handleGenerate}
-            className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-cyan-500/20 flex items-center gap-1.5 transition"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm flex items-center gap-1.5 transition"
           >
             <Plus className="w-4 h-4" />
             <span>Generar / Actualizar Liquidación</span>
@@ -301,7 +325,7 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
           <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
             <button
               onClick={downloadExcel}
-              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20 flex items-center gap-1.5 transition"
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm flex items-center gap-1.5 transition"
               title="Descargar archivo Excel con ambas pestañas"
             >
               <FileSpreadsheet className="w-4 h-4" />
@@ -310,7 +334,7 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
 
             <button
               onClick={downloadPDF}
-              className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-600/20 flex items-center gap-1.5 transition"
+              className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold shadow-sm flex items-center gap-1.5 transition"
               title="Descargar reporte en formato PDF"
             >
               <Download className="w-4 h-4" />
@@ -319,7 +343,7 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
 
             <button
               onClick={() => window.print()}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition"
+              className="px-3.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 flex items-center gap-1.5 transition"
               title="Imprimir formato"
             >
               <Printer className="w-4 h-4" />
@@ -328,7 +352,7 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
 
             <button
               onClick={openAdjustModal}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 transition"
               title="Ajustar deducciones manualmente"
             >
               <SlidersHorizontal className="w-4 h-4" />
@@ -336,7 +360,7 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
 
             <button
               onClick={handleDeleteLiquidacion}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-red-500/20 hover:text-red-400 text-slate-400 border border-slate-700 transition"
+              className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-500 border border-slate-200 transition"
               title="Eliminar liquidación"
             >
               <Trash2 className="w-4 h-4" />
@@ -348,35 +372,35 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
       {/* Selector de Pestañas de Visualización */}
       {activeLiq && (
         <div className="flex items-center justify-between no-print">
-          <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
             <button
               onClick={() => setActiveTab("ambas")}
-              className={`px-3.5 py-1.5 rounded-lg font-bold transition ${
-                activeTab === "ambas" ? "bg-cyan-600 text-white shadow" : "text-slate-400 hover:text-white"
+              className={`px-3 py-1.5 rounded-lg font-semibold transition ${
+                activeTab === "ambas" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
               }`}
             >
               Ver Planilla Completa (Hojas 2 y 3)
             </button>
             <button
               onClick={() => setActiveTab("hoja1")}
-              className={`px-3.5 py-1.5 rounded-lg font-bold transition ${
-                activeTab === "hoja1" ? "bg-cyan-600 text-white shadow" : "text-slate-400 hover:text-white"
+              className={`px-3 py-1.5 rounded-lg font-semibold transition ${
+                activeTab === "hoja1" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
               }`}
             >
               Hoja 1: Detalle de Fletes (Pág. 2)
             </button>
             <button
               onClick={() => setActiveTab("hoja2")}
-              className={`px-3.5 py-1.5 rounded-lg font-bold transition ${
-                activeTab === "hoja2" ? "bg-cyan-600 text-white shadow" : "text-slate-400 hover:text-white"
+              className={`px-3 py-1.5 rounded-lg font-semibold transition ${
+                activeTab === "hoja2" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
               }`}
             >
               Hoja 2: Deducciones y Líquido (Pág. 3)
             </button>
           </div>
 
-          <div className="text-xs text-slate-400 font-mono hidden sm:block">
-            Código: <span className="text-cyan-400 font-bold">{activeLiq.codigo}</span>
+          <div className="text-xs text-slate-500 font-mono hidden sm:block">
+            Código: <span className="text-blue-600 font-bold">{activeLiq.codigo}</span>
           </div>
         </div>
       )}
@@ -384,19 +408,19 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
       {/* Contenedor del Documento */}
       {loading ? (
         <div className="flex justify-center items-center py-28">
-          <div className="w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
+          <div className="w-8 h-8 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin" />
         </div>
       ) : !activeLiq ? (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-16 text-center max-w-lg mx-auto">
-          <FileSpreadsheet className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-white mb-2">Sin liquidación generada</h3>
-          <p className="text-xs text-slate-400 mb-6 leading-relaxed">
+        <div className="bg-white border border-slate-200 rounded-xl p-16 text-center max-w-lg mx-auto shadow-sm">
+          <FileSpreadsheet className="w-14 h-14 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-base font-bold text-slate-800 mb-1.5">Sin liquidación generada</h3>
+          <p className="text-xs text-slate-500 mb-5 leading-relaxed">
             No se ha generado la planilla para la placa <b>{selectedPlaca || "seleccionada"}</b> en el periodo <b>{periodo}</b>. 
             Haz clic en el botón para calcular los fletes y deducciones automáticamente.
           </p>
           <button
             onClick={handleGenerate}
-            className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-cyan-500/20 transition"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm transition"
           >
             Generar Liquidación Ahora
           </button>
@@ -408,7 +432,7 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
           {/* HOJA 1: DETALLE OPERATIVO DE FLETES (PÁGINA 2 DEL PDF) */}
           {/* ============================================================== */}
           {(activeTab === "hoja1" || activeTab === "ambas") && (
-            <div className="bg-white text-slate-900 rounded-2xl shadow-2xl p-6 sm:p-8 overflow-x-auto border border-slate-200">
+            <div className="bg-white text-slate-900 rounded-xl shadow-sm p-6 sm:p-8 overflow-x-auto border border-slate-200">
               
               {/* Encabezado Hoja 1 */}
               <div className="flex flex-col sm:flex-row items-start justify-between gap-4 border-b-2 border-slate-900 pb-4 mb-5">
@@ -506,7 +530,7 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
                         {formatNumber(activeLiq.desc_merma_bs, 1)}
                       </td>
                       <td className="py-2 px-1.5 border-x border-slate-300"></td>
-                      <td className="py-2 px-2 text-right font-mono text-emerald-800 bg-amber-100 border-x border-slate-300 text-sm">
+                      <td className="py-2 px-2 text-right font-mono text-emerald-800 bg-amber-50 border-x border-slate-300 text-sm font-black">
                         {formatNumber(activeLiq.flete_total_bruto_bs, 2)}
                       </td>
                     </tr>
@@ -516,19 +540,19 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
 
               {/* Bloque de Firmas Página 2 */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-10 text-center text-xs">
-                <div className="border border-slate-300 rounded-lg p-3">
+                <div className="border border-slate-300 rounded-lg p-3 bg-white">
                   <div className="font-bold text-[10px] uppercase text-slate-500 mb-6">REALIZADO POR:</div>
                   <div className="font-bold text-slate-900 border-t border-slate-300 pt-1 text-[11px]">{firmas.realizado_por}</div>
                 </div>
-                <div className="border border-slate-300 rounded-lg p-3">
+                <div className="border border-slate-300 rounded-lg p-3 bg-white">
                   <div className="font-bold text-[10px] uppercase text-slate-500 mb-6">REVISADO POR:</div>
                   <div className="font-bold text-slate-900 border-t border-slate-300 pt-1 text-[11px]">{firmas.revisado_por}</div>
                 </div>
-                <div className="border border-slate-300 rounded-lg p-3">
+                <div className="border border-slate-300 rounded-lg p-3 bg-white">
                   <div className="font-bold text-[10px] uppercase text-slate-500 mb-6">AUTORIZADO POR:</div>
                   <div className="font-bold text-slate-900 border-t border-slate-300 pt-1 text-[11px]">{firmas.autorizado_por}</div>
                 </div>
-                <div className="border border-slate-300 rounded-lg p-3">
+                <div className="border border-slate-300 rounded-lg p-3 bg-white">
                   <div className="font-bold text-[10px] uppercase text-slate-500 mb-6">CANCELADO POR:</div>
                   <div className="font-bold text-slate-900 border-t border-slate-300 pt-1 text-[11px]">{firmas.cancelado_por}</div>
                 </div>
@@ -542,7 +566,7 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
           {/* HOJA 2: RESUMEN DE DESCUENTOS Y LÍQUIDO PAGABLE (PÁG 3 DEL PDF) */}
           {/* ============================================================== */}
           {(activeTab === "hoja2" || activeTab === "ambas") && (
-            <div className="bg-white text-slate-900 rounded-2xl shadow-2xl p-6 sm:p-8 max-w-3xl mx-auto border border-slate-200 page-break">
+            <div className="bg-white text-slate-900 rounded-xl shadow-sm p-6 sm:p-8 max-w-3xl mx-auto border border-slate-200 page-break">
               
               {/* Encabezado Hoja 2 */}
               <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3 mb-6">
@@ -572,13 +596,13 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
               <div className="border border-slate-300 rounded-xl overflow-hidden mb-8 shadow-sm">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="bg-slate-200 text-slate-800 font-black text-[11px] uppercase border-b border-slate-300">
+                    <tr className="bg-slate-100 text-slate-800 font-black text-[11px] uppercase border-b border-slate-300">
                       <th className="py-2.5 px-4">DESCRIPCION</th>
                       <th className="py-2.5 px-4 text-right">TOTAL Bs</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-[12px]">
-                    <tr className="bg-slate-100 font-black text-slate-950">
+                    <tr className="bg-slate-50 font-black text-slate-950">
                       <td className="py-2.5 px-4 uppercase">FLETE TOTAL</td>
                       <td className="py-2.5 px-4 text-right font-mono text-sm font-black text-blue-900">
                         {formatNumber(activeLiq.flete_total_bruto_bs, 2)}
@@ -625,17 +649,17 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
                     )}
 
                     {/* Total Descuento */}
-                    <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
+                    <tr className="bg-slate-50 font-bold text-slate-900 border-t-2 border-slate-300">
                       <td className="py-2.5 px-4 uppercase">TOTAL DESCUENTO</td>
-                      <td className="py-2.5 px-4 text-right font-mono text-sm text-red-700 font-black">
+                      <td className="py-2.5 px-4 text-right font-mono text-sm text-red-600 font-black">
                         {formatNumber(activeLiq.total_descuentos_bs, 2)}
                       </td>
                     </tr>
 
                     {/* Líquido Pagable */}
-                    <tr className="bg-emerald-100 font-black text-slate-950 border-t-2 border-slate-400">
-                      <td className="py-3 px-4 uppercase text-sm">LIQUIDO PAGABLE</td>
-                      <td className="py-3 px-4 text-right font-mono text-base font-black text-emerald-900">
+                    <tr className="bg-emerald-50 font-black text-slate-950 border-t-2 border-emerald-300">
+                      <td className="py-3 px-4 uppercase text-sm text-emerald-950">LIQUIDO PAGABLE</td>
+                      <td className="py-3 px-4 text-right font-mono text-base font-black text-emerald-700">
                         {formatNumber(activeLiq.liquido_pagable_bs, 2)}
                       </td>
                     </tr>
@@ -645,19 +669,19 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
 
               {/* Bloque de Firmas Página 3 */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-12 text-center text-xs">
-                <div className="border border-slate-300 rounded-lg p-3">
+                <div className="border border-slate-300 rounded-lg p-3 bg-white">
                   <div className="font-bold text-[10px] uppercase text-slate-500 mb-6">REALIZADO POR:</div>
                   <div className="font-bold text-slate-900 border-t border-slate-300 pt-1 text-[11px]">{firmas.realizado_por}</div>
                 </div>
-                <div className="border border-slate-300 rounded-lg p-3">
+                <div className="border border-slate-300 rounded-lg p-3 bg-white">
                   <div className="font-bold text-[10px] uppercase text-slate-500 mb-6">REVISADO POR:</div>
                   <div className="font-bold text-slate-900 border-t border-slate-300 pt-1 text-[11px]">{firmas.revisado_por}</div>
                 </div>
-                <div className="border border-slate-300 rounded-lg p-3">
+                <div className="border border-slate-300 rounded-lg p-3 bg-white">
                   <div className="font-bold text-[10px] uppercase text-slate-500 mb-6">AUTORIZADO POR:</div>
                   <div className="font-bold text-slate-900 border-t border-slate-300 pt-1 text-[11px]">{firmas.autorizado_por}</div>
                 </div>
-                <div className="border border-slate-300 rounded-lg p-3">
+                <div className="border border-slate-300 rounded-lg p-3 bg-white">
                   <div className="font-bold text-[10px] uppercase text-slate-500 mb-6">CANCELADO POR:</div>
                   <div className="font-bold text-slate-900 border-t border-slate-300 pt-1 text-[11px]">{firmas.cancelado_por}</div>
                 </div>
@@ -671,16 +695,16 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
 
       {/* Modal para Ajustar Deducciones Manualmente */}
       {showAdjustModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-5 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <SlidersHorizontal className="w-5 h-5 text-cyan-400" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <SlidersHorizontal className="w-5 h-5 text-blue-600" />
                 <span>Ajustar Montos de Deducción</span>
               </h3>
               <button
                 onClick={() => setShowAdjustModal(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold"
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
               >
                 ✕
               </button>
@@ -689,107 +713,107 @@ export default function LiquidacionesPage({ params }: { params: Promise<{ schema
             <form onSubmit={handleSaveAdjustments} className="p-6 space-y-3 max-h-[75vh] overflow-y-auto text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">Descuento Merma (Bs)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Descuento Merma (Bs)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={adjustData.desc_merma_bs}
                     onChange={(e) => setAdjustData({ ...adjustData, desc_merma_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono text-xs focus:border-blue-600"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">Comisión 1 $us p/m3 (Bs)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Comisión 1 $us p/m3 (Bs)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={adjustData.desc_comision_usd_m3_bs}
                     onChange={(e) => setAdjustData({ ...adjustData, desc_comision_usd_m3_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono text-xs focus:border-blue-600"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">Comisión 7% (Bs)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Comisión 7% (Bs)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={adjustData.desc_comision_7pct_bs}
                     onChange={(e) => setAdjustData({ ...adjustData, desc_comision_7pct_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono text-xs focus:border-blue-600"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">YPFB BOL-GART 7% (Bs)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">YPFB BOL-GART 7% (Bs)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={adjustData.desc_comision_ypfb_bolgart_7pct_bs}
                     onChange={(e) => setAdjustData({ ...adjustData, desc_comision_ypfb_bolgart_7pct_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono text-xs focus:border-blue-600"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">Comisión 3% (Bs)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Comisión 3% (Bs)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={adjustData.desc_comision_3pct_bs}
                     onChange={(e) => setAdjustData({ ...adjustData, desc_comision_3pct_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono text-xs focus:border-blue-600"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">Hojas de Ruta (Bs)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Hojas de Ruta (Bs)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={adjustData.desc_hojas_ruta_bs}
                     onChange={(e) => setAdjustData({ ...adjustData, desc_hojas_ruta_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono text-xs focus:border-blue-600"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">GPS (Bs)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">GPS (Bs)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={adjustData.desc_gps_bs}
                     onChange={(e) => setAdjustData({ ...adjustData, desc_gps_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono text-xs focus:border-blue-600"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">Anticipos y Otros (Bs)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Anticipos y Otros (Bs)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={adjustData.desc_anticipos_otros_bs}
                     onChange={(e) => setAdjustData({ ...adjustData, desc_anticipos_otros_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono text-xs focus:border-blue-600"
                   />
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-800 flex justify-end gap-3">
+              <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setShowAdjustModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-lg shadow-cyan-600/20"
+                  className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm"
                 >
                   Guardar y Recalcular
                 </button>

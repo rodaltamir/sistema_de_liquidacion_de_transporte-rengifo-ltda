@@ -1,4 +1,10 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api';
+export function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    return `${window.location.protocol}//${host}:8001/api`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api';
+}
 
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -13,7 +19,7 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   }
 
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  const url = `${API_BASE_URL}${cleanEndpoint}`;
+  const url = `${getApiBaseUrl()}${cleanEndpoint}`;
 
   const response = await fetch(url, {
     ...options,

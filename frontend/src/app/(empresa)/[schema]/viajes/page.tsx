@@ -15,7 +15,8 @@ import {
   FileSpreadsheet, 
   AlertTriangle, 
   CheckCircle2, 
-  DollarSign
+  DollarSign,
+  Filter
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
@@ -51,7 +52,7 @@ interface Viaje {
 
 export default function ViajesPage({ params }: { params: Promise<{ schema: string }> }) {
   return (
-    <Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" /></div>}>
+    <Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin" /></div>}>
       <ViajesContent params={params} />
     </Suspense>
   );
@@ -111,9 +112,9 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
 
   // Recalcular en vivo cuando cambian valores en el modal
   useEffect(() => {
-    const orig = parseFloat(formData.volumen_origen_litros.toString()) || 0;
-    const rec = parseFloat(formData.volumen_recepcionado_litros.toString()) || 0;
-    const tarifa = parseFloat(formData.tarifa_flete.toString()) || 0;
+    const orig = parseFloat(formData.volumen_origen_litros?.toString() || "0") || 0;
+    const rec = parseFloat(formData.volumen_recepcionado_litros?.toString() || "0") || 0;
+    const tarifa = parseFloat(formData.tarifa_flete?.toString() || "0") || 0;
     const precioMerma = parseFloat(formData.precio_merma_litro_bs?.toString() || "7.45") || 7.45;
 
     let tolPct = 0.15;
@@ -226,21 +227,28 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
       text: "Se recalcularán los totales del periodo.",
       icon: "warning",
       showCancelButton: true,
-      confirmButtonColor: "#ef4444",
-      cancelButtonColor: "#334155",
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
       confirmButtonText: "Sí, eliminar",
       cancelButtonText: "Cancelar",
-      background: "#0f172a",
-      color: "#fff"
+      background: "#ffffff",
+      color: "#0f172a"
     });
 
     if (result.isConfirmed) {
       try {
         await apiFetch(`/tenants/${schema}/viajes/${v.id}`, { method: "DELETE" });
-        Swal.fire({ icon: "success", title: "Viaje eliminado", background: "#0f172a", color: "#fff", timer: 1500, showConfirmButton: false });
+        Swal.fire({
+          icon: "success",
+          title: "Viaje eliminado",
+          background: "#ffffff",
+          color: "#0f172a",
+          timer: 1500,
+          showConfirmButton: false
+        });
         loadViajes();
       } catch (err: any) {
-        Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#0f172a", color: "#fff" });
+        Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#ffffff", color: "#0f172a" });
       }
     }
   };
@@ -261,18 +269,32 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
           method: "PUT",
           body: JSON.stringify(payload)
         });
-        Swal.fire({ icon: "success", title: "Viaje actualizado", background: "#0f172a", color: "#fff", timer: 1500, showConfirmButton: false });
+        Swal.fire({
+          icon: "success",
+          title: "Viaje actualizado",
+          background: "#ffffff",
+          color: "#0f172a",
+          timer: 1500,
+          showConfirmButton: false
+        });
       } else {
         await apiFetch(`/tenants/${schema}/viajes/`, {
           method: "POST",
           body: JSON.stringify(payload)
         });
-        Swal.fire({ icon: "success", title: "Viaje registrado con cálculo automático", background: "#0f172a", color: "#fff", timer: 1500, showConfirmButton: false });
+        Swal.fire({
+          icon: "success",
+          title: "Viaje registrado con cálculo automático",
+          background: "#ffffff",
+          color: "#0f172a",
+          timer: 1500,
+          showConfirmButton: false
+        });
       }
       setShowModal(false);
       loadViajes();
     } catch (err: any) {
-      Swal.fire({ icon: "error", title: "Error al guardar", text: err.message, background: "#0f172a", color: "#fff" });
+      Swal.fire({ icon: "error", title: "Error al guardar", text: err.message, background: "#ffffff", color: "#0f172a" });
     }
   };
 
@@ -292,18 +314,20 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
       {/* Encabezado */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
-            <Navigation className="w-7 h-7 text-cyan-400" />
-            <span>Registro de Viajes y Despachos de Carga</span>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+              <Navigation className="w-6 h-6" />
+            </div>
+            <span>Registro de Viajes y Despachos</span>
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Fletes, volúmenes de origen y recepción con deducción automática de mermas según contrato YPFB
+          <p className="text-sm text-slate-500 mt-1">
+            Control de fletes, volúmenes y deducción automática de mermas según contrato YPFB
           </p>
         </div>
 
         <button
           onClick={openCreateModal}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/20 transition self-start sm:self-auto"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-sm shadow-blue-500/10 transition self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           <span>Registrar Nuevo Viaje</span>
@@ -311,31 +335,32 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
       </div>
 
       {/* Barra de Filtros */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           {/* Periodo */}
-          <div className="flex items-center gap-2 bg-slate-800 px-3 py-2 rounded-xl border border-slate-700 text-xs">
-            <Calendar className="w-4 h-4 text-cyan-400" />
-            <span className="text-slate-400 font-medium">Mes:</span>
+          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
+            <Calendar className="w-4 h-4 text-blue-600" />
+            <span className="text-slate-500 font-medium">Mes:</span>
             <input
               type="month"
               value={periodo}
               onChange={(e) => setPeriodo(e.target.value)}
-              className="bg-transparent text-white font-bold focus:outline-none cursor-pointer text-xs"
+              className="bg-transparent text-slate-900 font-semibold focus:outline-none cursor-pointer text-xs"
             />
           </div>
 
           {/* Placa */}
-          <div className="flex items-center gap-2 bg-slate-800 px-3 py-2 rounded-xl border border-slate-700 text-xs">
-            <Truck className="w-4 h-4 text-cyan-400" />
+          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
+            <Truck className="w-4 h-4 text-blue-600" />
+            <span className="text-slate-500 font-medium">Placa:</span>
             <select
               value={placaFiltro}
               onChange={(e) => setPlacaFiltro(e.target.value)}
-              className="bg-transparent text-white font-bold focus:outline-none cursor-pointer text-xs"
+              className="bg-transparent text-slate-900 font-semibold focus:outline-none cursor-pointer text-xs"
             >
-              <option value="" className="bg-slate-800">Todas las Placas</option>
+              <option value="">Todas las Placas</option>
               {unidades.map((u) => (
-                <option key={u.id} value={u.placa} className="bg-slate-800">
+                <option key={u.id} value={u.placa}>
                   {u.placa}
                 </option>
               ))}
@@ -351,7 +376,7 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por MIC, tramo o placa..."
-            className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition"
           />
         </div>
       </div>
@@ -359,28 +384,28 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
       {/* Tabla de Viajes */}
       {loading ? (
         <div className="flex justify-center items-center py-24">
-          <div className="w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
+          <div className="w-8 h-8 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center max-w-md mx-auto">
-          <Navigation className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-white mb-1">No hay viajes registrados</h3>
-          <p className="text-sm text-slate-400 mb-6">
+        <div className="bg-white border border-slate-200 rounded-xl p-12 text-center max-w-md mx-auto shadow-sm">
+          <Navigation className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-base font-bold text-slate-800 mb-1">No hay viajes registrados</h3>
+          <p className="text-xs text-slate-500 mb-5">
             No se encontraron despachos para el periodo o filtros seleccionados.
           </p>
           <button
             onClick={openCreateModal}
-            className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition"
+            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition"
           >
             Registrar Viaje
           </button>
         </div>
       ) : (
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-800/80 border-b border-slate-700/80 text-slate-300 font-bold uppercase text-[10px]">
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase text-[10px]">
                   <th className="py-3 px-3">MIC/DTA</th>
                   <th className="py-3 px-3">Placa</th>
                   <th className="py-3 px-3">Tramo</th>
@@ -397,63 +422,67 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
                   <th className="py-3 px-3 text-center">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="divide-y divide-slate-100">
                 {filtered.map((v) => (
-                  <tr key={v.id} className="hover:bg-slate-800/40 transition">
-                    <td className="py-3 px-3 font-mono font-bold text-cyan-400">{v.mic_dta || "-"}</td>
-                    <td className="py-3 px-3 font-mono font-black text-white">{v.placa}</td>
-                    <td className="py-3 px-3 text-slate-300 truncate max-w-[170px]" title={v.tramo}>
+                  <tr key={v.id} className="hover:bg-slate-50/70 transition">
+                    <td className="py-3 px-3 font-mono font-bold text-blue-600">{v.mic_dta || "-"}</td>
+                    <td className="py-3 px-3 font-mono font-bold text-slate-900">{v.placa}</td>
+                    <td className="py-3 px-3 text-slate-700 truncate max-w-[170px]" title={v.tramo}>
                       {v.tramo}
                     </td>
-                    <td className="py-3 px-3 font-bold text-white">
-                      <span className={`px-2 py-0.5 rounded text-[10px] ${
-                        v.producto === "GASOLINA" ? "bg-amber-950 text-amber-300 border border-amber-800" : "bg-blue-950 text-blue-300 border border-blue-800"
+                    <td className="py-3 px-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                        v.producto === "GASOLINA" 
+                          ? "bg-amber-50 text-amber-700 border-amber-200" 
+                          : v.producto === "DIESEL"
+                          ? "bg-blue-50 text-blue-700 border-blue-200"
+                          : "bg-slate-100 text-slate-700 border-slate-200"
                       }`}>
                         {v.producto}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-[11px] text-slate-400">
-                      <div>Carga: {formatDate(v.fecha_carga)}</div>
-                      <div>Desc: {formatDate(v.fecha_descarga)}</div>
+                    <td className="py-3 px-3 text-[11px] text-slate-500">
+                      <div>C: {formatDate(v.fecha_carga)}</div>
+                      <div>D: {formatDate(v.fecha_descarga)}</div>
                     </td>
-                    <td className="py-3 px-3 text-right font-mono text-slate-300">{formatNumber(v.volumen_origen_litros, 0)} L</td>
-                    <td className="py-3 px-3 text-right font-mono font-bold text-white">{formatNumber(v.volumen_recepcionado_litros, 0)} L</td>
-                    <td className="py-3 px-3 text-right font-mono text-slate-300">
+                    <td className="py-3 px-3 text-right font-mono text-slate-600">{formatNumber(v.volumen_origen_litros, 0)} L</td>
+                    <td className="py-3 px-3 text-right font-mono font-semibold text-slate-900">{formatNumber(v.volumen_recepcionado_litros, 0)} L</td>
+                    <td className="py-3 px-3 text-right font-mono text-slate-600">
                       {formatNumber(v.merma_real_litros, 1)} L
                     </td>
-                    <td className={`py-3 px-3 text-right font-mono ${v.merma_excedente_litros > 0 ? "text-amber-400 font-bold" : "text-slate-500"}`}>
+                    <td className={`py-3 px-3 text-right font-mono ${v.merma_excedente_litros > 0 ? "text-amber-600 font-bold" : "text-slate-400"}`}>
                       {formatNumber(v.merma_excedente_litros, 1)} L
                     </td>
-                    <td className={`py-3 px-3 text-right font-mono ${v.merma_descontar_bs > 0 ? "text-red-400 font-bold" : "text-slate-500"}`}>
+                    <td className={`py-3 px-3 text-right font-mono ${v.merma_descontar_bs > 0 ? "text-red-600 font-bold" : "text-slate-400"}`}>
                       {formatCurrency(v.merma_descontar_bs)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono text-slate-300">
+                    <td className="py-3 px-3 text-right font-mono text-slate-600">
                       Bs. {formatNumber(v.tarifa_flete, 2)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-emerald-400">
+                    <td className="py-3 px-3 text-right font-mono font-bold text-emerald-600">
                       {formatCurrency(v.flete_total_bs)}
                     </td>
                     <td className="py-3 px-3 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                         v.estado === "Liquidado"
-                          ? "bg-emerald-950 text-emerald-400 border border-emerald-800"
-                          : "bg-amber-950 text-amber-400 border border-amber-800"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-amber-50 text-amber-700 border-amber-200"
                       }`}>
                         {v.estado}
                       </span>
                     </td>
                     <td className="py-3 px-3 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
+                      <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => openEditModal(v)}
-                          className="p-1 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-cyan-300 transition"
+                          className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition"
                           title="Editar Viaje"
                         >
                           <Edit className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleDelete(v)}
-                          className="p-1 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition"
+                          className="p-1 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 transition"
                           title="Eliminar Viaje"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -470,16 +499,16 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
 
       {/* Modal Registrar / Editar Viaje */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
-          <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-5 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Navigation className="w-5 h-5 text-cyan-400" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Navigation className="w-5 h-5 text-blue-600" />
                 {editingViaje ? `Editar Viaje (${editingViaje.placa})` : "Registrar Nuevo Despacho / Flete"}
               </h3>
               <button
                 onClick={() => setShowModal(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold"
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
               >
                 ✕
               </button>
@@ -490,14 +519,14 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
               {/* Sección 1: Placa, MIC, Tramo */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Placa de la Unidad *
                   </label>
                   <select
                     required
                     value={formData.placa}
                     onChange={(e) => setFormData({ ...formData, placa: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white font-mono font-bold text-sm focus:outline-none focus:border-cyan-500 uppercase"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono font-semibold text-sm focus:outline-none focus:border-blue-600 uppercase"
                   >
                     <option value="">-- Seleccionar Placa --</option>
                     {unidades.map((u) => (
@@ -509,7 +538,7 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Nº MIC / DTA
                   </label>
                   <input
@@ -517,18 +546,18 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
                     value={formData.mic_dta}
                     onChange={(e) => setFormData({ ...formData, mic_dta: e.target.value.toUpperCase() })}
                     placeholder="23BO051130T"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-cyan-500 uppercase"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono text-sm focus:outline-none focus:border-blue-600 uppercase"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Producto Transportado *
                   </label>
                   <select
                     value={formData.producto}
                     onChange={(e) => setFormData({ ...formData, producto: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-blue-600"
                   >
                     <option value="GASOLINA">GASOLINA (Tolerancia 0.25%)</option>
                     <option value="DIESEL">DIESEL OIL (Tolerancia 0.15%)</option>
@@ -539,7 +568,7 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Ruta / Tramo *
                 </label>
                 <input
@@ -548,14 +577,14 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
                   value={formData.tramo}
                   onChange={(e) => setFormData({ ...formData, tramo: e.target.value })}
                   placeholder="ARICA - TAMBO QUEMADO - LA PAZ"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-500 uppercase"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-blue-600 uppercase"
                 />
               </div>
 
               {/* Fechas y Periodo */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Fecha de Carga *
                   </label>
                   <input
@@ -563,12 +592,12 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
                     required
                     value={formData.fecha_carga}
                     onChange={(e) => setFormData({ ...formData, fecha_carga: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-blue-600"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Fecha de Descarga *
                   </label>
                   <input
@@ -576,12 +605,12 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
                     required
                     value={formData.fecha_descarga}
                     onChange={(e) => setFormData({ ...formData, fecha_descarga: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-blue-600"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Periodo Mes (YYYY-MM) *
                   </label>
                   <input
@@ -589,7 +618,7 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
                     required
                     value={formData.periodo_mes}
                     onChange={(e) => setFormData({ ...formData, periodo_mes: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-blue-600"
                   />
                 </div>
               </div>
@@ -597,7 +626,7 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
               {/* Volúmenes y Tarifa */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Volumen Origen (Litros) *
                   </label>
                   <input
@@ -607,12 +636,12 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
                     value={formData.volumen_origen_litros}
                     onChange={(e) => setFormData({ ...formData, volumen_origen_litros: parseFloat(e.target.value) || 0 })}
                     placeholder="33999"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-cyan-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono text-sm focus:outline-none focus:border-blue-600"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Volumen Recepción (Litros) *
                   </label>
                   <input
@@ -622,12 +651,12 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
                     value={formData.volumen_recepcionado_litros}
                     onChange={(e) => setFormData({ ...formData, volumen_recepcionado_litros: parseFloat(e.target.value) || 0 })}
                     placeholder="33900"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-cyan-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono text-sm focus:outline-none focus:border-blue-600"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Tarifa Flete (Bs/m³) *
                   </label>
                   <input
@@ -637,63 +666,63 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
                     value={formData.tarifa_flete}
                     onChange={(e) => setFormData({ ...formData, tarifa_flete: parseFloat(e.target.value) || 0 })}
                     placeholder="392.00"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-cyan-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono text-sm focus:outline-none focus:border-blue-600"
                   />
                 </div>
               </div>
 
               {/* CAJA DE CÁLCULO EN TIEMPO REAL */}
-              <div className="p-4 rounded-xl bg-gradient-to-r from-blue-950/60 to-slate-900 border border-cyan-500/30 shadow-inner space-y-2 mt-4">
-                <div className="flex items-center justify-between text-xs font-bold text-cyan-300 border-b border-cyan-900/60 pb-2">
+              <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-100 text-slate-800 space-y-2 mt-4">
+                <div className="flex items-center justify-between text-xs font-bold text-blue-900 border-b border-blue-200/60 pb-2">
                   <span className="flex items-center gap-1.5">
-                    <Calculator className="w-4 h-4 text-cyan-400" />
+                    <Calculator className="w-4 h-4 text-blue-600" />
                     Cálculo Automático de Mermas y Flete
                   </span>
-                  <span>Tolerancia: {liveCalc.tolerancia_pct}%</span>
+                  <span className="text-blue-700">Tolerancia: {liveCalc.tolerancia_pct}%</span>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 text-xs">
                   <div>
-                    <span className="text-slate-400 text-[11px] block">Merma Real:</span>
-                    <span className="font-mono font-bold text-slate-200">{liveCalc.merma_real} Lts</span>
+                    <span className="text-slate-500 text-[11px] block">Merma Real:</span>
+                    <span className="font-mono font-bold text-slate-800">{liveCalc.merma_real} Lts</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 text-[11px] block">Tolerable YPFB:</span>
-                    <span className="font-mono text-slate-300">{liveCalc.merma_tolerable} Lts</span>
+                    <span className="text-slate-500 text-[11px] block">Tolerable YPFB:</span>
+                    <span className="font-mono text-slate-800">{liveCalc.merma_tolerable} Lts</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 text-[11px] block">Excedente a Descontar:</span>
-                    <span className={`font-mono font-bold ${liveCalc.merma_excedente > 0 ? "text-amber-400" : "text-emerald-400"}`}>
+                    <span className="text-slate-500 text-[11px] block">Excedente a Descontar:</span>
+                    <span className={`font-mono font-bold ${liveCalc.merma_excedente > 0 ? "text-amber-600" : "text-emerald-600"}`}>
                       {liveCalc.merma_excedente} Lts
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 text-[11px] block">Descuento Merma:</span>
-                    <span className={`font-mono font-bold ${liveCalc.merma_descontar_bs > 0 ? "text-red-400" : "text-slate-400"}`}>
+                    <span className="text-slate-500 text-[11px] block">Descuento Merma:</span>
+                    <span className={`font-mono font-bold ${liveCalc.merma_descontar_bs > 0 ? "text-red-600" : "text-slate-600"}`}>
                       {formatCurrency(liveCalc.merma_descontar_bs)}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs font-bold">
-                  <span className="text-slate-300">Flete Bruto Calculado:</span>
-                  <span className="text-base font-black text-emerald-400 font-mono">
+                <div className="flex items-center justify-between pt-2 border-t border-blue-200/60 text-xs font-bold">
+                  <span className="text-slate-600">Flete Bruto Calculado:</span>
+                  <span className="text-base font-black text-emerald-600 font-mono">
                     {formatCurrency(liveCalc.flete_total_bs)}
                   </span>
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-800 flex justify-end gap-3">
+              <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition"
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold transition"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-sm font-bold shadow-lg shadow-cyan-500/20 transition"
+                  className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-sm transition"
                 >
                   {editingViaje ? "Guardar Cambios" : "Guardar Flete"}
                 </button>

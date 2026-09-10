@@ -12,12 +12,12 @@ import {
   ArrowLeft, 
   Edit, 
   Trash2, 
-  Layers, 
-  ShieldCheck, 
-  UserCheck, 
-  CheckCircle2, 
-  Fuel, 
-  LogOut 
+  LogOut, 
+  Phone,
+  MapPin,
+  Mail,
+  X,
+  Filter
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
@@ -45,7 +45,7 @@ interface Asociacion {
 
 export default function SeleccionarEmpresaPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" /></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" /></div>}>
       <SeleccionarEmpresaContent />
     </Suspense>
   );
@@ -55,16 +55,16 @@ function SeleccionarEmpresaContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const asocParam = searchParams.get("asoc_id");
+  const indepParam = searchParams.get("independientes");
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [asociaciones, setAsociaciones] = useState<Asociacion[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const [filterType, setFilterType] = useState<"todas" | "independientes" | "asociadas">(
-    asocParam ? "asociadas" : "todas"
-  );
   const [search, setSearch] = useState("");
+  const [filterType, setFilterType] = useState<"todas" | "asociadas" | "independientes">(
+    indepParam === "true" ? "independientes" : asocParam ? "asociadas" : "todas"
+  );
 
   const [showModal, setShowModal] = useState(false);
   const [editingEmpresa, setEditingEmpresa] = useState<Empresa | null>(null);
@@ -72,12 +72,11 @@ function SeleccionarEmpresaContent() {
   const [formData, setFormData] = useState({
     name: "",
     nit: "",
-    asociacion_id: asocParam ? parseInt(asocParam) : (null as number | null),
+    asociacion_id: "" as string | number,
     representante_legal: "",
     direccion: "",
     telefono: "",
-    email: "",
-    icon: "Truck"
+    email: ""
   });
 
   useEffect(() => {
@@ -91,6 +90,7 @@ function SeleccionarEmpresaContent() {
   }, [router]);
 
   const loadData = async () => {
+    setLoading(true);
     try {
       const [empData, asocData] = await Promise.all([
         apiFetch("/empresas/"),
@@ -104,11 +104,134 @@ function SeleccionarEmpresaContent() {
         icon: "error",
         title: "Error al cargar datos",
         text: err.message,
-        background: "#0f172a",
-        color: "#fff"
+        background: "#ffffff",
+        color: "#0f172a"
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenCreate = () => {
+    setEditingEmpresa(null);
+    setFormData({
+      name: "",
+      nit: "",
+      asociacion_id: asocParam ? Number(asocParam) : "",
+      representante_legal: "",
+      direccion: "",
+      telefono: "",
+      email: ""
+    });
+    setShowModal(true);
+  };
+
+  const handleOpenEdit = (emp: Empresa, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingEmpresa(emp);
+    setFormData({
+      name: emp.name,
+      nit: emp.nit || "",
+      asociacion_id: emp.asociacion_id !== null ? emp.asociacion_id : "",
+      representante_legal: emp.representante_legal || "",
+      direccion: emp.direccion || "",
+      telefono: emp.telefono || "",
+      email: emp.email || ""
+    });
+    setShowModal(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload: any = {
+        name: formData.name.trim(),
+        nit: formData.nit.trim() || null,
+        asociacion_id: formData.asociacion_id !== "" ? Number(formData.asociacion_id) : null,
+        representante_legal: formData.representante_legal.trim() || null,
+        direccion: formData.direccion.trim() || null,
+        telefono: formData.telefono.trim() || null,
+        email: formData.email.trim() || null
+      };
+
+      if (editingEmpresa) {
+        await apiFetch(`/empresas/${editingEmpresa.schema_name}`, {
+          method: "PUT",
+          body: JSON.stringify(payload)
+        });
+        Swal.fire({
+          icon: "success",
+          title: "Empresa actualizada",
+          timer: 1200,
+          showConfirmButton: false,
+          background: "#ffffff",
+          color: "#0f172a"
+        });
+      } else {
+        await apiFetch("/empresas/", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        Swal.fire({
+          icon: "success",
+          title: "Empresa registrada con éxito",
+          text: "Se ha aprovisionado su esquema seguro en la base de datos.",
+          timer: 1500,
+          showConfirmButton: false,
+          background: "#ffffff",
+          color: "#0f172a"
+        });
+      }
+
+      setShowModal(false);
+      loadData();
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Error al guardar empresa",
+        text: err.message,
+        background: "#ffffff",
+        color: "#0f172a"
+      });
+    }
+  };
+
+  const handleDelete = async (emp: Empresa, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const res = await Swal.fire({
+      title: `¿Eliminar "${emp.name}"?`,
+      text: `Se eliminarán permanentemente todos los camiones, viajes y liquidaciones del esquema ${emp.schema_name}.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Sí, eliminar empresa",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
+      background: "#ffffff",
+      color: "#0f172a"
+    });
+
+    if (res.isConfirmed) {
+      try {
+        await apiFetch(`/empresas/${emp.schema_name}`, { method: "DELETE" });
+        Swal.fire({
+          icon: "success",
+          title: "Empresa eliminada",
+          timer: 1200,
+          showConfirmButton: false,
+          background: "#ffffff",
+          color: "#0f172a"
+        });
+        loadData();
+      } catch (err: any) {
+        Swal.fire({
+          icon: "error",
+          title: "Error al eliminar",
+          text: err.message,
+          background: "#ffffff",
+          color: "#0f172a"
+        });
+      }
     }
   };
 
@@ -117,351 +240,242 @@ function SeleccionarEmpresaContent() {
     router.push("/");
   };
 
-  const openCreateModal = () => {
-    setEditingEmpresa(null);
-    setFormData({
-      name: "",
-      nit: "",
-      asociacion_id: asocParam ? parseInt(asocParam) : null,
-      representante_legal: "",
-      direccion: "",
-      telefono: "",
-      email: "",
-      icon: "Truck"
-    });
-    setShowModal(true);
-  };
+  const filteredEmpresas = empresas.filter(e => {
+    const matchesSearch = e.name.toLowerCase().includes(search.toLowerCase()) ||
+      (e.nit && e.nit.includes(search)) ||
+      (e.representante_legal && e.representante_legal.toLowerCase().includes(search.toLowerCase()));
 
-  const openEditModal = (emp: Empresa, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingEmpresa(emp);
-    setFormData({
-      name: emp.name,
-      nit: emp.nit || "",
-      asociacion_id: emp.asociacion_id,
-      representante_legal: emp.representante_legal || "",
-      direccion: emp.direccion || "",
-      telefono: emp.telefono || "",
-      email: emp.email || "",
-      icon: emp.icon || "Truck"
-    });
-    setShowModal(true);
-  };
+    if (!matchesSearch) return false;
 
-  const handleDelete = async (emp: Empresa, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const result = await Swal.fire({
-      title: `¿Eliminar ${emp.name}?`,
-      text: "Esta acción eliminará el esquema de base de datos y todos los viajes y liquidaciones asociadas.",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonColor: "#ef4444",
-      cancelButtonColor: "#334155",
-      confirmButtonText: "Sí, eliminar",
-      cancelButtonText: "Cancelar",
-      background: "#0f172a",
-      color: "#fff"
-    });
-
-    if (result.isConfirmed) {
-      try {
-        await apiFetch(`/empresas/${emp.schema_name}`, { method: "DELETE" });
-        Swal.fire({
-          icon: "success",
-          title: "Empresa eliminada",
-          background: "#0f172a",
-          color: "#fff",
-          timer: 1500,
-          showConfirmButton: false
-        });
-        loadData();
-      } catch (err: any) {
-        Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#0f172a", color: "#fff" });
-      }
+    if (filterType === "independientes") {
+      return e.asociacion_id === null;
     }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      if (editingEmpresa) {
-        await apiFetch(`/empresas/${editingEmpresa.schema_name}`, {
-          method: "PUT",
-          body: JSON.stringify(formData)
-        });
-        Swal.fire({
-          icon: "success",
-          title: "Empresa actualizada",
-          background: "#0f172a",
-          color: "#fff",
-          timer: 1500,
-          showConfirmButton: false
-        });
-      } else {
-        await apiFetch("/empresas/", {
-          method: "POST",
-          body: JSON.stringify(formData)
-        });
-        Swal.fire({
-          icon: "success",
-          title: "Empresa creada exitosamente",
-          text: "Se inicializó su esquema PostgreSQL aislado.",
-          background: "#0f172a",
-          color: "#fff",
-          timer: 1800,
-          showConfirmButton: false
-        });
-      }
-      setShowModal(false);
-      loadData();
-    } catch (err: any) {
-      Swal.fire({
-        icon: "error",
-        title: "Error al guardar empresa",
-        text: err.message,
-        background: "#0f172a",
-        color: "#fff"
-      });
-    }
-  };
-
-  const filteredEmpresas = empresas.filter((emp) => {
-    // Filtro por tipo
-    if (filterType === "independientes" && emp.asociacion_id !== null) return false;
-    if (filterType === "asociadas" && emp.asociacion_id === null) return false;
-
-    // Filtro por búsqueda
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      const matchName = emp.name.toLowerCase().includes(q);
-      const matchNit = emp.nit ? emp.nit.toLowerCase().includes(q) : false;
-      const matchRep = emp.representante_legal ? emp.representante_legal.toLowerCase().includes(q) : false;
-      return matchName || matchNit || matchRep;
+    if (filterType === "asociadas") {
+      return e.asociacion_id !== null;
     }
     return true;
   });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      {/* Top Navbar */}
-      <header className="bg-slate-900/90 border-b border-slate-800 backdrop-blur-md sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col">
+      
+      {/* Barra de Navegación Superior */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          
+          <div className="flex items-center gap-3">
             <Link
               href="/seleccionar-asociacion"
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+              className="p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
               title="Volver a Asociaciones"
             >
               <ArrowLeft className="w-5 h-5" />
             </Link>
+            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
+              <Truck className="w-5 h-5" />
+            </div>
             <div>
-              <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
+              <h1 className="text-base font-bold text-slate-900 leading-tight">
                 Empresas de Transporte
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                  Tenants
-                </span>
               </h1>
-              <p className="text-xs text-slate-400">Selecciona o registra una empresa para entrar a su sistema</p>
+              <p className="text-xs text-slate-500">
+                Selecciona la empresa para entrar al espacio de trabajo
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            {currentUser && (
-              <div className="hidden sm:flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700">
-                {currentUser.role === "admin" ? (
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                ) : (
-                  <UserCheck className="w-4 h-4 text-cyan-400" />
-                )}
-                <div className="text-xs">
-                  <div className="font-bold text-white">{currentUser.name}</div>
-                  <div className="text-[10px] text-slate-400 uppercase font-semibold">
-                    {currentUser.role === "admin" ? "Administrador" : "Usuario"}
-                  </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 pl-3 border-l border-slate-200">
+              <div className="text-right hidden sm:block">
+                <div className="text-xs font-bold text-slate-900">{currentUser?.name}</div>
+                <div className="text-[11px] text-slate-500 font-medium">
+                  {currentUser?.role === "admin" ? "Administrador General" : "Operador"}
                 </div>
               </div>
-            )}
-
-            <button
-              onClick={handleLogout}
-              className="p-2.5 rounded-xl bg-slate-800 hover:bg-red-500/20 hover:text-red-300 border border-slate-700 text-slate-300 transition"
-              title="Cerrar Sesión"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+              <button
+                onClick={handleLogout}
+                title="Cerrar Sesión"
+                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           </div>
+
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Contenido Principal */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
         
-        {/* Controles de Búsqueda y Filtros */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8">
+        {/* Barra de Búsqueda y Filtros */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 mb-6">
           
-          {/* Barra de Búsqueda */}
-          <div className="relative w-full md:w-96">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nombre, NIT o representante..."
-              className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-            />
+          {/* Pestañas de Filtro */}
+          <div className="inline-flex p-1 bg-slate-200/80 rounded-xl text-xs font-semibold text-slate-600">
+            <button
+              onClick={() => setFilterType("todas")}
+              className={`px-3.5 py-1.5 rounded-lg transition-all ${
+                filterType === "todas" ? "bg-white text-slate-900 shadow-xs" : "hover:text-slate-900"
+              }`}
+            >
+              Todas ({empresas.length})
+            </button>
+            <button
+              onClick={() => setFilterType("asociadas")}
+              className={`px-3.5 py-1.5 rounded-lg transition-all ${
+                filterType === "asociadas" ? "bg-white text-slate-900 shadow-xs" : "hover:text-slate-900"
+              }`}
+            >
+              Afiliadas a Asociación ({empresas.filter(e => e.asociacion_id !== null).length})
+            </button>
+            <button
+              onClick={() => setFilterType("independientes")}
+              className={`px-3.5 py-1.5 rounded-lg transition-all ${
+                filterType === "independientes" ? "bg-white text-slate-900 shadow-xs" : "hover:text-slate-900"
+              }`}
+            >
+              Independientes ({empresas.filter(e => e.asociacion_id === null).length})
+            </button>
           </div>
 
-          {/* Filtros de Pestaña */}
-          <div className="flex items-center gap-2 w-full md:w-auto justify-between md:justify-end">
-            <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
-              <button
-                onClick={() => setFilterType("todas")}
-                className={`px-3 py-1.5 rounded-lg font-bold transition ${
-                  filterType === "todas" ? "bg-cyan-600 text-white" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                Todas ({empresas.length})
-              </button>
-              <button
-                onClick={() => setFilterType("independientes")}
-                className={`px-3 py-1.5 rounded-lg font-bold transition ${
-                  filterType === "independientes" ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                Independientes
-              </button>
-              <button
-                onClick={() => setFilterType("asociadas")}
-                className={`px-3 py-1.5 rounded-lg font-bold transition ${
-                  filterType === "asociadas" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                Asociadas
-              </button>
+          {/* Buscador y Botón Nuevo */}
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 sm:w-72">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar empresa, NIT o representante..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+              />
             </div>
 
-            {currentUser?.role === "admin" && (
-              <button
-                onClick={openCreateModal}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-lg shadow-cyan-600/20 transition flex-shrink-0"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Nueva Empresa</span>
-              </button>
-            )}
+            <button
+              onClick={handleOpenCreate}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors flex-shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Nueva Empresa</span>
+            </button>
           </div>
+
         </div>
 
-        {/* Grid de Empresas */}
+        {/* Listado en Cuadrícula de Empresas */}
         {loading ? (
-          <div className="flex justify-center items-center py-24">
-            <div className="w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
+          <div className="py-20 flex flex-col items-center justify-center text-slate-400">
+            <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-3" />
+            <span className="text-xs font-medium">Cargando empresas de transporte...</span>
           </div>
         ) : filteredEmpresas.length === 0 ? (
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center max-w-md mx-auto">
-            <Truck className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-            <h3 className="text-base font-bold text-white mb-1">No se encontraron empresas</h3>
-            <p className="text-sm text-slate-400 mb-6">
-              Prueba cambiando los filtros de búsqueda o registra una nueva empresa de transporte.
+          <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 p-8 shadow-xs">
+            <Truck className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <h3 className="text-base font-bold text-slate-700">No se encontraron empresas</h3>
+            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+              {filterType === "independientes"
+                ? "No hay empresas registradas como independientes."
+                : "No hay empresas que coincidan con la búsqueda."}
             </p>
-            {currentUser?.role === "admin" && (
-              <button
-                onClick={openCreateModal}
-                className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition"
-              >
-                Registrar Empresa
-              </button>
-            )}
+            <button
+              onClick={handleOpenCreate}
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Registrar Nueva Empresa</span>
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredEmpresas.map((emp) => (
               <div
                 key={emp.id}
-                className="bg-slate-900/90 border border-slate-800 hover:border-cyan-500/50 rounded-2xl p-6 shadow-xl hover:shadow-cyan-500/10 transition-all flex flex-col justify-between group"
+                onClick={() => router.push(`/${emp.schema_name}/dashboard`)}
+                className="bg-white border border-slate-200 hover:border-blue-400/80 rounded-2xl p-6 shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group"
               >
                 <div>
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400 flex items-center justify-center font-bold text-lg shadow-inner">
+                  {/* Encabezado */}
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="p-2.5 rounded-xl bg-slate-100 group-hover:bg-blue-50 text-slate-700 group-hover:text-blue-600 transition-colors">
                       <Truck className="w-6 h-6" />
                     </div>
-
-                    <div className="flex items-center gap-1.5">
-                      {emp.asociacion_id ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-950 text-blue-300 border border-blue-800">
-                          {emp.asociacion_name || "Asociada"}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">
-                          Independiente
-                        </span>
-                      )}
-
-                      {currentUser?.role === "admin" && (
-                        <div className="flex items-center ml-1">
-                          <button
-                            onClick={(e) => openEditModal(emp, e)}
-                            className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-cyan-300 transition"
-                            title="Editar Empresa"
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={(e) => handleDelete(emp, e)}
-                            className="p-1 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition"
-                            title="Eliminar Empresa"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      )}
+                    <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => handleOpenEdit(emp, e)}
+                        title="Editar empresa"
+                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => handleDelete(emp, e)}
+                        title="Eliminar empresa"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
 
-                  <h3 className="text-base font-bold text-white group-hover:text-cyan-300 transition line-clamp-2">
+                  {/* Nombre y Badge de Afiliación */}
+                  <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-700 transition-colors line-clamp-2">
                     {emp.name}
                   </h3>
-                  <div className="text-[11px] font-mono text-slate-500 mt-0.5">
-                    Esquema DB: <span className="text-slate-400">{emp.schema_name}</span>
+                  
+                  <div className="mt-2">
+                    {emp.asociacion_name ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-xs font-medium">
+                        <Building2 className="w-3 h-3" />
+                        <span className="truncate max-w-[200px]">{emp.asociacion_name}</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold">
+                        Empresa Independiente
+                      </span>
+                    )}
                   </div>
 
-                  <div className="mt-4 space-y-1.5 text-xs text-slate-400">
+                  {/* Detalles de contacto y fiscales */}
+                  <div className="mt-4 space-y-1.5 text-xs text-slate-600">
                     {emp.nit && (
-                      <div className="flex justify-between border-b border-slate-800 pb-1">
-                        <span className="text-slate-500">NIT:</span>
-                        <span className="font-mono text-slate-300">{emp.nit}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-400 font-medium">NIT:</span>
+                        <span className="font-mono font-medium text-slate-800">{emp.nit}</span>
                       </div>
                     )}
                     {emp.representante_legal && (
-                      <div className="flex justify-between border-b border-slate-800 pb-1">
-                        <span className="text-slate-500">Representante:</span>
-                        <span className="text-slate-300 truncate max-w-[170px]">{emp.representante_legal}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-400 font-medium">Rep:</span>
+                        <span className="truncate">{emp.representante_legal}</span>
                       </div>
                     )}
                     {emp.telefono && (
-                      <div className="flex justify-between border-b border-slate-800 pb-1">
-                        <span className="text-slate-500">Teléfono:</span>
-                        <span className="text-slate-300">{emp.telefono}</span>
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-3.5 h-3.5 text-slate-400" />
+                        <span>{emp.telefono}</span>
                       </div>
                     )}
-                    <div className="flex justify-between pt-0.5">
-                      <span className="text-slate-500">Estado:</span>
-                      <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Habilitado YPFB
-                      </span>
-                    </div>
+                    {emp.direccion && (
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                        <span className="truncate">{emp.direccion}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-800">
-                  <Link
-                    href={`/${emp.schema_name}/dashboard`}
-                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-cyan-500/20"
-                  >
-                    <span>Ingresar al Panel de la Empresa</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </Link>
+                {/* Pie con botón de acceso */}
+                <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-xs font-mono text-slate-400">
+                    {emp.schema_name}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 group-hover:translate-x-0.5 transition-transform">
+                    <span>Entrar al Sistema</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </span>
                 </div>
+
               </div>
             ))}
           </div>
@@ -471,24 +485,28 @@ function SeleccionarEmpresaContent() {
 
       {/* Modal Crear / Editar Empresa */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-5 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Truck className="w-5 h-5 text-cyan-400" />
-                {editingEmpresa ? "Editar Empresa de Transporte" : "Registrar Empresa de Transporte"}
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {editingEmpresa ? "Editar Empresa" : "Nueva Empresa de Transporte"}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {editingEmpresa ? "Modifica los datos de la empresa" : "Crea un nuevo esquema PostgreSQL dedicado"}
+                </p>
+              </div>
               <button
                 onClick={() => setShowModal(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold"
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Razón Social de la Empresa *
                 </label>
                 <input
@@ -496,41 +514,35 @@ function SeleccionarEmpresaContent() {
                   required
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder='ej. CHAXMANA TRANSPORT Ltda.'
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-500"
+                  placeholder="ej. EMPRESA DE TRANSPORTES BRITANIC S.R.L."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
-                    NIT
-                  </label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">NIT</label>
                   <input
                     type="text"
                     value={formData.nit}
                     onChange={(e) => setFormData({ ...formData, nit: e.target.value })}
-                    placeholder="2049182039"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-500"
+                    placeholder="ej. 2049182039"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
-                    Asociación (Opcional)
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Asociación Afiliada
                   </label>
                   <select
-                    value={formData.asociacion_id || ""}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      asociacion_id: e.target.value ? parseInt(e.target.value) : null
-                    })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-500"
+                    value={formData.asociacion_id}
+                    onChange={(e) => setFormData({ ...formData, asociacion_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
                   >
-                    <option value="">-- Independiente (Sin Asociación) --</option>
+                    <option value="">Empresa Independiente (Sin Asoc.)</option>
                     {asociaciones.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.sigla || a.name}
+                        {a.name} {a.sigla ? `(${a.sigla})` : ""}
                       </option>
                     ))}
                   </select>
@@ -538,70 +550,61 @@ function SeleccionarEmpresaContent() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
-                  Representante Legal / Gerente General
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Representante Legal</label>
                 <input
                   type="text"
                   value={formData.representante_legal}
                   onChange={(e) => setFormData({ ...formData, representante_legal: e.target.value })}
                   placeholder="ej. JOSE LOVERA TIÑINI"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-500"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
-                    Teléfono
-                  </label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Teléfono</label>
                   <input
                     type="text"
                     value={formData.telefono}
                     onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                    placeholder="77299100"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-500"
+                    placeholder="ej. 77299100"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
-                    Email
-                  </label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Email</label>
                   <input
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="administracion@empresa.bo"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-500"
+                    placeholder="ej. contacto@empresa.bo"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-300 mb-1">
-                  Dirección Operativa
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Dirección / Oficina</label>
                 <input
                   type="text"
                   value={formData.direccion}
                   onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
-                  placeholder="Av. Litoral Nº 850, El Alto, La Paz"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-500"
+                  placeholder="ej. Av. Litoral Nº 850, El Alto, La Paz"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
                 />
               </div>
 
-              <div className="pt-4 border-t border-slate-800 flex justify-end gap-3">
+              <div className="mt-5 pt-3 border-t border-slate-200 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition"
+                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-sm font-bold shadow-lg shadow-cyan-500/20 transition"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors"
                 >
                   {editingEmpresa ? "Guardar Cambios" : "Crear Empresa"}
                 </button>
@@ -610,6 +613,7 @@ function SeleccionarEmpresaContent() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

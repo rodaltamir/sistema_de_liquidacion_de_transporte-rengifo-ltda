@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.db.session import SessionLocal, get_tenant_session
 from app.core.security import get_password_hash
 from app.models.public import User, Asociacion, Empresa
-from app.models.tenant import UnidadTransporte, ParametroLiquidacion, Viaje, Liquidacion
+from app.models.tenant import UnidadTransporte, ParametroLiquidacion, Viaje, Liquidacion, Empleado
 from app.api.empresas import init_tenant_schema
 from app.services.calculation_engine import calculate_viaje_values, calculate_liquidacion_resumen
 import json
@@ -14,6 +14,14 @@ def seed():
     from app.models.public import User, Asociacion, Empresa
     public_tables = [User.__table__, Asociacion.__table__, Empresa.__table__]
     Base.metadata.create_all(bind=engine, tables=public_tables)
+
+    # Asegurar tablas en esquemas existentes
+    for s_name in ["empresa_britanic", "empresa_trucks_drivers", "empresa_chaxmana"]:
+        try:
+            connectable = engine.execution_options(schema_translate_map={"tenant": s_name})
+            Empleado.__table__.create(bind=connectable, checkfirst=True)
+        except Exception:
+            pass
 
     db = SessionLocal()
     try:
@@ -172,6 +180,54 @@ def seed():
                 )
                 s_chax.add(u_4412)
                 s_chax.commit()
+
+            # Empleados / Choferes de CHAXMANA
+            if not s_chax.query(Empleado).filter(Empleado.ci == "4892819 LP").first():
+                s_chax.add(Empleado(
+                    nombres="Jaqueline",
+                    apellidos="Lovera Tiñini",
+                    ci="4892819 LP",
+                    telefono="77299101",
+                    email="jaqueline.lovera@chaxmana.bo",
+                    cargo="Chofer / Conductor",
+                    licencia_conducir="4892819-C",
+                    categoria_licencia="Categoría C",
+                    vencimiento_licencia=date(2028, 5, 20),
+                    fecha_ingreso=date(2021, 3, 1),
+                    salario_base=3800.0,
+                    estado="Activo",
+                    unidad_asignada_placa="4412-DPC",
+                    direccion="Av. Litoral #850, El Alto"
+                ))
+            if not s_chax.query(Empleado).filter(Empleado.ci == "3928190 LP").first():
+                s_chax.add(Empleado(
+                    nombres="Jose",
+                    apellidos="Lovera Tiñini",
+                    ci="3928190 LP",
+                    telefono="77299102",
+                    email="jose.lovera@chaxmana.bo",
+                    cargo="Gerente / Supervisor",
+                    licencia_conducir="3928190-C",
+                    categoria_licencia="Categoría C",
+                    vencimiento_licencia=date(2027, 8, 15),
+                    fecha_ingreso=date(2019, 1, 10),
+                    salario_base=5000.0,
+                    estado="Activo",
+                    direccion="Av. Litoral #850, El Alto"
+                ))
+            if not s_chax.query(Empleado).filter(Empleado.ci == "2391028 LP").first():
+                s_chax.add(Empleado(
+                    nombres="Tomasa",
+                    apellidos="Tiñini Mita",
+                    ci="2391028 LP",
+                    telefono="77299103",
+                    cargo="Mecánico / Apoyo",
+                    fecha_ingreso=date(2022, 6, 15),
+                    salario_base=3200.0,
+                    estado="Activo",
+                    direccion="Calle 4 #120, Villa Adela, El Alto"
+                ))
+            s_chax.commit()
 
             # Viajes de CHAXMANA en marzo 2023 (Página 2 del PDF)
             viajes_chax_defs = [

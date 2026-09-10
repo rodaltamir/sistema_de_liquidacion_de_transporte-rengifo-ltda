@@ -187,3 +187,37 @@ class Liquidacion(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     viajes_items = relationship("Viaje", back_populates="liquidacion")
+
+
+class Empleado(Base):
+    """
+    Personal / Empleados de la empresa de transporte:
+    Choferes / Conductores de cisterna, mecánicos, despachadores y personal administrativo/apoyo.
+    """
+    __tablename__ = "empleados"
+    __table_args__ = {"schema": "tenant"}
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombres = Column(String(150), nullable=False)
+    apellidos = Column(String(150), nullable=False)
+    ci = Column(String(50), nullable=False, index=True)
+    telefono = Column(String(50), nullable=True)
+    email = Column(String(100), nullable=True)
+    cargo = Column(String(100), default="Chofer / Conductor")  # "Chofer / Conductor", "Mecánico", "Despachador", "Administración", "Apoyo"
+    
+    # Datos de Conducción (para choferes)
+    licencia_conducir = Column(String(50), nullable=True)
+    categoria_licencia = Column(String(50), nullable=True)  # Cat. C, Cat. T, etc.
+    vencimiento_licencia = Column(Date, nullable=True)
+    
+    # Datos laborales
+    fecha_ingreso = Column(Date, nullable=True)
+    salario_base = Column(Float, default=0.0)
+    estado = Column(String(50), default="Activo")  # "Activo", "En Ruta", "Descanso", "Inactivo"
+    unidad_asignada_placa = Column(String(50), nullable=True)  # Placa del camión que conduce
+    
+    direccion = Column(String(255), nullable=True)
+    contacto_emergencia = Column(String(200), nullable=True)
+    notas = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+

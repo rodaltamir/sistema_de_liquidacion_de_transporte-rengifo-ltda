@@ -28,12 +28,13 @@ def init_tenant_schema(schema_name: str):
     connectable = engine.execution_options(
         schema_translate_map={"tenant": schema_name}
     )
-    from app.models.tenant import UnidadTransporte, ParametroLiquidacion, Viaje, Liquidacion
+    from app.models.tenant import UnidadTransporte, ParametroLiquidacion, Viaje, Liquidacion, Empleado
     tenant_tables = [
         UnidadTransporte.__table__,
         ParametroLiquidacion.__table__,
         Viaje.__table__,
-        Liquidacion.__table__
+        Liquidacion.__table__,
+        Empleado.__table__
     ]
     Base.metadata.create_all(bind=connectable, tables=tenant_tables)
 

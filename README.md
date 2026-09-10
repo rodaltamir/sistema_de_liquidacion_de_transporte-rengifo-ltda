@@ -4,27 +4,31 @@ Sistema integral de liquidación de fletes para empresas de transporte terrestre
 
 ---
 
-## 🏗️ Arquitectura del Proyecto
+## 🏗️ Arquitectura en Contenedores Docker
 
-- **Frontend:** Next.js 15 (React 19, TypeScript, Tailwind CSS, Lucide Icons, Framer Motion, SweetAlert2).
-- **Backend:** FastAPI (Python), SQLAlchemy 2, Pydantic v2, ReportLab (PDF), OpenPyXL (Excel).
-- **Base de Datos:** PostgreSQL 15 con aislamiento Multi-Tenant (`schema_translate_map={"tenant": schema_name}`).
-- **Contenedores:** Docker & Docker Compose.
+El proyecto está 100% dockerizado y se ejecuta con un único comando:
 
----
-
-## 🔌 Configuración de Puertos
-
-| Servicio | Puerto Host | Descripción |
-| :--- | :--- | :--- |
-| **Frontend Next.js** | `3001` | Interfaz de usuario web |
-| **Backend FastAPI** | `8001` | API RESTful y Swagger en `/api/docs` |
-| **PostgreSQL** | `5455` | Base de datos `db_transporte_liquidacion` |
-| **pgAdmin 4** | `5055` | Administrador visual de base de datos |
+- **Frontend:** Next.js 15 (React 19, TypeScript, Tailwind CSS, Lucide Icons, Framer Motion) en contenedor `transporte_frontend`.
+- **Backend:** FastAPI (Python 3.11), SQLAlchemy 2, Pydantic v2, ReportLab, OpenPyXL en contenedor `transporte_backend`.
+- **Base de Datos:** PostgreSQL 15 en contenedor `transporte_db`.
+- **Gestión Visual:** pgAdmin 4 en contenedor `transporte_pgadmin`.
 
 ---
 
-## 🔑 Credenciales por Defecto (Seed Data)
+## 🔌 Puertos y Enlaces de Red
+
+Los puertos han sido configurados para evitar conflictos con otros proyectos (como 8000, 8080, 5454, 3000):
+
+| Servicio | Puerto Host | Acceso Local | Acceso en Red Local (Servidor) |
+| :--- | :--- | :--- | :--- |
+| **Frontend Web** | `3001` | [http://localhost:3001](http://localhost:3001) | `http://Rengifo_Ltda:3001` o `http://192.168.0.24:3001` |
+| **Backend API** | `8001` | [http://localhost:8001](http://localhost:8001) | `http://Rengifo_Ltda:8001/api/docs` |
+| **PostgreSQL** | `5455` | `localhost:5455` | `Rengifo_Ltda:5455` (Base de datos: `db_transporte_liquidacion`) |
+| **pgAdmin 4** | `5055` | [http://localhost:5055](http://localhost:5055) | `http://Rengifo_Ltda:5055` |
+
+---
+
+## 🔑 Credenciales de Acceso
 
 - **Administrador:**
   - Usuario: `admin`
@@ -32,49 +36,41 @@ Sistema integral de liquidación de fletes para empresas de transporte terrestre
 - **Operador / Usuario:**
   - Usuario: `usuario`
   - Contraseña: `user123`
+- **pgAdmin:**
+  - Email: `admin@transporte.com`
+  - Contraseña: `transporte_seguro_2026`
 
 ---
 
-## 🚀 Despliegue y Ejecución Local
+## 🚀 Despliegue con un Solo Comando (Docker)
 
-### Requisitos Previos
-- Docker y Docker Compose
-- Node.js 18+ y npm
-- Python 3.11+
+Para iniciar todo el sistema (Base de Datos + Backend + Frontend + pgAdmin):
 
-### 1. Iniciar Base de Datos con Docker
 ```bash
-docker-compose up -d db
+docker compose up -d
 ```
 
-### 2. Configurar y Ejecutar el Backend
+Para detener los servicios:
 ```bash
-cd backend
-python -m venv venv
-
-# En Windows:
-.\venv\Scripts\activate
-# En Linux/Mac:
-source venv/bin/activate
-
-pip install -r requirements.txt
-python seed_data.py
-uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+docker compose down
 ```
 
-### 3. Configurar y Ejecutar el Frontend
+Para ver el estado de los contenedores:
 ```bash
-cd frontend
-npm install
-npm run build
-npm run start # O npm run dev para desarrollo
+docker compose ps
+```
+
+Para ver los registros en tiempo real:
+```bash
+docker compose logs -f
 ```
 
 ---
 
 ## 📄 Características Principales
-- **Gestión de Asociaciones y Empresas:** CRUD completo de asociaciones, afiliación o empresas independientes (sin asociación).
-- **Aprovisionamiento Automático:** Cada nueva empresa cuenta con su propio esquema aislado en PostgreSQL.
-- **Calculadora en Vivo de Mermas:** Tolerancias técnicas automáticas para Diésel (0.15%), Gasolina (0.25%) e Insumos y Aditivos (0.20%).
-- **Liquidaciones Exactas:** Reproducción 100% fidedigna de las 3 páginas de planilla oficial (Consolidado General de Asociación, Detalle de Fletes por Placa y Resumen de Descuentos).
-- **Exportación en 1 Clic:** Descarga de reportes en Excel multihoja (.xlsx) y PDF de alta definición con firmas de auditoría.
+- **Despliegue Autónomo:** El backend realiza automáticamente el sembrado inicial de datos (`seed_data.py`) al encender el contenedor.
+- **Acceso Multidispositivo:** Funciona en la máquina local (`localhost`), a través del nombre de equipo (`Rengifo_Ltda`) y por la IP de red local (`192.168.0.24`) desde cualquier celular, tablet o laptop en la misma red Wi-Fi/LAN.
+- **Multi-Tenant:** Aprovisionamiento automático de esquemas PostgreSQL independientes por empresa.
+- **Cálculo de Mermas en Tiempo Real:** Tolerancias técnicas oficiales para Diésel (0.15%), Gasolina (0.25%) e Insumos y Aditivos (0.20%).
+- **Planillas Oficiales del PDF:** Reproducción exacta de la Página 1 (Consolidado General de Asociación), Página 2 (Fletes por Camión) y Página 3 (Resumen de Descuentos).
+- **Exportación:** Generación instantánea de planillas en Excel (.xlsx multihoja) y PDF de alta calidad con firmas de auditoría.

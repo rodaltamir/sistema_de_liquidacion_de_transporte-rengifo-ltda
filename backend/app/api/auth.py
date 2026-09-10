@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.models.public import User
-from app.schemas.auth import Token, UserLogin, UserCreate, UserResponse
+from app.schemas.auth import Token, UserLogin, UserCreate, UserResponse, UserUpdate
 from app.api.deps import get_current_user, require_current_user, require_admin
 from typing import List
 
@@ -61,3 +61,39 @@ def create_user(user_in: UserCreate, db: Session = Depends(get_db), admin: User 
     db.commit()
     db.refresh(user)
     return user
+
+@router.put("/users/{id}", response_model=UserResponse)
+def update_user(id: int, user_in: UserUpdate, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    user = db.query(User).filter(User.id == id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    if user_in.name is not None:
+        user.name = user_in.name
+    if user_in.email is not None:
+        existing = db.query(User).filter(User.email == user_in.email, User.id != id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="El correo ya está en uso")
+        user.email = user_in.email
+    if user_in.role is not None:
+        user.role = user_in.role
+    if user_in.is_active is not None:
+        user.is_active = user_in.is_active
+    if user_in.password:
+        user.hashed_password = get_password_hash(user_in.password)
+        
+    db.commit()
+    db.refresh(user)
+    return user
+
+@router.delete("/users/{id}")
+def delete_user(id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    if admin.id == id:
+        raise HTTPException(status_code=400, detail="No puedes eliminar tu propia cuenta de administrador")
+    user = db.query(User).filter(User.id == id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    db.delete(user)
+    db.commit()
+    return {"message": "Usuario eliminado correctamente"}
+
