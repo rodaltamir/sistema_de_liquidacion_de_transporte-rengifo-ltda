@@ -6,17 +6,18 @@ from typing import Dict, Any, List
 
 # Estilos corporativos para transporte
 FONT_TITLE = Font(name="Arial", size=14, bold=True, color="1E293B")
-FONT_SUBTITLE = Font(name="Arial", size=11, bold=True, color="334155")
+FONT_SUBTITLE = Font(name="Arial", size=10, bold=True, color="334155")
 FONT_HEADER = Font(name="Arial", size=9, bold=True, color="FFFFFF")
 FONT_BOLD = Font(name="Arial", size=9, bold=True, color="0F172A")
 FONT_REGULAR = Font(name="Arial", size=9, color="1E293B")
 FONT_MUTED = Font(name="Arial", size=8, italic=True, color="64748B")
 
-FILL_HEADER = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid") # Navy blue
-FILL_SUBHEADER = PatternFill(start_color="0284C7", end_color="0284C7", fill_type="solid") # Sky blue
-FILL_ACCENT = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid") # Slate 100
-FILL_TOTAL = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid") # Slate 200
-FILL_HIGHLIGHT = PatternFill(start_color="FEF08A", end_color="FEF08A", fill_type="solid") # Soft yellow
+FILL_HEADER = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid") # Azul Marino Oficial
+FILL_SUBHEADER = PatternFill(start_color="0284C7", end_color="0284C7", fill_type="solid") # Celeste Institucional
+FILL_ACCENT = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid") # Gris suave
+FILL_TOTAL = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid") # Gris intermedio
+FILL_HIGHLIGHT = PatternFill(start_color="FEF08A", end_color="FEF08A", fill_type="solid") # Amarillo suave
+FILL_SUCCESS = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid") # Verde claro para líquido pagable
 
 BORDER_THIN = Border(
     left=Side(style='thin', color='CBD5E1'),
@@ -26,14 +27,16 @@ BORDER_THIN = Border(
 )
 BORDER_TOP_THICK = Border(
     top=Side(style='medium', color='0F172A'),
-    bottom=Side(style='double', color='0F172A')
+    bottom=Side(style='double', color='0F172A'),
+    left=Side(style='thin', color='CBD5E1'),
+    right=Side(style='thin', color='CBD5E1')
 )
 
 def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa: Dict[str, Any], params: Any) -> io.BytesIO:
     """
-    Genera un archivo Excel (.xlsx) fiel a las Hojas 2 y 3 del PDF:
-    - Pestaña 1: 'Detalle de Fletes' (Página 2 del PDF)
-    - Pestaña 2: 'Resumen y Descuentos' (Página 3 del PDF)
+    Genera un archivo Excel (.xlsx) oficial multi-hoja conforme al estándar de liquidación:
+    - Pestaña 1: 'Detalle Fletes' (Página 2 del PDF - Fletes por Camión y Merma)
+    - Pestaña 2: 'Resumen Descuentos' (Página 3 del PDF - Deducciones y Líquido Pagable)
     """
     wb = openpyxl.Workbook()
     
@@ -46,11 +49,11 @@ def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa:
 
     # Encabezado
     ws1.merge_cells("A2:J2")
-    ws1["A2"] = "LIQUIDACION DE FLETES"
+    ws1["A2"] = "LIQUIDACIÓN DE FLETES - DETALLE OPERATIVO"
     ws1["A2"].font = FONT_TITLE
     ws1["A2"].alignment = Alignment(horizontal="left", vertical="center")
 
-    ws1["A3"] = f"MES: {liquidacion.periodo_mes}"
+    ws1["A3"] = f"PERIODO: {liquidacion.periodo_mes}"
     ws1["A3"].font = FONT_SUBTITLE
     
     ws1["A4"] = f"PLACA: {liquidacion.placa}"
@@ -59,18 +62,19 @@ def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa:
     ws1.merge_cells("L2:Q3")
     empresa_nombre = empresa.get("name", "EMPRESA DE TRANSPORTE")
     ws1["L2"] = empresa_nombre
-    ws1["L2"].font = Font(name="Arial", size=12, bold=True, color="0369A1")
+    ws1["L2"].font = Font(name="Arial", size=11, bold=True, color="0369A1")
     ws1["L2"].alignment = Alignment(horizontal="right", vertical="center")
 
-    # Caja de tasa / factor (ej. 7.45 como en el PDF)
+    # Factor de merma general
     ws1["P4"] = "FACTOR MERMA:"
     ws1["P4"].font = FONT_BOLD
+    ws1["P4"].alignment = Alignment(horizontal="right", vertical="center")
     ws1["Q4"] = getattr(params, 'precio_merma_general_bs', 7.45)
     ws1["Q4"].font = Font(name="Arial", size=10, bold=True, color="B91C1C")
     ws1["Q4"].border = BORDER_THIN
-    ws1["Q4"].alignment = Alignment(horizontal="center")
+    ws1["Q4"].alignment = Alignment(horizontal="center", vertical="center")
 
-    # Fila de Encabezados de Tabla (Página 2 del PDF)
+    # Columnas de Página 2
     headers = [
         "Nº", "FECHA DE CARGA", "FECHA DE DESCARGA", "MIC/DTA Nº", "EMPRESA",
         "PLACA", "TRAMO", "CLIENTE", "PRODUCTO", "Volumen en LL Origen",
@@ -101,7 +105,6 @@ def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa:
         ws1.cell(row=current_row, column=8, value=v.cliente or "YPFB").alignment = Alignment(horizontal="center")
         ws1.cell(row=current_row, column=9, value=v.producto).alignment = Alignment(horizontal="center")
 
-        # Numéricos
         c_orig = ws1.cell(row=current_row, column=10, value=v.volumen_origen_litros)
         c_orig.number_format = '#,##0.00'
         c_orig.alignment = Alignment(horizontal="right")
@@ -110,16 +113,16 @@ def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa:
         c_rec.number_format = '#,##0.00'
         c_rec.alignment = Alignment(horizontal="right")
 
-        c_mreal = ws1.cell(row=current_row, column=12, value=v.merma_real_litros)
-        c_mreal.number_format = '#,##0.0'
-        c_mreal.alignment = Alignment(horizontal="right")
+        c_mr = ws1.cell(row=current_row, column=12, value=v.merma_real_litros)
+        c_mr.number_format = '#,##0.0'
+        c_mr.alignment = Alignment(horizontal="right")
 
         c_mex = ws1.cell(row=current_row, column=13, value=v.merma_excedente_litros)
         c_mex.number_format = '#,##0.0'
         c_mex.alignment = Alignment(horizontal="right")
 
-        c_tol = ws1.cell(row=current_row, column=14, value=f"{v.merma_tolerable_litros:.0f} L ({v.tolerancia_pct}%)")
-        c_tol.alignment = Alignment(horizontal="center")
+        tol_str = f"{v.merma_tolerable_litros:.0f} Lts ({v.tolerancia_pct}%)"
+        ws1.cell(row=current_row, column=14, value=tol_str).alignment = Alignment(horizontal="center")
 
         c_mdesc = ws1.cell(row=current_row, column=15, value=v.merma_descontar_bs)
         c_mdesc.number_format = '#,##0.00'
@@ -135,17 +138,17 @@ def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa:
         c_flete.alignment = Alignment(horizontal="right")
 
         for c in range(1, 18):
-            ws1.cell(row=current_row, column=c).border = BORDER_THIN
-            if idx % 2 == 0:
-                ws1.cell(row=current_row, column=c).fill = FILL_ACCENT
-
+            cell = ws1.cell(row=current_row, column=c)
+            cell.font = FONT_REGULAR if c != 17 else FONT_BOLD
+            cell.border = BORDER_THIN
+        ws1.row_dimensions[current_row].height = 20
         current_row += 1
 
-    # Fila de Totales
-    ws1.cell(row=current_row, column=1, value="")
+    # Fila de Totales Hoja 1
     ws1.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=9)
-    ws1.cell(row=current_row, column=1, value="TOTALES").alignment = Alignment(horizontal="right")
-    ws1.cell(row=current_row, column=1).font = FONT_BOLD
+    c_tot_label = ws1.cell(row=current_row, column=1, value="TOTALES:")
+    c_tot_label.font = FONT_BOLD
+    c_tot_label.alignment = Alignment(horizontal="right")
 
     c_tot_orig = ws1.cell(row=current_row, column=10, value=liquidacion.total_volumen_origen_litros)
     c_tot_orig.number_format = '#,##0.00'
@@ -170,7 +173,10 @@ def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa:
     c_tot_flete.alignment = Alignment(horizontal="right")
 
     for c in range(1, 18):
-        ws1.cell(row=current_row, column=c).border = BORDER_TOP_THICK
+        cell = ws1.cell(row=current_row, column=c)
+        cell.border = BORDER_TOP_THICK
+        if c < 17:
+            cell.fill = FILL_TOTAL
 
     # Bloque de Firmas (Página 2 del PDF)
     sign_row = current_row + 4
@@ -199,7 +205,7 @@ def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa:
             for cc in range(col, col+3):
                 ws1.cell(row=r, column=cc).border = BORDER_THIN
 
-    # Autoajustar anchos
+    # Autoajustar anchos en Hoja 1
     for col in ws1.columns:
         max_len = 0
         col_letter = get_column_letter(col[0].column)
@@ -209,20 +215,19 @@ def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa:
                 max_len = len(val_str)
         ws1.column_dimensions[col_letter].width = max(max_len + 3, 11)
 
-
     # -------------------------------------------------------------
     # HOJA 2: RESUMEN DE DESCUENTOS Y LÍQUIDO PAGABLE (PÁGINA 3 DEL PDF)
     # -------------------------------------------------------------
     ws2 = wb.create_sheet(title="Resumen Descuentos")
     ws2.views.sheetView[0].showGridLines = True
 
-    # Encabezado Hoja 3
+    # Encabezado Hoja 2
     ws2.merge_cells("B2:D2")
-    ws2["B2"] = "LIQUIDACION DE FLETES"
+    ws2["B2"] = "LIQUIDACIÓN DE FLETES - RESUMEN DE PAGOS"
     ws2["B2"].font = FONT_TITLE
     ws2["B2"].alignment = Alignment(horizontal="left", vertical="center")
 
-    ws2["B3"] = f"MES: {liquidacion.periodo_mes}"
+    ws2["B3"] = f"PERIODO: {liquidacion.periodo_mes}"
     ws2["B3"].font = FONT_SUBTITLE
     
     ws2["B4"] = f"PLACA: {liquidacion.placa}"
@@ -233,10 +238,10 @@ def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa:
     ws2["E2"].font = Font(name="Arial", size=12, bold=True, color="0369A1")
     ws2["E2"].alignment = Alignment(horizontal="right", vertical="center")
 
-    # Tabla Central de Descuentos (Idéntica a la Hoja 3 del PDF)
+    # Tabla Central de Deducciones (Idéntica a la Hoja 3 del PDF)
     r = 6
     ws2.merge_cells(start_row=r, start_column=3, end_row=r, end_column=5)
-    ws2.cell(row=r, column=3, value="DESCRIPCION").font = FONT_HEADER
+    ws2.cell(row=r, column=3, value="DESCRIPCIÓN").font = FONT_HEADER
     ws2.cell(row=r, column=3).fill = FILL_HEADER
     ws2.cell(row=r, column=3).alignment = Alignment(horizontal="center", vertical="center")
     
@@ -249,22 +254,22 @@ def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa:
     ws2.row_dimensions[r].height = 24
 
     items = [
-        ("FLETE TOTAL", liquidacion.flete_total_bruto_bs, True, False, FILL_TOTAL),
-        ("Descuento por Merma", liquidacion.desc_merma_bs, False, False, None),
-        ("Descuento de Comision 1 $us p/m3", liquidacion.desc_comision_usd_m3_bs, False, False, None),
-        ("Descuento de Comision 7%", liquidacion.desc_comision_7pct_bs, False, False, None),
-        ("Descuento YPFB BOL-GART 7%", liquidacion.desc_comision_ypfb_bolgart_7pct_bs, False, False, None),
-        ("Descuento de Comision 3%", liquidacion.desc_comision_3pct_bs, False, False, None),
-        ("Hojas de Ruta", liquidacion.desc_hojas_ruta_bs, False, False, None),
-        ("GPS", liquidacion.desc_gps_bs, False, False, None),
-        ("Anticipos y Otros 7%", liquidacion.desc_anticipos_otros_bs, False, False, None),
+        ("FLETE TOTAL BRUTO", liquidacion.flete_total_bruto_bs, True, False, FILL_TOTAL),
+        ("(-) Descuento por Merma", liquidacion.desc_merma_bs, False, False, None),
+        ("(-) Descuento de Comisión 1 $us p/m3", liquidacion.desc_comision_usd_m3_bs, False, False, None),
+        ("(-) Descuento de Comisión 7%", liquidacion.desc_comision_7pct_bs, False, False, None),
+        ("(-) Descuento YPFB BOL-GART 7%", liquidacion.desc_comision_ypfb_bolgart_7pct_bs, False, False, None),
+        ("(-) Descuento de Comisión 3%", liquidacion.desc_comision_3pct_bs, False, False, None),
+        ("(-) Hojas de Ruta", liquidacion.desc_hojas_ruta_bs, False, False, None),
+        ("(-) GPS", liquidacion.desc_gps_bs, False, False, None),
+        ("(-) Anticipos y Otros", liquidacion.desc_anticipos_otros_bs, False, False, None),
     ]
 
     if liquidacion.desc_otros_ajustes_bs and liquidacion.desc_otros_ajustes_bs != 0:
-        items.append(("Otros Descuentos / Ajustes", liquidacion.desc_otros_ajustes_bs, False, False, None))
+        items.append(("(-) Otros Descuentos / Ajustes", liquidacion.desc_otros_ajustes_bs, False, False, None))
 
-    items.append(("TOTAL DESCUENTO", liquidacion.total_descuentos_bs, True, False, FILL_ACCENT))
-    items.append(("LIQUIDO PAGABLE", liquidacion.liquido_pagable_bs, True, True, FILL_HIGHLIGHT))
+    items.append(("(=) TOTAL DESCUENTOS", liquidacion.total_descuentos_bs, True, False, FILL_ACCENT))
+    items.append(("(=) LÍQUIDO PAGABLE", liquidacion.liquido_pagable_bs, True, True, FILL_SUCCESS))
 
     for desc, val, is_bold, is_highlight, fill_bg in items:
         r += 1
@@ -283,18 +288,10 @@ def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa:
             cell.border = BORDER_THIN
             if fill_bg:
                 cell.fill = fill_bg
-        ws2.row_dimensions[r].height = 20
+        ws2.row_dimensions[r].height = 22
 
-    # Firmas en Hoja 3
+    # 4 Bloques de firmas en Hoja 2
     sign_row3 = r + 4
-    for idx, (title, name) in enumerate(signatures):
-        col = [2, 4, 6, 7][idx] if idx < 3 else 7 # Ubicación armónica
-        # Colocamos 4 bloques de firmas horizontales
-        pass
-    
-    # 4 bloques de firmas estilizados
-    sign_row3 = r + 4
-    col_starts = [2, 4, 6, 8]
     for idx, (title, name) in enumerate(signatures):
         c_start = 2 + idx * 2
         ws2.merge_cells(start_row=sign_row3, start_column=c_start, end_row=sign_row3, end_column=c_start+1)
@@ -316,10 +313,10 @@ def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa:
     ws2.column_dimensions["C"].width = 18
     ws2.column_dimensions["D"].width = 18
     ws2.column_dimensions["E"].width = 18
-    ws2.column_dimensions["F"].width = 20
-    ws2.column_dimensions["G"].width = 15
-    ws2.column_dimensions["H"].width = 15
-    ws2.column_dimensions["I"].width = 15
+    ws2.column_dimensions["F"].width = 22
+    ws2.column_dimensions["G"].width = 16
+    ws2.column_dimensions["H"].width = 16
+    ws2.column_dimensions["I"].width = 16
 
     output = io.BytesIO()
     wb.save(output)
@@ -330,8 +327,8 @@ def export_liquidacion_placa_excel(liquidacion: Any, viajes: List[Any], empresa:
 def export_liquidacion_asociacion_excel(asociacion_name: str, periodo_mes: str, grupos_empresa: List[Dict[str, Any]]) -> io.BytesIO:
     """
     Genera un archivo Excel (.xlsx) fiel a la Página 1 del PDF:
-    Liquidación General de la Asociación (Reconciliación y Facturación de Fletes).
-    Agrupa por Empresa de Transporte y Producto con subtotales y total general.
+    Liquidación General de la Asociación (Reconciliación y Facturación de Fletes ante YPFB).
+    Agrupa por Empresa de Transporte y Producto con subtotales, total general, cláusula legal y 4 firmas de auditoría.
     """
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -381,7 +378,7 @@ def export_liquidacion_asociacion_excel(asociacion_name: str, periodo_mes: str, 
 
         # Fila de Empresa
         ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=16)
-        c_emp = ws.cell(row=current_row, column=1, value=f"EMPRESA: {empresa_name}")
+        c_emp = ws.cell(row=current_row, column=1, value=f"EMPRESA DE TRANSPORTE: {empresa_name.upper()}")
         c_emp.font = Font(name="Arial", size=10, bold=True, color="0C4A6E")
         c_emp.fill = PatternFill(start_color="BAE6FD", end_color="BAE6FD", fill_type="solid")
         for cc in range(1, 17):
@@ -494,7 +491,33 @@ def export_liquidacion_asociacion_excel(asociacion_name: str, periodo_mes: str, 
     c_legal.font = FONT_MUTED
     c_legal.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
-    # Anchos
+    # 4 Bloques de firmas institucionales para la Asociación
+    sign_row = current_row + 3
+    asoc_signatures = [
+        "DIRECTORIO ASOCIACIÓN",
+        "COMISIÓN DE CONCILIACIÓN",
+        "REPRESENTANTES LEGALES",
+        "AUDITORÍA / CONTABILIDAD"
+    ]
+    col_steps = [2, 6, 10, 14]
+    for idx, title in enumerate(asoc_signatures):
+        col = col_steps[idx]
+        ws.merge_cells(start_row=sign_row, start_column=col, end_row=sign_row, end_column=col+2)
+        ws.merge_cells(start_row=sign_row+1, start_column=col, end_row=sign_row+1, end_column=col+2)
+
+        c_title = ws.cell(row=sign_row, column=col, value=title)
+        c_title.font = FONT_BOLD
+        c_title.alignment = Alignment(horizontal="center")
+
+        c_line = ws.cell(row=sign_row+1, column=col, value="Firma y Sello")
+        c_line.font = FONT_MUTED
+        c_line.alignment = Alignment(horizontal="center")
+
+        for r_s in range(sign_row, sign_row+3):
+            for c_s in range(col, col+3):
+                ws.cell(row=r_s, column=c_s).border = BORDER_THIN
+
+    # Autoajustar anchos
     for col in ws.columns:
         max_len = 0
         col_letter = get_column_letter(col[0].column)
@@ -503,6 +526,79 @@ def export_liquidacion_asociacion_excel(asociacion_name: str, periodo_mes: str, 
             if len(val_str) > max_len and len(val_str) < 40:
                 max_len = len(val_str)
         ws.column_dimensions[col_letter].width = max(max_len + 3, 10)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
+
+
+def generate_viajes_template_excel(empresa_name: str = "") -> io.BytesIO:
+    """
+    Genera una plantilla Excel (.xlsx) estructurada y formateada para la importación
+    masiva de viajes y despachos de hidrocarburos/carga.
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Carga de Viajes"
+    ws.views.sheetView[0].showGridLines = True
+
+    # Título y Guía
+    ws.merge_cells("A1:K1")
+    ws["A1"] = f"PLANTILLA DE IMPORTACIÓN MASIVA DE VIAJES - {empresa_name.upper() if empresa_name else 'EMPRESA DE TRANSPORTE'}"
+    ws["A1"].font = FONT_TITLE
+    ws["A1"].alignment = Alignment(horizontal="left", vertical="center")
+
+    ws.merge_cells("A2:K2")
+    ws["A2"] = "Complete las filas a partir de la fila 4. Los cálculos de mermas y fletes se generarán automáticamente según el producto."
+    ws["A2"].font = FONT_MUTED
+
+    headers = [
+        ("MIC/DTA Nº", "Ej. 23BO051130T", 16),
+        ("PLACA", "Ej. 4412-DPC", 13),
+        ("TRAMO", "Ej. ARICA - TAMBO QUEMADO - LA PAZ", 32),
+        ("CLIENTE", "Ej. YPFB", 14),
+        ("PRODUCTO", "GASOLINA, DIESEL o IYA", 15),
+        ("FECHA CARGA", "YYYY-MM-DD (2026-03-01)", 16),
+        ("FECHA DESCARGA", "YYYY-MM-DD (2026-03-05)", 16),
+        ("VOL. ORIGEN (LTS)", "Litros cargados (ej. 34000)", 18),
+        ("VOL. RECEPCIONADO (LTS)", "Litros entregados (ej. 33920)", 20),
+        ("TARIFA FLETE", "Bs/m3 o USD (ej. 392.00)", 16),
+        ("TIPO TARIFA", "BS_POR_M3 o USD_POR_M3", 16),
+        ("PRECIO MERMA Bs/L", "Opcional (defecto 7.45)", 16),
+        ("LOTE", "Opcional (ej. 1)", 10),
+        ("OBSERVACIONES", "Opcional", 22)
+    ]
+
+    r = 4
+    for idx, (title, comment, width) in enumerate(headers, 1):
+        cell = ws.cell(row=r, column=idx, value=title)
+        cell.font = FONT_HEADER
+        cell.fill = FILL_HEADER
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = BORDER_THIN
+        ws.column_dimensions[get_column_letter(idx)].width = width
+    ws.row_dimensions[r].height = 26
+
+    # 2 filas de ejemplo
+    ejemplos = [
+        ("23BO051130T", "4412-DPC", "ARICA - TAMBO QUEMADO - LA PAZ", "YPFB", "GASOLINA", "2026-03-01", "2026-03-05", 34000.0, 33920.0, 392.00, "BS_POR_M3", 7.45, "1", "Viaje de ejemplo Gasolina"),
+        ("23CL257330A", "4412-DPC", "IQUIQUE - TAMBO QUEMADO - LA PAZ", "YPFB", "DIESEL", "2026-03-08", "2026-03-14", 33500.0, 33460.0, 738.00, "BS_POR_M3", 7.45, "1", "Viaje de ejemplo Diésel"),
+    ]
+
+    for row_idx, ej in enumerate(ejemplos, 5):
+        for col_idx, val in enumerate(ej, 1):
+            c = ws.cell(row=row_idx, column=col_idx, value=val)
+            c.font = FONT_REGULAR
+            c.border = BORDER_THIN
+            if isinstance(val, float):
+                c.number_format = '#,##0.00'
+                c.alignment = Alignment(horizontal="right")
+            elif col_idx in [1, 2, 4, 5, 6, 7, 11, 13]:
+                c.alignment = Alignment(horizontal="center")
+            else:
+                c.alignment = Alignment(horizontal="left")
+        ws.row_dimensions[row_idx].height = 20
 
     output = io.BytesIO()
     wb.save(output)

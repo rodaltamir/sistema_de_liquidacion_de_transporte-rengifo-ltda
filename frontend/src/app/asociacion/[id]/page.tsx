@@ -517,9 +517,37 @@ function AsociacionDetalleContent({ params }: { params: Promise<{ id: string }> 
                 <b>Nota Legal:</b> Conforme lo establece la Ley 843 en su Art. 4 y de acuerdo a la cláusula contractual de Facturación y Pago, el momento en que finalizará la ejecución o la prestación del Servicio se origina después de realizada la Conciliación (Acta de Conformidad por la Comisión de Recepción) y emitida la planilla de Liquidación.
               </div>
 
+              {/* Firmas Oficiales de Auditoría y Directorio */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8 pt-6">
+                <div className="border border-slate-300 rounded-xl p-4 text-center bg-slate-50/50">
+                  <div className="h-12 border-b border-dashed border-slate-400 mb-2"></div>
+                  <div className="text-[11px] font-bold text-slate-800 uppercase">DIRECTORIO ASOCIACIÓN</div>
+                  <div className="text-[10px] text-slate-500">Firma y Sello</div>
+                </div>
+
+                <div className="border border-slate-300 rounded-xl p-4 text-center bg-slate-50/50">
+                  <div className="h-12 border-b border-dashed border-slate-400 mb-2"></div>
+                  <div className="text-[11px] font-bold text-slate-800 uppercase">COMISIÓN DE CONCILIACIÓN</div>
+                  <div className="text-[10px] text-slate-500">Firma y Sello</div>
+                </div>
+
+                <div className="border border-slate-300 rounded-xl p-4 text-center bg-slate-50/50">
+                  <div className="h-12 border-b border-dashed border-slate-400 mb-2"></div>
+                  <div className="text-[11px] font-bold text-slate-800 uppercase">REPRESENTANTES LEGALES</div>
+                  <div className="text-[10px] text-slate-500">Firma y Sello</div>
+                </div>
+
+                <div className="border border-slate-300 rounded-xl p-4 text-center bg-slate-50/50">
+                  <div className="h-12 border-b border-dashed border-slate-400 mb-2"></div>
+                  <div className="text-[11px] font-bold text-slate-800 uppercase">AUDITORÍA / CONTABILIDAD</div>
+                  <div className="text-[10px] text-slate-500">Firma y Sello</div>
+                </div>
+              </div>
+
             </div>
           </div>
         )}
+
 
       </main>
     </div>

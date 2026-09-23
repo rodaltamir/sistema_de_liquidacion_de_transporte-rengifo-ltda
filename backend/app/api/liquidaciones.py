@@ -130,6 +130,7 @@ def generate_liquidacion(
             v.liquidacion_id = liq.id
             v.estado = "Liquidado"
         session.commit()
+        session.refresh(liq)
 
         return liq
 

@@ -97,3 +97,11 @@ def delete_user(id: int, db: Session = Depends(get_db), admin: User = Depends(re
     db.commit()
     return {"message": "Usuario eliminado correctamente"}
 
+@router.post("/reset-database")
+def reset_database(admin: User = Depends(require_admin)):
+    from seed_data import clean_database, seed
+    clean_database()
+    seed()
+    return {"message": "Base de datos reseteada a estado limpio exitosamente"}
+
+

@@ -450,7 +450,34 @@ def export_liquidacion_asociacion_pdf(asociacion_name: str, periodo_mes: str, gr
         "Conforme lo establece la Ley 843 en su Art. 4 y de acuerdo a la cláusula contractual de Facturación y Pago, el momento en que finalizará la ejecución o la prestación del Servicio se origina después de realizada la Conciliación (Acta de Conformidad por la Comisión de Recepción) y emitida la planilla de Liquidación.",
         legal_style
     ))
+    story.append(Spacer(1, 12))
+
+    # Firmas oficiales de la Asociación
+    asoc_sign_data = [
+        [
+            Paragraph("<b>DIRECTORIO ASOCIACIÓN</b>", sub_style),
+            Paragraph("<b>COMISIÓN DE CONCILIACIÓN</b>", sub_style),
+            Paragraph("<b>REPRESENTANTES LEGALES</b>", sub_style),
+            Paragraph("<b>AUDITORÍA / CONTABILIDAD</b>", sub_style)
+        ],
+        [
+            Paragraph("Firma y Sello", cell_style),
+            Paragraph("Firma y Sello", cell_style),
+            Paragraph("Firma y Sello", cell_style),
+            Paragraph("Firma y Sello", cell_style)
+        ]
+    ]
+    t_asoc_signs = Table(asoc_sign_data, colWidths=[185, 185, 185, 185])
+    t_asoc_signs.setStyle(TableStyle([
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94A3B8')),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F8FAFC')),
+    ]))
+    story.append(t_asoc_signs)
 
     doc.build(story)
     buffer.seek(0)
     return buffer
+

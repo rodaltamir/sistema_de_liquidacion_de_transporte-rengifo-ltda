@@ -6,7 +6,7 @@ from app.core.config import settings
 engine = create_engine(settings.SQLALCHEMY_DATABASE_URI, pool_pre_ping=True)
 
 # Sesión local para esquema público
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 
 def get_tenant_session(schema_name: str):
     """
@@ -16,7 +16,7 @@ def get_tenant_session(schema_name: str):
     connectable = engine.execution_options(
         schema_translate_map={"tenant": schema_name}
     )
-    TenantSession = sessionmaker(autocommit=False, autoflush=False, bind=connectable)
+    TenantSession = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=connectable)
     return TenantSession()
 
 def get_db():
