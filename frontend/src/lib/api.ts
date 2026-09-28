@@ -6,6 +6,8 @@ export function getApiBaseUrl(): string {
   return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api';
 }
 
+export const getApiUrl = getApiBaseUrl;
+
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 

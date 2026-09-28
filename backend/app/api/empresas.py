@@ -131,6 +131,57 @@ def create_empresa(emp_in: EmpresaCreate, db: Session = Depends(get_db)):
         asociacion_name=empresa.asociacion.name if empresa.asociacion else None
     )
 
+@router.get("/resumen-global")
+def get_resumen_global(db: Session = Depends(get_db)):
+    """
+    Retorna métricas consolidadas del sistema para el mini dashboard principal:
+    total empresas, asociaciones, camiones/flota, viajes, volumen y fletes.
+    """
+    empresas = db.query(Empresa).filter(Empresa.is_active == True).all()
+    asociaciones = db.query(Asociacion).filter(Asociacion.is_active == True).all()
+
+    total_empresas = len(empresas)
+    total_asociaciones = len(asociaciones)
+    empresas_independientes = len([e for e in empresas if e.asociacion_id is None])
+    empresas_asociadas = len([e for e in empresas if e.asociacion_id is not None])
+
+    total_camiones = 0
+    total_viajes = 0
+    total_volumen_litros = 0.0
+    total_fletes_bs = 0.0
+    total_liquidaciones = 0
+
+    from app.models.tenant import UnidadTransporte, Viaje, Liquidacion
+
+    for emp in empresas:
+        try:
+            t_session = get_tenant_session(emp.schema_name)
+            try:
+                total_camiones += t_session.query(UnidadTransporte).count()
+                viajes = t_session.query(Viaje).all()
+                total_viajes += len(viajes)
+                for v in viajes:
+                    total_volumen_litros += (v.volumen_recepcionado_litros or 0.0)
+                    total_fletes_bs += (v.flete_total_bs or 0.0)
+                total_liquidaciones += t_session.query(Liquidacion).count()
+            finally:
+                t_session.close()
+        except Exception:
+            continue
+
+    return {
+        "total_empresas": total_empresas,
+        "total_asociaciones": total_asociaciones,
+        "empresas_independientes": empresas_independientes,
+        "empresas_asociadas": empresas_asociadas,
+        "total_camiones": total_camiones,
+        "total_viajes": total_viajes,
+        "total_volumen_litros": round(total_volumen_litros, 2),
+        "total_volumen_m3": round(total_volumen_litros / 1000.0, 3),
+        "total_fletes_bs": round(total_fletes_bs, 2),
+        "total_liquidaciones": total_liquidaciones
+    }
+
 @router.get("/{schema_name}", response_model=EmpresaResponse)
 def get_empresa(schema_name: str, db: Session = Depends(get_db)):
     emp = db.query(Empresa).filter(Empresa.schema_name == schema_name).first()

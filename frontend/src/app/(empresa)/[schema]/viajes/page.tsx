@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useState, useEffect, use } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useState, useEffect } from "react";
+import { useSearchParams, useParams } from "next/navigation";
 import { 
   Navigation, 
   Plus, 
@@ -20,7 +20,8 @@ import {
   Download,
   X,
   FileCheck,
-  Info
+  Info,
+  Scale
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch, getApiUrl } from "@/lib/api";
@@ -54,17 +55,22 @@ interface Viaje {
   observaciones: string | null;
 }
 
-export default function ViajesPage({ params }: { params: Promise<{ schema: string }> }) {
+export default function ViajesPage() {
   return (
-    <Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin" /></div>}>
-      <ViajesContent params={params} />
+    <Suspense fallback={
+      <div className="p-8 flex flex-col items-center justify-center gap-3">
+        <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
+        <span className="text-slate-400 text-xs font-semibold tracking-wider uppercase">Cargando Viajes...</span>
+      </div>
+    }>
+      <ViajesContent />
     </Suspense>
   );
 }
 
-function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
-  const resolvedParams = use(params);
-  const schema = resolvedParams.schema;
+function ViajesContent() {
+  const routeParams = useParams();
+  const schema = (routeParams?.schema as string) || "";
   const searchParams = useSearchParams();
 
   const [viajes, setViajes] = useState<Viaje[]>([]);
@@ -122,47 +128,59 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
     loadViajes();
   }, [schema, periodo, placaFiltro]);
 
-  // Recalcular en vivo cuando cambian valores en el modal
+  // Si viene acción de URL para abrir modal de nuevo viaje
   useEffect(() => {
-    const orig = parseFloat(formData.volumen_origen_litros?.toString() || "0") || 0;
-    const rec = parseFloat(formData.volumen_recepcionado_litros?.toString() || "0") || 0;
-    const tarifa = parseFloat(formData.tarifa_flete?.toString() || "0") || 0;
-    const precioMerma = parseFloat(formData.precio_merma_litro_bs?.toString() || "7.45") || 7.45;
+    if (searchParams.get("action") === "nuevo" && !loading) {
+      openCreateModal();
+    }
+  }, [searchParams, loading]);
 
-    let tolPct = 0.15;
-    if (formData.producto === "GASOLINA") tolPct = 0.25;
-    else if (formData.producto === "IYA") tolPct = 0.20;
+  // Recálculo dinámico en el formulario modal
+  useEffect(() => {
+    const vOri = Number(formData.volumen_origen_litros) || 0;
+    const vRec = Number(formData.volumen_recepcionado_litros) || 0;
+    const mReal = Math.max(0, vOri - vRec);
 
-    const mReal = Math.round((orig - rec) * 10) / 10;
-    const mTolerable = Math.round(orig * (tolPct / 100));
-    const mExcedente = mReal > mTolerable ? Math.round((mReal - mTolerable) * 10) / 10 : 0;
-    const mDescBs = Math.round(mExcedente * precioMerma * 100) / 100;
+    let tol = 0.25;
+    if (formData.producto.toUpperCase().includes("DIESEL") || formData.producto.toUpperCase().includes("DIÉSEL")) {
+      tol = 0.15;
+    } else if (formData.producto.toUpperCase().includes("IYA") || formData.producto.toUpperCase().includes("INSUMOS")) {
+      tol = 0.20;
+    }
+
+    const mTol = (vOri * tol) / 100.0;
+    const mExc = Math.max(0, mReal - mTol);
+    const mDescBs = mExc * (Number(formData.precio_merma_litro_bs) || 7.45);
 
     let fleteBs = 0;
+    const volM3 = vRec / 1000.0;
     if (formData.tipo_tarifa === "BS_POR_M3") {
-      fleteBs = Math.round((rec / 1000) * tarifa * 100) / 100;
+      fleteBs = volM3 * (Number(formData.tarifa_flete) || 0);
     } else {
-      fleteBs = tarifa;
+      fleteBs = volM3 * (Number(formData.tarifa_flete) || 0) * 6.96;
     }
 
     setLiveCalc({
-      merma_real: mReal,
-      tolerancia_pct: tolPct,
-      merma_tolerable: mTolerable,
-      merma_excedente: mExcedente,
-      merma_descontar_bs: mDescBs,
-      flete_total_bs: fleteBs
+      merma_real: Math.round(mReal * 100) / 100,
+      tolerancia_pct: tol,
+      merma_tolerable: Math.round(mTol * 100) / 100,
+      merma_excedente: Math.round(mExc * 100) / 100,
+      merma_descontar_bs: Math.round(mDescBs * 100) / 100,
+      flete_total_bs: Math.round(fleteBs * 100) / 100
     });
-  }, [formData.volumen_origen_litros, formData.volumen_recepcionado_litros, formData.producto, formData.tarifa_flete, formData.tipo_tarifa, formData.precio_merma_litro_bs]);
+  }, [
+    formData.volumen_origen_litros,
+    formData.volumen_recepcionado_litros,
+    formData.producto,
+    formData.tarifa_flete,
+    formData.tipo_tarifa,
+    formData.precio_merma_litro_bs
+  ]);
 
   const loadInitialData = async () => {
     try {
       const uData = await apiFetch(`/tenants/${schema}/unidades/`);
       setUnidades(uData);
-
-      if (searchParams.get("action") === "nuevo") {
-        openCreateModal();
-      }
     } catch (err) {
       console.error(err);
     }
@@ -171,17 +189,15 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
   const loadViajes = async () => {
     setLoading(true);
     try {
-      let url = `/tenants/${schema}/viajes/?`;
-      if (periodo) url += `periodo_mes=${periodo}&`;
-      if (placaFiltro) url += `placa=${placaFiltro}&`;
+      let query = "";
+      const params: string[] = [];
+      if (periodo) params.push(`periodo_mes=${periodo}`);
+      if (placaFiltro) params.push(`placa=${placaFiltro}`);
+      if (params.length > 0) query = `?${params.join("&")}`;
 
-      const data = await apiFetch(url);
+      const data = await apiFetch(`/tenants/${schema}/viajes/${query}`);
       setViajes(data);
-
-      if (!periodo && data.length > 0) {
-        setPeriodo(data[0].periodo_mes);
-      }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
@@ -191,10 +207,12 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
   const openCreateModal = () => {
     setEditingViaje(null);
     const defMes = periodo || new Date().toISOString().slice(0, 7);
+    const defPlaca = placaFiltro || (unidades.length > 0 ? unidades[0].placa : "");
+
     setFormData({
       mic_dta: "",
       lote_codigo: "1",
-      placa: unidades.length > 0 ? unidades[0].placa : "",
+      placa: defPlaca,
       tramo: "ARICA - TAMBO QUEMADO - LA PAZ",
       cliente: "YPFB",
       producto: "GASOLINA",
@@ -258,16 +276,16 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
 
   const handleDelete = async (v: Viaje) => {
     const result = await Swal.fire({
-      title: `¿Eliminar viaje ${v.mic_dta || v.placa}?`,
+      title: `¿Eliminar viaje MIC ${v.mic_dta || v.placa}?`,
       text: "Esta acción no se puede deshacer.",
       icon: "warning",
       showCancelButton: true,
-      confirmButtonColor: "#dc2626",
-      cancelButtonColor: "#64748b",
+      confirmButtonColor: "#e11d48",
+      cancelButtonColor: "#334155",
       confirmButtonText: "Sí, eliminar",
       cancelButtonText: "Cancelar",
-      background: "#ffffff",
-      color: "#0f172a"
+      background: "#0f172a",
+      color: "#f8fafc"
     });
 
     if (result.isConfirmed) {
@@ -276,14 +294,14 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
         Swal.fire({
           icon: "success",
           title: "Viaje eliminado",
-          background: "#ffffff",
-          color: "#0f172a",
+          background: "#0f172a",
+          color: "#f8fafc",
           timer: 1200,
           showConfirmButton: false
         });
         loadViajes();
       } catch (err: any) {
-        Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#ffffff", color: "#0f172a" });
+        Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#0f172a", color: "#f8fafc", confirmButtonColor: "#f59e0b" });
       }
     }
   };
@@ -292,11 +310,21 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
     e.preventDefault();
     try {
       const payload = {
-        ...formData,
-        volumen_origen_litros: parseFloat(formData.volumen_origen_litros.toString()),
-        volumen_recepcionado_litros: parseFloat(formData.volumen_recepcionado_litros.toString()),
-        tarifa_flete: parseFloat(formData.tarifa_flete.toString()),
-        precio_merma_litro_bs: parseFloat(formData.precio_merma_litro_bs?.toString() || "7.45")
+        mic_dta: formData.mic_dta.trim() || null,
+        lote_codigo: formData.lote_codigo.trim() || null,
+        placa: formData.placa.trim().toUpperCase(),
+        tramo: formData.tramo.trim().toUpperCase(),
+        cliente: formData.cliente.trim().toUpperCase(),
+        producto: formData.producto.trim().toUpperCase(),
+        fecha_carga: formData.fecha_carga,
+        fecha_descarga: formData.fecha_descarga,
+        periodo_mes: formData.periodo_mes,
+        volumen_origen_litros: Number(formData.volumen_origen_litros),
+        volumen_recepcionado_litros: Number(formData.volumen_recepcionado_litros),
+        tarifa_flete: Number(formData.tarifa_flete),
+        tipo_tarifa: formData.tipo_tarifa,
+        precio_merma_litro_bs: Number(formData.precio_merma_litro_bs),
+        observaciones: formData.observaciones.trim() || null
       };
 
       if (editingViaje) {
@@ -307,8 +335,8 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
         Swal.fire({
           icon: "success",
           title: "Viaje actualizado",
-          background: "#ffffff",
-          color: "#0f172a",
+          background: "#0f172a",
+          color: "#f8fafc",
           timer: 1200,
           showConfirmButton: false
         });
@@ -320,8 +348,8 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
         Swal.fire({
           icon: "success",
           title: "Viaje registrado con cálculo automático",
-          background: "#ffffff",
-          color: "#0f172a",
+          background: "#0f172a",
+          color: "#f8fafc",
           timer: 1400,
           showConfirmButton: false
         });
@@ -329,7 +357,7 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
       setShowModal(false);
       loadViajes();
     } catch (err: any) {
-      Swal.fire({ icon: "error", title: "Error al guardar", text: err.message, background: "#ffffff", color: "#0f172a" });
+      Swal.fire({ icon: "error", title: "Error al guardar", text: err.message, background: "#0f172a", color: "#f8fafc", confirmButtonColor: "#f59e0b" });
     }
   };
 
@@ -350,8 +378,9 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
         icon: "error",
         title: "Error al descargar plantilla",
         text: err.message,
-        background: "#ffffff",
-        color: "#0f172a"
+        background: "#0f172a",
+        color: "#f8fafc",
+        confirmButtonColor: "#f59e0b"
       });
     }
   };
@@ -378,9 +407,10 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
         icon: "success",
         title: "¡Importación Exitosa!",
         html: `<b>${res.total_importados}</b> viajes importados y calculados con éxito.<br/>` + 
-              (res.periodos_detectados?.length ? `<span class="text-xs text-slate-500">Periodos: ${res.periodos_detectados.join(", ")}</span>` : ""),
-        background: "#ffffff",
-        color: "#0f172a"
+              (res.periodos_detectados?.length ? `<span class="text-xs text-slate-400">Periodos: ${res.periodos_detectados.join(", ")}</span>` : ""),
+        background: "#0f172a",
+        color: "#f8fafc",
+        confirmButtonColor: "#f59e0b"
       });
 
       if (res.periodos_detectados && res.periodos_detectados.length > 0) {
@@ -392,8 +422,9 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
         icon: "error",
         title: "Error al importar Excel",
         text: err.message,
-        background: "#ffffff",
-        color: "#0f172a"
+        background: "#0f172a",
+        color: "#f8fafc",
+        confirmButtonColor: "#f59e0b"
       });
     } finally {
       setImporting(false);
@@ -424,113 +455,187 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
   const totalFleteBs = filtered.reduce((acc, v) => acc + (v.flete_total_bs || 0), 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 sm:space-y-7 font-sans selection:bg-amber-500 selection:text-slate-950">
       
-      {/* Encabezado y Acciones Principales */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
-              <Navigation className="w-6 h-6" />
+      {/* Encabezado y Acciones Principales (Tarjeta Banner Ejecutiva) */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-md shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center flex-shrink-0 shadow-md shadow-amber-500/10">
+            <Navigation className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                Registro y Control de Viajes
+              </h1>
+              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/25">
+                {filtered.length} {filtered.length === 1 ? "Viaje" : "Viajes"}
+              </span>
             </div>
-            <span>Registro y Control de Viajes</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Fletes, control de volúmenes en destino y cálculo automático de mermas técnicas YPFB
-          </p>
+            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+              Fletes en Bs, control de volúmenes en destino y cálculo automático de mermas contractuales YPFB (0.35%)
+            </p>
+          </div>
         </div>
 
-        {/* Acciones: Nuevo, Plantilla, Importar */}
-        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+        {/* Acciones: Plantilla, Importar y Nuevo Viaje */}
+        <div className="flex flex-wrap items-center gap-2.5 self-start md:self-auto">
           <button
             onClick={downloadTemplate}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 shadow-2xs transition"
-            title="Descargar plantilla oficial de Excel para importar viajes"
+            className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold border border-slate-800 transition active:scale-95"
+            title="Descargar plantilla oficial de Excel para carga masiva de viajes"
           >
-            <Download className="w-3.5 h-3.5 text-slate-600" />
-            <span>Descargar Plantilla Excel</span>
+            <Download className="w-4 h-4 text-amber-400" />
+            <span>Plantilla Excel</span>
           </button>
 
           <button
             onClick={() => setShowImportModal(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition"
-            title="Subir archivo Excel con lista de viajes"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-900/30 transition active:scale-95"
+            title="Subir archivo Excel con lista de despachos"
           >
-            <Upload className="w-3.5 h-3.5" />
-            <span>Importar desde Excel</span>
+            <Upload className="w-4 h-4" />
+            <span>Importar Excel</span>
           </button>
 
           <button
             onClick={openCreateModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm shadow-blue-600/20 transition"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs sm:text-sm font-black shadow-lg shadow-amber-500/20 transition transform active:scale-95"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4 stroke-[3]" />
             <span>Nuevo Viaje</span>
           </button>
         </div>
       </div>
 
-      {/* Barra de Métricas Sumatorias (KPIs en vivo) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-        <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Viajes Visibles</span>
-          <span className="text-xl font-bold text-slate-900">{filtered.length}</span>
-          <span className="text-[10px] text-slate-400 block mt-0.5">Despachos filtrados</span>
+      {/* Barra de Métricas Sumatorias (KPIs Simétricos) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        
+        {/* Card 1: Viajes Visibles */}
+        <div className="bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Viajes Visibles</span>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
+              <Navigation className="w-4.5 h-4.5" />
+            </div>
+          </div>
+          <div className="my-2.5">
+            <div className="text-3xl font-black text-white tracking-tight">
+              {filtered.length}
+            </div>
+          </div>
+          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+            <span>Despachos</span>
+            <span className="font-semibold text-slate-300">Periodo actual</span>
+          </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Vol. Despachado</span>
-          <span className="text-xl font-bold text-slate-900 font-mono">{formatNumber(totalDespachado, 0)} <span className="text-xs font-normal text-slate-500">L</span></span>
-          <span className="text-[10px] text-slate-400 block mt-0.5">{(totalDespachado / 1000).toFixed(2)} m³</span>
+        {/* Card 2: Vol. Despachado */}
+        <div className="bg-slate-900/90 border border-slate-800 hover:border-sky-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Vol. Despachado</span>
+            <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-105 transition-transform">
+              <Fuel className="w-4.5 h-4.5" />
+            </div>
+          </div>
+          <div className="my-2.5">
+            <div className="text-3xl font-black text-white tracking-tight font-mono">
+              {formatNumber(totalDespachado, 0)} <span className="text-xs font-bold text-slate-400">L</span>
+            </div>
+          </div>
+          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+            <span>Volumen origen</span>
+            <span className="font-bold text-sky-400">{(totalDespachado / 1000).toFixed(2)} m³</span>
+          </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Vol. Recepcionado</span>
-          <span className="text-xl font-bold text-slate-900 font-mono">{formatNumber(totalRecepcionado, 0)} <span className="text-xs font-normal text-slate-500">L</span></span>
-          <span className="text-[10px] text-slate-400 block mt-0.5">{(totalRecepcionado / 1000).toFixed(2)} m³ facturables</span>
+        {/* Card 3: Vol. Recepcionado */}
+        <div className="bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Vol. Recepcionado</span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+              <CheckCircle2 className="w-4.5 h-4.5" />
+            </div>
+          </div>
+          <div className="my-2.5">
+            <div className="text-3xl font-black text-emerald-400 tracking-tight font-mono">
+              {formatNumber(totalRecepcionado, 0)} <span className="text-xs font-bold text-slate-400">L</span>
+            </div>
+          </div>
+          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+            <span>Volumen destino</span>
+            <span className="font-bold text-emerald-400">{(totalRecepcionado / 1000).toFixed(2)} m³</span>
+          </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Desc. Merma Total</span>
-          <span className="text-xl font-bold text-rose-600 font-mono">{formatCurrency(totalDescMermaBs)}</span>
-          <span className="text-[10px] text-slate-400 block mt-0.5">Merma real: {formatNumber(totalMermaReal, 1)} L</span>
+        {/* Card 4: Desc. Merma Total */}
+        <div className="bg-slate-900/90 border border-slate-800 hover:border-rose-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Desc. Mermas</span>
+            <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 group-hover:scale-105 transition-transform">
+              <Scale className="w-4.5 h-4.5" />
+            </div>
+          </div>
+          <div className="my-2.5">
+            <div className="text-3xl font-black text-rose-400 tracking-tight font-mono">
+              {formatCurrency(totalDescMermaBs)}
+            </div>
+          </div>
+          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+            <span>Merma real</span>
+            <span className="font-bold text-rose-400">{formatNumber(totalMermaReal, 1)} L</span>
+          </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs col-span-2 sm:col-span-1">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Flete Bruto Total</span>
-          <span className="text-xl font-bold text-emerald-600 font-mono">{formatCurrency(totalFleteBs)}</span>
-          <span className="text-[10px] text-slate-400 block mt-0.5">Antes de deducciones</span>
+        {/* Card 5: Flete Bruto Total */}
+        <div className="bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group sm:col-span-2 lg:col-span-1">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Flete Bruto</span>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
+              <DollarSign className="w-4.5 h-4.5" />
+            </div>
+          </div>
+          <div className="my-2.5">
+            <div className="text-3xl font-black text-amber-400 tracking-tight font-mono">
+              {formatCurrency(totalFleteBs)}
+            </div>
+          </div>
+          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+            <span>Base imponible</span>
+            <span className="font-semibold text-amber-400">Antes de ded.</span>
+          </div>
         </div>
+
       </div>
 
       {/* Barra de Filtros y Búsqueda */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3.5 shadow-2xs">
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 shadow-xl">
         
         <div className="flex flex-wrap items-center gap-3">
           {/* Periodo */}
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
-            <Calendar className="w-3.5 h-3.5 text-blue-600" />
-            <span className="text-slate-500 font-medium">Mes:</span>
+          <div className="flex items-center gap-2 bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800 text-xs">
+            <Calendar className="w-4 h-4 text-amber-500" />
+            <span className="text-slate-400 font-medium">Mes:</span>
             <input
               type="month"
               value={periodo}
               onChange={(e) => setPeriodo(e.target.value)}
-              className="bg-transparent text-slate-900 font-semibold focus:outline-none cursor-pointer text-xs"
+              className="bg-transparent text-white font-bold focus:outline-none cursor-pointer text-xs"
             />
           </div>
 
           {/* Placa */}
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
-            <Truck className="w-3.5 h-3.5 text-blue-600" />
-            <span className="text-slate-500 font-medium">Placa:</span>
+          <div className="flex items-center gap-2 bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800 text-xs">
+            <Truck className="w-4 h-4 text-amber-500" />
+            <span className="text-slate-400 font-medium">Placa:</span>
             <select
               value={placaFiltro}
               onChange={(e) => setPlacaFiltro(e.target.value)}
-              className="bg-transparent text-slate-900 font-semibold focus:outline-none cursor-pointer text-xs"
+              className="bg-transparent text-white font-bold focus:outline-none cursor-pointer text-xs"
             >
-              <option value="">Todas las Placas</option>
+              <option value="" className="bg-slate-900">Todas las Placas</option>
               {unidades.map((u) => (
-                <option key={u.id} value={u.placa}>
+                <option key={u.id} value={u.placa} className="bg-slate-900">
                   {u.placa}
                 </option>
               ))}
@@ -538,15 +643,15 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
           </div>
 
           {/* Filtro de Producto */}
-          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
+          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold">
             {["TODOS", "GASOLINA", "DIESEL", "IYA"].map((p) => (
               <button
                 key={p}
                 onClick={() => setProductoFiltro(p)}
-                className={`px-2.5 py-1 rounded-md font-semibold transition text-[11px] ${
+                className={`px-3 py-1.5 rounded-lg transition text-[11px] ${
                   productoFiltro === p
-                    ? "bg-white text-slate-900 shadow-2xs"
-                    : "text-slate-600 hover:text-slate-900"
+                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20"
+                    : "text-slate-400 hover:text-white"
                 }`}
               >
                 {p}
@@ -555,115 +660,177 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
           </div>
         </div>
 
-        {/* Buscador */}
-        <div className="relative w-full md:w-64">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        {/* Buscador Equilibrado */}
+        <div className="relative w-full lg:w-80">
+          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por MIC, tramo o cliente..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition"
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
           />
         </div>
 
       </div>
 
-      {/* Tabla de Viajes */}
+      {/* Tabla de Viajes o Estado Vacío Intuitivo */}
       {loading ? (
-        <div className="flex justify-center items-center py-24">
-          <div className="w-8 h-8 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin" />
+        <div className="flex flex-col justify-center items-center py-24 gap-3 bg-slate-900/90 border border-slate-800 rounded-2xl">
+          <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
+          <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Cargando registros...</span>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center max-w-md mx-auto shadow-2xs">
-          <Navigation className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-slate-800 mb-1">No hay viajes registrados</h3>
-          <p className="text-xs text-slate-500 mb-5">
-            Puedes registrar un viaje individual o importar una lista completa desde un archivo Excel.
-          </p>
-          <div className="flex items-center justify-center gap-2">
+        viajes.length === 0 ? (
+          /* Guía de Inicio Rápido para Viajes */
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-10 sm:p-14 text-center max-w-2xl mx-auto shadow-2xl">
+            <div className="w-20 h-20 rounded-3xl bg-amber-500/10 border border-amber-500/25 text-amber-400 flex items-center justify-center mx-auto mb-5 shadow-xl shadow-amber-500/10">
+              <Navigation className="w-10 h-10" />
+            </div>
+            
+            <h3 className="text-xl font-bold text-white mb-2">
+              Aún no has registrado viajes en el periodo {periodo}
+            </h3>
+            
+            <p className="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto mb-6 leading-relaxed">
+              Ingresa los despachos y recepciones de combustible. El sistema calculará en tiempo real el flete bruto en Bs y las mermas excedentes al 0.35%.
+            </p>
+
+            <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
+              <button
+                onClick={openCreateModal}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs sm:text-sm font-black shadow-lg shadow-amber-500/20 transition transform hover:scale-105 active:scale-95"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>Registrar Nuevo Viaje</span>
+              </button>
+
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold shadow-md shadow-emerald-900/30 transition transform hover:scale-105 active:scale-95"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Importar Planilla Excel</span>
+              </button>
+            </div>
+
+            {/* Tarjetas de Guía */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-left">
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
+                <div className="text-amber-400 font-bold text-xs flex items-center gap-2 mb-1.5">
+                  <Scale className="w-4 h-4 flex-shrink-0" />
+                  <span>Tolerancia 0.35%</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-snug">
+                  Cálculo automático de merma contractual y cobro de excedente en Bs.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
+                <div className="text-emerald-400 font-bold text-xs flex items-center gap-2 mb-1.5">
+                  <DollarSign className="w-4 h-4 flex-shrink-0" />
+                  <span>Fletes en Bolivianos</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-snug">
+                  Multiplicación por volumen recepcionado o m³ según tarifa pactada.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
+                <div className="text-sky-400 font-bold text-xs flex items-center gap-2 mb-1.5">
+                  <FileSpreadsheet className="w-4 h-4 flex-shrink-0" />
+                  <span>Liquidación Oficial</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-snug">
+                  Generación automática de Hoja 1 y Hoja 2 para auditoría YPFB.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-12 text-center max-w-md mx-auto shadow-xl">
+            <div className="w-14 h-14 rounded-2xl bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-3">
+              <Search className="w-6 h-6" />
+            </div>
+            <p className="text-base font-bold text-white">Sin resultados para la búsqueda</p>
+            <p className="text-xs text-slate-400 mt-1 mb-5">
+              No hay viajes que coincidan con los filtros aplicados.
+            </p>
             <button
-              onClick={openCreateModal}
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs"
+              onClick={() => { setSearch(""); setPlacaFiltro(""); setProductoFiltro("TODOS"); }}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold rounded-xl transition"
             >
-              Registrar Manualmente
-            </button>
-            <button
-              onClick={() => setShowImportModal(true)}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Importar Excel</span>
+              Restablecer Filtros
             </button>
           </div>
-        </div>
+        )
       ) : (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
+        <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                  <th className="py-3 px-3">MIC/DTA</th>
-                  <th className="py-3 px-3">Placa</th>
-                  <th className="py-3 px-3">Tramo</th>
-                  <th className="py-3 px-3">Producto</th>
-                  <th className="py-3 px-3">Fechas</th>
-                  <th className="py-3 px-3 text-right">Vol. Origen</th>
-                  <th className="py-3 px-3 text-right">Vol. Recep.</th>
-                  <th className="py-3 px-3 text-right">Merma Real</th>
-                  <th className="py-3 px-3 text-right">Merma Exc.</th>
-                  <th className="py-3 px-3 text-right">Desc. Merma</th>
-                  <th className="py-3 px-3 text-right">Tarifa</th>
-                  <th className="py-3 px-3 text-right">Flete Total</th>
-                  <th className="py-3 px-3 text-center">Estado</th>
-                  <th className="py-3 px-3 text-center">Acciones</th>
+                <tr className="bg-slate-950 border-b border-slate-800 text-slate-400 font-bold uppercase text-[10px]">
+                  <th className="py-3.5 px-3">MIC/DTA</th>
+                  <th className="py-3.5 px-3">Placa</th>
+                  <th className="py-3.5 px-3">Tramo</th>
+                  <th className="py-3.5 px-3">Producto</th>
+                  <th className="py-3.5 px-3">Fechas</th>
+                  <th className="py-3.5 px-3 text-right">Vol. Origen</th>
+                  <th className="py-3.5 px-3 text-right">Vol. Recep.</th>
+                  <th className="py-3.5 px-3 text-right">Merma Real</th>
+                  <th className="py-3.5 px-3 text-right">Merma Exc.</th>
+                  <th className="py-3.5 px-3 text-right">Desc. Merma</th>
+                  <th className="py-3.5 px-3 text-right">Tarifa</th>
+                  <th className="py-3.5 px-3 text-right">Flete Total</th>
+                  <th className="py-3.5 px-3 text-center">Estado</th>
+                  <th className="py-3.5 px-3 text-center">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-800/80">
                 {filtered.map((v) => (
-                  <tr key={v.id} className="hover:bg-slate-50/70 transition">
-                    <td className="py-3 px-3 font-mono font-bold text-blue-600">{v.mic_dta || "-"}</td>
-                    <td className="py-3 px-3 font-mono font-bold text-slate-900">{v.placa}</td>
-                    <td className="py-3 px-3 text-slate-700 truncate max-w-[170px]" title={v.tramo}>
+                  <tr key={v.id} className="hover:bg-slate-800/50 transition">
+                    <td className="py-3 px-3 font-mono font-bold text-amber-400">{v.mic_dta || "-"}</td>
+                    <td className="py-3 px-3 font-mono font-bold text-white">{v.placa}</td>
+                    <td className="py-3 px-3 text-slate-300 truncate max-w-[170px]" title={v.tramo}>
                       {v.tramo}
                     </td>
                     <td className="py-3 px-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
                         v.producto === "GASOLINA" 
-                          ? "bg-amber-50 text-amber-800 border-amber-200" 
+                          ? "bg-amber-500/15 text-amber-400 border-amber-500/30" 
                           : v.producto === "DIESEL"
-                          ? "bg-blue-50 text-blue-800 border-blue-200"
-                          : "bg-purple-50 text-purple-800 border-purple-200"
+                          ? "bg-sky-500/15 text-sky-400 border-sky-500/30"
+                          : "bg-purple-500/15 text-purple-400 border-purple-500/30"
                       }`}>
                         {v.producto}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-[11px] text-slate-500 whitespace-nowrap">
+                    <td className="py-3 px-3 text-[11px] text-slate-400 whitespace-nowrap">
                       <div>C: {formatDate(v.fecha_carga)}</div>
                       <div>D: {formatDate(v.fecha_descarga)}</div>
                     </td>
-                    <td className="py-3 px-3 text-right font-mono text-slate-600">{formatNumber(v.volumen_origen_litros, 0)} L</td>
-                    <td className="py-3 px-3 text-right font-mono font-semibold text-slate-900">{formatNumber(v.volumen_recepcionado_litros, 0)} L</td>
-                    <td className="py-3 px-3 text-right font-mono text-slate-600">
+                    <td className="py-3 px-3 text-right font-mono text-slate-300">{formatNumber(v.volumen_origen_litros, 0)} L</td>
+                    <td className="py-3 px-3 text-right font-mono font-bold text-emerald-400">{formatNumber(v.volumen_recepcionado_litros, 0)} L</td>
+                    <td className="py-3 px-3 text-right font-mono text-slate-300">
                       {formatNumber(v.merma_real_litros, 1)} L
                     </td>
-                    <td className={`py-3 px-3 text-right font-mono ${v.merma_excedente_litros > 0 ? "text-amber-600 font-bold" : "text-slate-400"}`}>
+                    <td className={`py-3 px-3 text-right font-mono ${v.merma_excedente_litros > 0 ? "text-amber-400 font-bold" : "text-slate-500"}`}>
                       {formatNumber(v.merma_excedente_litros, 1)} L
                     </td>
-                    <td className={`py-3 px-3 text-right font-mono ${v.merma_descontar_bs > 0 ? "text-rose-600 font-bold" : "text-slate-400"}`}>
+                    <td className={`py-3 px-3 text-right font-mono ${v.merma_descontar_bs > 0 ? "text-rose-400 font-bold" : "text-slate-500"}`}>
                       {formatCurrency(v.merma_descontar_bs)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono text-slate-600">
+                    <td className="py-3 px-3 text-right font-mono text-slate-300">
                       Bs. {formatNumber(v.tarifa_flete, 2)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-bold text-emerald-600">
+                    <td className="py-3 px-3 text-right font-mono font-bold text-amber-400">
                       {formatCurrency(v.flete_total_bs)}
                     </td>
                     <td className="py-3 px-3 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                         v.estado === "Liquidado"
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : "bg-amber-50 text-amber-700 border-amber-200"
+                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                          : "bg-amber-500/15 text-amber-400 border-amber-500/30"
                       }`}>
                         {v.estado}
                       </span>
@@ -672,21 +839,21 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
                       <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => handleDuplicate(v)}
-                          className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition"
+                          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-amber-400 transition"
                           title="Duplicar / Clonar Viaje (mismo camión y ruta)"
                         >
                           <Copy className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => openEditModal(v)}
-                          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition"
+                          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition"
                           title="Editar Viaje"
                         >
                           <Edit className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleDelete(v)}
-                          className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition"
+                          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-rose-400 transition"
                           title="Eliminar Viaje"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -703,39 +870,39 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
 
       {/* Modal Importar Masivamente desde Excel */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 w-full max-w-md p-6 sm:p-7">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center">
                   <FileSpreadsheet className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Importar Viajes (Excel)</h3>
-                  <p className="text-[11px] text-slate-500">Carga masiva de despachos y cálculo en bloque</p>
+                  <h3 className="text-base font-black text-white">Importar Viajes (Excel)</h3>
+                  <p className="text-[11px] text-slate-400">Carga masiva de despachos y cálculo en bloque</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowImportModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleImportSubmit} className="space-y-4">
-              <div className="p-4 bg-blue-50/70 border border-blue-200/80 rounded-xl text-xs text-blue-900 space-y-1.5">
-                <div className="flex items-center gap-2 font-bold text-blue-950">
-                  <Info className="w-4 h-4 text-blue-600 flex-shrink-0" />
+              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-200 space-y-1.5">
+                <div className="flex items-center gap-2 font-bold text-amber-400">
+                  <Info className="w-4 h-4 flex-shrink-0" />
                   <span>¿No tienes la plantilla oficial?</span>
                 </div>
-                <p className="text-[11px] text-blue-800">
+                <p className="text-[11px] text-slate-300">
                   Descárgala antes para completar las columnas de MIC/DTA, Placas, Fechas y Volúmenes.
                 </p>
                 <button
                   type="button"
                   onClick={downloadTemplate}
-                  className="mt-1 inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 hover:text-blue-900 underline"
+                  className="mt-1 inline-flex items-center gap-1.5 text-xs font-bold text-amber-400 hover:text-amber-300 underline"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Descargar Plantilla Oficial (.xlsx)</span>
@@ -743,7 +910,7 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
                   Selecciona el archivo Excel (.xlsx) *
                 </label>
                 <input
@@ -751,28 +918,28 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
                   required
                   accept=".xlsx, .xlsm, .xltx"
                   onChange={(e) => setImportFile(e.target.files ? e.target.files[0] : null)}
-                  className="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer border border-slate-300 rounded-xl p-1.5 bg-slate-50"
+                  className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-amber-500/10 file:text-amber-400 hover:file:bg-amber-500/20 cursor-pointer border border-slate-800 rounded-xl p-1.5 bg-slate-950"
                 />
                 {importFile && (
-                  <p className="text-[11px] text-emerald-600 font-semibold mt-1.5 flex items-center gap-1">
+                  <p className="text-[11px] text-emerald-400 font-semibold mt-1.5 flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>Archivo listo: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)</span>
                   </p>
                 )}
               </div>
 
-              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setShowImportModal(false)}
-                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                  className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white rounded-xl transition"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={!importFile || importing}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5"
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-1.5"
                 >
                   {importing ? (
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -791,232 +958,232 @@ function ViajesContent({ params }: { params: Promise<{ schema: string }> }) {
 
       {/* Modal Registrar / Editar Viaje Manual */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl p-6 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 w-full max-w-2xl p-6 sm:p-7 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
               <div>
-                <h3 className="text-base font-bold text-slate-900">
+                <h3 className="text-base font-black text-white">
                   {editingViaje ? "Editar Despacho / Viaje" : "Registrar Nuevo Despacho"}
                 </h3>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-400">
                   Cálculo automático de mermas técnicas (0.15% Diésel, 0.25% Gasolina, 0.20% IYA)
                 </p>
               </div>
               <button
                 onClick={() => setShowModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">MIC/DTA Nº</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">MIC/DTA Nº</label>
                   <input
                     type="text"
                     value={formData.mic_dta}
                     onChange={(e) => setFormData({ ...formData, mic_dta: e.target.value.toUpperCase() })}
                     placeholder="ej. 23BO051130T"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono uppercase focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono uppercase text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Placa *</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Placa *</label>
                   <input
                     type="text"
                     required
                     value={formData.placa}
                     onChange={(e) => setFormData({ ...formData, placa: e.target.value.toUpperCase() })}
                     placeholder="ej. 4412-DPC"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold uppercase focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Lote</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Lote</label>
                   <input
                     type="text"
                     value={formData.lote_codigo}
                     onChange={(e) => setFormData({ ...formData, lote_codigo: e.target.value })}
                     placeholder="ej. 1"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Tramo de Transporte *</label>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Tramo de Transporte *</label>
                 <input
                   type="text"
                   required
                   value={formData.tramo}
                   onChange={(e) => setFormData({ ...formData, tramo: e.target.value.toUpperCase() })}
                   placeholder="ej. ARICA - TAMBO QUEMADO - LA PAZ"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs uppercase focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs uppercase text-white focus:outline-none focus:border-amber-500"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Cliente *</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Cliente *</label>
                   <input
                     type="text"
                     required
                     value={formData.cliente}
                     onChange={(e) => setFormData({ ...formData, cliente: e.target.value.toUpperCase() })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs uppercase focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs uppercase text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Producto *</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Producto *</label>
                   <select
                     value={formData.producto}
                     onChange={(e) => setFormData({ ...formData, producto: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-white"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                   >
-                    <option value="GASOLINA">GASOLINA (Tol. 0.25%)</option>
-                    <option value="DIESEL">DIÉSEL (Tol. 0.15%)</option>
-                    <option value="IYA">INSUMOS Y ADITIVOS (Tol. 0.20%)</option>
+                    <option value="GASOLINA" className="bg-slate-900">GASOLINA (Tol. 0.25%)</option>
+                    <option value="DIESEL" className="bg-slate-900">DIÉSEL (Tol. 0.15%)</option>
+                    <option value="IYA" className="bg-slate-900">INSUMOS Y ADITIVOS (Tol. 0.20%)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Periodo Mes *</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Periodo Mes *</label>
                   <input
                     type="month"
                     required
                     value={formData.periodo_mes}
                     onChange={(e) => setFormData({ ...formData, periodo_mes: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Fecha de Carga *</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Fecha de Carga *</label>
                   <input
                     type="date"
                     required
                     value={formData.fecha_carga}
                     onChange={(e) => setFormData({ ...formData, fecha_carga: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Fecha de Descarga *</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Fecha de Descarga *</label>
                   <input
                     type="date"
                     required
                     value={formData.fecha_descarga}
                     onChange={(e) => setFormData({ ...formData, fecha_descarga: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Volumen Origen (Litros) *</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Volumen Origen (Litros) *</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={formData.volumen_origen_litros}
                     onChange={(e) => setFormData({ ...formData, volumen_origen_litros: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Volumen Recepcionado (Litros) *</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Volumen Recepcionado (Litros) *</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={formData.volumen_recepcionado_litros}
                     onChange={(e) => setFormData({ ...formData, volumen_recepcionado_litros: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-3.5">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Tarifa Flete (Bs/m³) *</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Tarifa Flete (Bs/m³) *</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={formData.tarifa_flete}
                     onChange={(e) => setFormData({ ...formData, tarifa_flete: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Tipo Tarifa</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Tipo Tarifa</label>
                   <select
                     value={formData.tipo_tarifa}
                     onChange={(e) => setFormData({ ...formData, tipo_tarifa: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-white"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                   >
-                    <option value="BS_POR_M3">Bs. por m³</option>
-                    <option value="USD_POR_M3">USD por m³</option>
+                    <option value="BS_POR_M3" className="bg-slate-900">Bs. por m³</option>
+                    <option value="USD_POR_M3" className="bg-slate-900">USD por m³</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Precio Merma (Bs/L)</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Precio Merma (Bs/L)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.precio_merma_litro_bs}
                     onChange={(e) => setFormData({ ...formData, precio_merma_litro_bs: parseFloat(e.target.value) || 7.45 })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               {/* Previsualización en Vivo de Cálculos */}
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs">
-                <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px] block mb-1">
+              <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2 text-xs">
+                <span className="font-bold text-amber-400 uppercase tracking-wider text-[10px] block mb-1">
                   Cálculos Oficiales en Tiempo Real:
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
                   <div>
                     <span className="text-slate-400 block">Merma Real:</span>
-                    <span className="font-mono font-bold text-slate-800">{liveCalc.merma_real} L</span>
+                    <span className="font-mono font-bold text-white">{liveCalc.merma_real} L</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block">Tolerable ({liveCalc.tolerancia_pct}%):</span>
-                    <span className="font-mono font-bold text-slate-800">{liveCalc.merma_tolerable} L</span>
+                    <span className="font-mono font-bold text-white">{liveCalc.merma_tolerable} L</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block">Merma a Descontar:</span>
-                    <span className={`font-mono font-bold ${liveCalc.merma_descontar_bs > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                    <span className={`font-mono font-bold ${liveCalc.merma_descontar_bs > 0 ? "text-rose-400" : "text-emerald-400"}`}>
                       {formatCurrency(liveCalc.merma_descontar_bs)}
                     </span>
                   </div>
                   <div>
                     <span className="text-slate-400 block">Flete Bruto Estimado:</span>
-                    <span className="font-mono font-bold text-emerald-700">
+                    <span className="font-mono font-bold text-amber-400">
                       {formatCurrency(liveCalc.flete_total_bs)}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                  className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white rounded-xl transition"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition"
+                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95"
                 >
                   {editingViaje ? "Actualizar Despacho" : "Guardar Despacho"}
                 </button>

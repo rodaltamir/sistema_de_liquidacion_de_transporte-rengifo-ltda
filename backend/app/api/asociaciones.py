@@ -69,6 +69,55 @@ def delete_asociacion(id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Asociación eliminada correctamente"}
 
+@router.get("/{id}/resumen")
+def get_asociacion_resumen(id: int, db: Session = Depends(get_db)):
+    """
+    Retorna métricas consolidadas para el mini-dashboard de la asociación:
+    total empresas afiliadas, total camiones, total viajes, volumen total, flete total y mermas.
+    """
+    asoc = db.query(Asociacion).filter(Asociacion.id == id).first()
+    if not asoc:
+        raise HTTPException(status_code=404, detail="Asociación no encontrada")
+    
+    empresas = db.query(Empresa).filter(Empresa.asociacion_id == id, Empresa.is_active == True).all()
+    
+    from app.models.tenant import UnidadTransporte, Viaje
+    
+    total_camiones = 0
+    total_viajes = 0
+    total_volumen_litros = 0.0
+    total_fletes_bs = 0.0
+    total_mermas_bs = 0.0
+    
+    for emp in empresas:
+        try:
+            t_session = get_tenant_session(emp.schema_name)
+            try:
+                total_camiones += t_session.query(UnidadTransporte).count()
+                viajes = t_session.query(Viaje).all()
+                total_viajes += len(viajes)
+                for v in viajes:
+                    total_volumen_litros += (v.volumen_recepcionado_litros or 0.0)
+                    total_fletes_bs += (v.flete_total_bs or 0.0)
+                    total_mermas_bs += (v.merma_descontar_bs or 0.0)
+            finally:
+                t_session.close()
+        except Exception:
+            continue
+            
+    return {
+        "asociacion_id": asoc.id,
+        "asociacion_name": asoc.name,
+        "sigla": asoc.sigla,
+        "total_empresas": len(empresas),
+        "total_camiones": total_camiones,
+        "total_viajes": total_viajes,
+        "total_volumen_litros": round(total_volumen_litros, 2),
+        "total_volumen_m3": round(total_volumen_litros / 1000.0, 3),
+        "total_fletes_bs": round(total_fletes_bs, 2),
+        "total_mermas_bs": round(total_mermas_bs, 2)
+    }
+
 def _get_asociacion_liquidacion_data(asoc_id: int, periodo_mes: str, db: Session) -> Dict[str, Any]:
     asoc = db.query(Asociacion).filter(Asociacion.id == asoc_id).first()
     if not asoc:

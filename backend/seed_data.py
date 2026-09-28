@@ -53,7 +53,28 @@ def seed():
     try:
         print("Verificando usuarios iniciales del sistema...")
 
-        # 1. Usuario Administrador
+        # 1. Usuario Administrador Oficial Rengifo
+        audi_admin = db.query(User).filter(
+            (User.username == "audirengifo.ltda@gmail.com") | (User.email == "audirengifo.ltda@gmail.com")
+        ).first()
+        if not audi_admin:
+            audi_admin = User(
+                name="Audi Rengifo Ltda.",
+                username="audirengifo.ltda@gmail.com",
+                email="audirengifo.ltda@gmail.com",
+                hashed_password=get_password_hash("liquidaciones26"),
+                role="admin",
+                is_active=True
+            )
+            db.add(audi_admin)
+            print("Usuario 'audirengifo.ltda@gmail.com' inicializado (pass: liquidaciones26)")
+        else:
+            audi_admin.hashed_password = get_password_hash("liquidaciones26")
+            audi_admin.role = "admin"
+            audi_admin.is_active = True
+            print("Usuario 'audirengifo.ltda@gmail.com' actualizado (pass: liquidaciones26)")
+
+        # 2. Usuario Administrador General de respaldo
         admin = db.query(User).filter(User.username == "admin").first()
         if not admin:
             admin = User(
@@ -61,12 +82,13 @@ def seed():
                 username="admin",
                 email="admin@transporte.com",
                 hashed_password=get_password_hash("admin123"),
-                role="admin"
+                role="admin",
+                is_active=True
             )
             db.add(admin)
             print("Usuario 'admin' inicializado (pass: admin123)")
 
-        # 2. Usuario Operador
+        # 3. Usuario Operador
         operador = db.query(User).filter(User.username == "usuario").first()
         if not operador:
             operador = User(
@@ -74,7 +96,8 @@ def seed():
                 username="usuario",
                 email="operador@transporte.com",
                 hashed_password=get_password_hash("user123"),
-                role="user"
+                role="user",
+                is_active=True
             )
             db.add(operador)
             print("Usuario 'usuario' inicializado (pass: user123)")

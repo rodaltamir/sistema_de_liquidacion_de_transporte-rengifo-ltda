@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.db.session import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.models.public import User
@@ -11,7 +12,15 @@ router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
 @router.post("/login", response_model=Token)
 def login(login_data: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == login_data.username).first()
+    identifier = login_data.username.strip()
+    if identifier.lower() == "audirengifo.ltda@gmial.com":
+        identifier = "audirengifo.ltda@gmail.com"
+
+    user = db.query(User).filter(
+        (func.lower(User.username) == identifier.lower()) |
+        (func.lower(User.email) == identifier.lower())
+    ).first()
+
     if not user or not verify_password(login_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -23,6 +32,46 @@ def login(login_data: UserLogin, db: Session = Depends(get_db)):
             detail="El usuario está desactivado"
         )
     
+    access_token = create_access_token(subject=user.username, role=user.role)
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "username": user.username,
+            "email": user.email,
+            "role": user.role
+        }
+    }
+
+@router.post("/register", response_model=Token)
+def register(user_in: UserCreate, db: Session = Depends(get_db)):
+    clean_username = user_in.username.strip()
+    clean_email = user_in.email.strip().lower()
+
+    existing = db.query(User).filter(
+        (func.lower(User.username) == clean_username.lower()) |
+        (func.lower(User.email) == clean_email)
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El nombre de usuario o correo electrónico ya se encuentra registrado"
+        )
+
+    user = User(
+        name=user_in.name.strip(),
+        username=clean_username,
+        email=clean_email,
+        hashed_password=get_password_hash(user_in.password),
+        role=user_in.role or "user",
+        is_active=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
     access_token = create_access_token(subject=user.username, role=user.role)
     return {
         "access_token": access_token,

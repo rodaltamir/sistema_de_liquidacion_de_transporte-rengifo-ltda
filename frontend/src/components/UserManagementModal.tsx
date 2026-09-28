@@ -46,8 +46,8 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
         icon: "error",
         title: "Error",
         text: err.message,
-        background: "#ffffff",
-        color: "#0f172a"
+        background: "#0f172a",
+        color: "#ffffff"
       });
     } finally {
       setLoading(false);
@@ -103,13 +103,13 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
           title: "Usuario actualizado",
           timer: 1300,
           showConfirmButton: false,
-          background: "#ffffff",
-          color: "#0f172a"
+          background: "#0f172a",
+          color: "#ffffff"
         });
       } else {
         // Crear
         if (!formData.password) {
-          Swal.fire({ icon: "warning", title: "Atención", text: "La contraseña es obligatoria al crear un usuario.", background: "#fff", color: "#000" });
+          Swal.fire({ icon: "warning", title: "Atención", text: "La contraseña es obligatoria al crear un usuario.", background: "#0f172a", color: "#ffffff" });
           return;
         }
         await apiFetch("/auth/users", {
@@ -127,8 +127,8 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
           title: "Usuario creado",
           timer: 1300,
           showConfirmButton: false,
-          background: "#ffffff",
-          color: "#0f172a"
+          background: "#0f172a",
+          color: "#ffffff"
         });
       }
 
@@ -139,8 +139,8 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
         icon: "error",
         title: "Error al guardar usuario",
         text: err.message,
-        background: "#ffffff",
-        color: "#0f172a"
+        background: "#0f172a",
+        color: "#ffffff"
       });
     }
   };
@@ -155,8 +155,8 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
       cancelButtonText: "Cancelar",
       confirmButtonColor: "#dc2626",
       cancelButtonColor: "#64748b",
-      background: "#ffffff",
-      color: "#0f172a"
+      background: "#0f172a",
+      color: "#ffffff"
     });
 
     if (res.isConfirmed) {
@@ -167,8 +167,8 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
           title: "Usuario eliminado",
           timer: 1200,
           showConfirmButton: false,
-          background: "#ffffff",
-          color: "#0f172a"
+          background: "#0f172a",
+          color: "#ffffff"
         });
         loadUsers();
       } catch (err: any) {
@@ -176,8 +176,8 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
           icon: "error",
           title: "No se pudo eliminar",
           text: err.message,
-          background: "#ffffff",
-          color: "#0f172a"
+          background: "#0f172a",
+          color: "#ffffff"
         });
       }
     }
@@ -186,31 +186,31 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
+      <div className="bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Cabecera */}
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <div className="px-6 py-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-blue-50 text-blue-600 border border-blue-200">
+            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
               <Users className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Gestión de Usuarios del Sistema</h2>
-              <p className="text-xs text-slate-500">Administra accesos, roles (Admin / Operador) y credenciales</p>
+              <h2 className="text-lg font-bold text-white">Gestión de Usuarios del Sistema</h2>
+              <p className="text-xs text-slate-400">Administra accesos, roles (Admin / Operador) y credenciales</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleOpenCreate}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-md shadow-amber-500/20 transition-all"
             >
               <Plus className="w-4 h-4" />
               <span>Nuevo Usuario</span>
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -221,14 +221,14 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
         <div className="p-6 overflow-y-auto flex-1">
           {loading ? (
             <div className="py-12 flex justify-center">
-              <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+              <div className="w-8 h-8 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
             </div>
           ) : users.length === 0 ? (
             <div className="text-center py-12 text-slate-500">No hay usuarios registrados</div>
           ) : (
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <div className="border border-slate-800 rounded-2xl overflow-hidden">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                <thead className="bg-slate-950 border-b border-slate-800 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   <tr>
                     <th className="py-3 px-4">Nombre / Usuario</th>
                     <th className="py-3 px-4">Correo</th>
@@ -237,19 +237,19 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
                     <th className="py-3 px-4 text-right">Acciones</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-800">
                   {users.map((u) => (
-                    <tr key={u.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={u.id} className="hover:bg-slate-850/60 transition-colors">
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900">{u.name}</div>
-                        <div className="text-xs text-slate-500 font-mono">@{u.username}</div>
+                        <div className="font-semibold text-white">{u.name}</div>
+                        <div className="text-xs text-slate-400 font-mono">@{u.username}</div>
                       </td>
-                      <td className="py-3 px-4 text-slate-600 text-xs">{u.email}</td>
+                      <td className="py-3 px-4 text-slate-300 text-xs">{u.email}</td>
                       <td className="py-3 px-4 text-center">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                           u.role === "admin"
-                            ? "bg-purple-50 text-purple-700 border border-purple-200"
-                            : "bg-blue-50 text-blue-700 border border-blue-200"
+                            ? "bg-amber-500/10 text-amber-400 border border-amber-500/30"
+                            : "bg-blue-500/10 text-blue-400 border border-blue-500/30"
                         }`}>
                           {u.role === "admin" ? <ShieldCheck className="w-3 h-3" /> : <UserCheck className="w-3 h-3" />}
                           {u.role === "admin" ? "Admin" : "Operador"}
@@ -257,7 +257,7 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                          u.is_active ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-100 text-slate-500"
+                          u.is_active ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" : "bg-slate-800 text-slate-400"
                         }`}>
                           {u.is_active ? "Activo" : "Inactivo"}
                         </span>
@@ -267,14 +267,14 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
                           <button
                             onClick={() => handleOpenEdit(u)}
                             title="Editar usuario"
-                            className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleDelete(u)}
                             title="Eliminar usuario"
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -290,30 +290,30 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
 
         {/* Modal Secundario para Crear/Editar Usuario */}
         {showFormModal && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 animate-in fade-in zoom-in-95">
-              <h3 className="text-base font-bold text-slate-900 mb-1">
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+            <div className="bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 w-full max-w-md p-6 animate-in fade-in zoom-in-95">
+              <h3 className="text-base font-bold text-white mb-1">
                 {editingUser ? "Editar Usuario" : "Crear Nuevo Usuario"}
               </h3>
-              <p className="text-xs text-slate-500 mb-4">
+              <p className="text-xs text-slate-400 mb-4">
                 {editingUser ? "Modifica los datos del usuario seleccionado" : "Registra una cuenta de acceso al sistema"}
               </p>
 
               <form onSubmit={handleSubmit} className="space-y-3.5">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Nombre Completo</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1">Nombre Completo</label>
                   <input
                     type="text"
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="ej. Juan Pérez Choque"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Nombre de Usuario (Login)</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1">Nombre de Usuario (Login)</label>
                   <input
                     type="text"
                     required
@@ -321,24 +321,24 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
                     value={formData.username}
                     onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                     placeholder="ej. jperez"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 disabled:bg-slate-100 disabled:text-slate-500 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 disabled:opacity-50 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Correo Electrónico</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1">Correo Electrónico</label>
                   <input
                     type="email"
                     required
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="ej. jperez@transporte.com"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1">
                     {editingUser ? "Nueva Contraseña (dejar en blanco para no cambiar)" : "Contraseña"}
                   </label>
                   <input
@@ -346,17 +346,17 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     placeholder="••••••••"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Rol</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1">Rol</label>
                     <select
                       value={formData.role}
                       onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                     >
                       <option value="user">Operador (Usuario)</option>
                       <option value="admin">Administrador</option>
@@ -365,11 +365,11 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
 
                   {editingUser && (
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Estado</label>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1">Estado</label>
                       <select
                         value={formData.is_active ? "1" : "0"}
                         onChange={(e) => setFormData({ ...formData, is_active: e.target.value === "1" })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                       >
                         <option value="1">Activo</option>
                         <option value="0">Inactivo</option>
@@ -378,17 +378,17 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
                   )}
                 </div>
 
-                <div className="mt-5 pt-3 border-t border-slate-200 flex justify-end gap-2">
+                <div className="mt-5 pt-3 border-t border-slate-800 flex justify-end gap-2.5">
                   <button
                     type="button"
                     onClick={() => setShowFormModal(false)}
-                    className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                    className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors"
+                    className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-amber-500/20 transition"
                   >
                     {editingUser ? "Guardar Cambios" : "Crear Usuario"}
                   </button>
