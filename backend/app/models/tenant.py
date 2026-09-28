@@ -135,6 +135,12 @@ class Viaje(Base):
     # Estado y relación
     estado = Column(String(50), default="Pendiente")             # "Pendiente", "Liquidado", "Conciliado"
     liquidacion_id = Column(Integer, ForeignKey("tenant.liquidaciones.id", ondelete="SET NULL"), nullable=True)
+    
+    # Flota de Apoyo (Subcontratistas / Empresas aliadas)
+    es_apoyo = Column(Boolean, default=False)
+    empresa_apoyo_id = Column(Integer, nullable=True)
+    empresa_apoyo_nombre = Column(String(200), nullable=True)
+
     observaciones = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -220,4 +226,48 @@ class Empleado(Base):
     contacto_emergencia = Column(String(200), nullable=True)
     notas = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class EmpresaApoyo(Base):
+    """
+    Empresas o transportistas aliados de apoyo para cuando la empresa principal
+    requiere mayor capacidad de flota o se queda sin cisternas disponibles.
+    """
+    __tablename__ = "empresas_apoyo"
+    __table_args__ = {"schema": "tenant"}
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(200), nullable=False)
+    representante = Column(String(150), nullable=True)
+    telefono = Column(String(50), nullable=True)
+    ci_nit = Column(String(50), nullable=True)
+    direccion = Column(String(255), nullable=True)
+    notas = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    unidades = relationship("UnidadApoyo", back_populates="empresa_apoyo", cascade="all, delete-orphan")
+
+
+class UnidadApoyo(Base):
+    """
+    Camiones / Cisternas que pertenecen a una Empresa de Apoyo.
+    """
+    __tablename__ = "unidades_apoyo"
+    __table_args__ = {"schema": "tenant"}
+
+    id = Column(Integer, primary_key=True, index=True)
+    empresa_apoyo_id = Column(Integer, ForeignKey("tenant.empresas_apoyo.id", ondelete="CASCADE"), nullable=False)
+    placa = Column(String(50), nullable=False, index=True)
+    conductor_nombre = Column(String(200), nullable=True)
+    conductor_telefono = Column(String(50), nullable=True)
+    conductor_ci = Column(String(50), nullable=True)
+    capacidad_litros = Column(Float, default=34000.0)
+    capacidad_m3 = Column(Float, default=34.0)
+    num_compartimentos = Column(Integer, default=4)
+    estado = Column(String(50), default="Disponible")  # "Disponible", "En Ruta", "Mantenimiento", "Inactivo"
+    notas = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    empresa_apoyo = relationship("EmpresaApoyo", back_populates="unidades")
 

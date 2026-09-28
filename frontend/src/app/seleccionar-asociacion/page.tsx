@@ -53,6 +53,7 @@ interface Empresa {
   name: string;
   schema_name: string;
   nit: string | null;
+  tipo_empresa?: string | null;
   asociacion_id: number | null;
   asociacion_name: string | null;
   representante_legal: string | null;
@@ -122,6 +123,7 @@ export default function SeleccionarAsociacionPage() {
   // Formulario Empresa
   const [empresaForm, setEmpresaForm] = useState({
     name: "",
+    tipo_empresa: "Sociedad",
     nit: "",
     asociacion_id: "" as string | number,
     representante_legal: "",
@@ -296,6 +298,7 @@ export default function SeleccionarAsociacionPage() {
     setEditingEmpresa(null);
     setEmpresaForm({
       name: "",
+      tipo_empresa: "Sociedad",
       nit: "",
       asociacion_id: asocId || "",
       representante_legal: "",
@@ -312,6 +315,7 @@ export default function SeleccionarAsociacionPage() {
     setEditingEmpresa(emp);
     setEmpresaForm({
       name: emp.name,
+      tipo_empresa: emp.tipo_empresa || "Sociedad",
       nit: emp.nit || "",
       asociacion_id: emp.asociacion_id !== null ? emp.asociacion_id : "",
       representante_legal: emp.representante_legal || "",
@@ -328,6 +332,7 @@ export default function SeleccionarAsociacionPage() {
     try {
       const payload: any = {
         name: empresaForm.name.trim(),
+        tipo_empresa: empresaForm.tipo_empresa,
         nit: empresaForm.nit.trim() || null,
         asociacion_id: empresaForm.asociacion_id !== "" ? Number(empresaForm.asociacion_id) : null,
         representante_legal: empresaForm.representante_legal.trim() || null,
@@ -467,18 +472,7 @@ export default function SeleccionarAsociacionPage() {
 
           {/* Menú de Usuario & Controles */}
           <div className="flex items-center gap-3">
-            {currentUser && currentUser.role === 'admin' && (
-              <button
-                onClick={() => setShowUserModal(true)}
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-200 text-xs font-semibold transition"
-                title="Administrar usuarios y permisos"
-              >
-                <Users className="w-4 h-4 text-amber-400" />
-                <span>Usuarios</span>
-              </button>
-            )}
-
-            <div className="flex items-center gap-2.5 pl-3 border-l border-slate-800">
+            <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 font-bold text-xs flex items-center justify-center flex-shrink-0">
                 {currentUser?.name?.charAt(0) || "U"}
               </div>
@@ -506,101 +500,63 @@ export default function SeleccionarAsociacionPage() {
       {/* Contenido Principal (Ancho Completo y Fluido) */}
       <main className="w-full max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-8 flex-1 space-y-7 relative z-10">
         
-        {/* MINI DASHBOARD EJECUTIVO */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* MINI DASHBOARD EJECUTIVO (3 TARJETAS SIMÉTRICAS) */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
           
           {/* Tarjeta 1: Empresas */}
-          <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 transition-all shadow-lg shadow-black/20 flex flex-col justify-between min-h-[125px] group">
+          <div className="p-6 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800/90 hover:border-amber-500/40 transition-all shadow-xl shadow-black/30 flex flex-col justify-between min-h-[135px] group">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Empresas</span>
-              <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <Building2 className="w-4.5 h-4.5" />
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Empresas de Transporte</span>
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
+                <Truck className="w-5 h-5" />
               </div>
             </div>
-            <div className="my-2.5">
-              <div className="text-3xl font-black text-white tracking-tight">
+            <div className="my-2">
+              <div className="text-3xl sm:text-4xl font-black text-white tracking-tight">
                 {resumen.total_empresas}
               </div>
             </div>
-            <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-              <span>{resumen.empresas_independientes} Independientes</span>
+            <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+              <span className="flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> {resumen.empresas_independientes} Independientes</span>
               <span className="font-semibold text-amber-400">{resumen.empresas_asociadas} Asociadas</span>
             </div>
           </div>
 
           {/* Tarjeta 2: Asociaciones */}
-          <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-blue-500/40 transition-all shadow-lg shadow-black/20 flex flex-col justify-between min-h-[125px] group">
+          <div className="p-6 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800/90 hover:border-blue-500/40 transition-all shadow-xl shadow-black/30 flex flex-col justify-between min-h-[135px] group">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Asociaciones</span>
-              <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <Users className="w-4.5 h-4.5" />
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Asociaciones & Cámaras</span>
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/25 text-blue-400 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
+                <Building2 className="w-5 h-5" />
               </div>
             </div>
-            <div className="my-2.5">
-              <div className="text-3xl font-black text-white tracking-tight">
+            <div className="my-2">
+              <div className="text-3xl sm:text-4xl font-black text-white tracking-tight">
                 {resumen.total_asociaciones}
               </div>
             </div>
-            <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+            <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
               <span>Entidades gremiales</span>
-              <span className="font-semibold text-blue-400">{resumen.total_asociaciones} activas</span>
+              <span className="font-semibold text-blue-400">{resumen.total_asociaciones} Activas</span>
             </div>
           </div>
 
           {/* Tarjeta 3: Flota Total Cisternas */}
-          <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40 transition-all shadow-lg shadow-black/20 flex flex-col justify-between min-h-[125px] group">
+          <div className="p-6 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800/90 hover:border-emerald-500/40 transition-all shadow-xl shadow-black/30 flex flex-col justify-between min-h-[135px] group">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Flota Cisternas</span>
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <Truck className="w-4.5 h-4.5" />
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Flota de Cisternas</span>
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
+                <Layers className="w-5 h-5" />
               </div>
             </div>
-            <div className="my-2.5">
-              <div className="text-3xl font-black text-white tracking-tight">
+            <div className="my-2">
+              <div className="text-3xl sm:text-4xl font-black text-white tracking-tight">
                 {resumen.total_camiones}
               </div>
             </div>
-            <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-              <span>Unidades de carga</span>
-              <span className="font-semibold text-emerald-400">{resumen.total_camiones} registradas</span>
-            </div>
-          </div>
-
-          {/* Tarjeta 4: Volumen Total */}
-          <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-cyan-500/40 transition-all shadow-lg shadow-black/20 flex flex-col justify-between min-h-[125px] group">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Volumen Despachado</span>
-              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <Fuel className="w-4.5 h-4.5" />
-              </div>
-            </div>
-            <div className="my-2.5">
-              <div className="text-2xl sm:text-3xl font-black text-white tracking-tight truncate">
-                {resumen.total_volumen_m3 > 0 ? `${resumen.total_volumen_m3.toLocaleString()} m³` : `${resumen.total_volumen_litros.toLocaleString()} L`}
-              </div>
-            </div>
-            <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-              <span>Total histórico</span>
-              <span className="font-semibold text-cyan-400">{resumen.total_viajes} viajes</span>
-            </div>
-          </div>
-
-          {/* Tarjeta 5: Fletes Acumulados */}
-          <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 transition-all shadow-lg shadow-black/20 flex flex-col justify-between min-h-[125px] group sm:col-span-2 lg:col-span-1">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Fletes Acumulados</span>
-              <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <CircleDollarSign className="w-4.5 h-4.5" />
-              </div>
-            </div>
-            <div className="my-2.5">
-              <div className="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight truncate font-mono">
-                Bs. {resumen.total_fletes_bs.toLocaleString()}
-              </div>
-            </div>
-            <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-              <span>Consolidado global</span>
-              <span className="font-semibold text-amber-400">{resumen.total_liquidaciones} planillas</span>
+            <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+              <span>Unidades vehiculares</span>
+              <span className="font-semibold text-emerald-400">{resumen.total_camiones} Registradas</span>
             </div>
           </div>
 
@@ -664,76 +620,92 @@ export default function SeleccionarAsociacionPage() {
           </div>
         )}
 
-        {/* Barra de Controles, Pestañas y Búsqueda */}
-        <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl shadow-black/40 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        {/* BUSCADOR PROMINENTE Y HERRAMIENTAS DE NAVEGACIÓN */}
+        <div className="bg-slate-900/90 backdrop-blur-md border border-slate-800/90 rounded-2xl p-5 shadow-xl shadow-black/30 space-y-4">
           
-          {/* Segmented Control / Pestañas */}
-          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 self-start sm:self-auto">
-            <button
-              onClick={() => setActiveTab("todas")}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeTab === "todas" ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              Todas ({asociaciones.length + empresas.length})
-            </button>
-            <button
-              onClick={() => setActiveTab("asociaciones")}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                activeTab === "asociaciones" ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>Asociaciones ({asociaciones.length})</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("empresas")}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                activeTab === "empresas" ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <Truck className="w-3.5 h-3.5" />
-              <span>Empresas ({empresas.length})</span>
-            </button>
+          {/* Fila 1: Buscador Principal de Gran Visibilidad */}
+          <div className="relative w-full">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <Search className="w-5 h-5 text-amber-500" />
+            </div>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar empresa de transporte, asociación, sigla, NIT o representante legal..."
+              className="w-full pl-12 pr-12 py-3.5 bg-slate-950/90 border border-slate-800 hover:border-slate-700 text-white placeholder-slate-500 text-sm rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition shadow-inner"
+            />
+            {search ? (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-white transition"
+                title="Limpiar búsqueda"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            ) : null}
           </div>
 
-          {/* Búsqueda y Botones de Creación */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1 md:justify-end">
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por empresa, asociación, NIT o sigla..."
-                className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 text-white placeholder-slate-500 text-xs sm:text-sm rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition"
-              />
-              {search && (
-                <button
-                  onClick={() => setSearch("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+          {/* Fila 2: Filtros por Categoría y Botones de Creación */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+            
+            {/* Pestañas de Filtro Segmentadas */}
+            <div className="flex items-center bg-slate-950/80 p-1 rounded-xl border border-slate-800/80 self-start sm:self-auto overflow-x-auto max-w-full">
+              <button
+                onClick={() => setActiveTab("todas")}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${
+                  activeTab === "todas" ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <span>Todas</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${activeTab === "todas" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"}`}>
+                  {asociaciones.length + empresas.length}
+                </span>
+              </button>
+              <button
+                onClick={() => setActiveTab("asociaciones")}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${
+                  activeTab === "asociaciones" ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>Asociaciones</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${activeTab === "asociaciones" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"}`}>
+                  {asociaciones.length}
+                </span>
+              </button>
+              <button
+                onClick={() => setActiveTab("empresas")}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${
+                  activeTab === "empresas" ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <Truck className="w-3.5 h-3.5" />
+                <span>Empresas</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${activeTab === "empresas" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"}`}>
+                  {empresas.length}
+                </span>
+              </button>
             </div>
 
-            <div className="flex items-center gap-2">
+            {/* Acciones de Creación Primaria */}
+            <div className="flex items-center gap-2.5">
               <button
                 onClick={() => handleOpenCreateEmpresa()}
-                className="flex-1 sm:flex-none px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-1.5"
+                className="flex-1 sm:flex-none px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4 stroke-[3]" />
                 <span>Nueva Empresa</span>
               </button>
               <button
                 onClick={handleOpenCreateAsoc}
-                className="flex-1 sm:flex-none px-4 py-2 bg-slate-800 hover:bg-slate-750 text-white font-bold text-xs rounded-xl border border-slate-700 transition flex items-center justify-center gap-1.5"
+                className="flex-1 sm:flex-none px-4 py-2.5 bg-slate-800/90 hover:bg-slate-800 text-white font-bold text-xs rounded-xl border border-slate-700 hover:border-slate-600 transition flex items-center justify-center gap-2"
               >
                 <Building2 className="w-4 h-4 text-amber-400" />
                 <span>Nueva Asociación</span>
               </button>
             </div>
+
           </div>
 
         </div>
@@ -753,23 +725,35 @@ export default function SeleccionarAsociacionPage() {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-5">
               {filteredAsocs.map((asoc) => (
                 <div
                   key={asoc.id}
                   onClick={() => router.push(`/asociacion/${asoc.id}`)}
-                  className="p-5 sm:p-6 rounded-2xl bg-slate-900/90 hover:bg-slate-850/80 border border-slate-800 hover:border-blue-500/40 shadow-xl shadow-black/40 transition-all cursor-pointer flex flex-col justify-between group"
+                  className="p-6 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/90 hover:from-slate-850/90 hover:to-slate-900 border border-slate-800/90 hover:border-blue-500/50 shadow-xl shadow-black/40 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
                 >
-                  <div>
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="w-11 h-11 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-base flex-shrink-0 group-hover:scale-105 transition-transform">
-                        {asoc.sigla ? asoc.sigla.slice(0, 3) : <Building2 className="w-5 h-5" />}
+                  <div className="space-y-4">
+                    {/* Header de la tarjeta */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/25 text-blue-400 flex items-center justify-center font-black text-sm flex-shrink-0 group-hover:scale-105 transition-transform shadow-inner">
+                          {asoc.sigla ? asoc.sigla.slice(0, 3) : <Building2 className="w-6 h-6" />}
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400/90 bg-blue-500/10 px-2.5 py-0.5 rounded-full border border-blue-500/20 inline-block">
+                            Asociación Gremial
+                          </span>
+                          <h4 className="text-base font-extrabold text-white group-hover:text-blue-300 transition-colors leading-snug line-clamp-1 mt-0.5">
+                            {asoc.name}
+                          </h4>
+                        </div>
                       </div>
+
                       <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={(e) => handleOpenEditAsoc(asoc, e)}
                           title="Editar Asociación"
-                          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-lg transition"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
@@ -783,46 +767,35 @@ export default function SeleccionarAsociacionPage() {
                       </div>
                     </div>
 
-                    <h4 className="text-base font-bold text-white group-hover:text-blue-400 transition leading-snug line-clamp-2">
-                      {asoc.name}
-                    </h4>
-
-                    {asoc.sigla && (
-                      <span className="inline-block mt-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                        {asoc.sigla}
-                      </span>
-                    )}
-
-                    <div className="mt-4 space-y-1.5 text-xs text-slate-400">
-                      {asoc.nit && (
-                        <p className="flex items-center gap-2">
-                          <span className="text-slate-500 font-semibold">NIT:</span>
-                          <span className="text-slate-300 font-mono">{asoc.nit}</span>
-                        </p>
-                      )}
-                      {asoc.representante_legal && (
-                        <p className="flex items-center gap-2 truncate">
-                          <span className="text-slate-500 font-semibold">Representante:</span>
-                          <span className="text-slate-300 truncate">{asoc.representante_legal}</span>
-                        </p>
-                      )}
-                      {asoc.telefono && (
-                        <p className="flex items-center gap-2">
-                          <Phone className="w-3.5 h-3.5 text-slate-500" />
-                          <span className="text-slate-300">{asoc.telefono}</span>
-                        </p>
-                      )}
+                    {/* Metadata limpia y estilizada */}
+                    <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-850/80 space-y-1.5 text-xs text-slate-300">
+                      <div className="flex items-center justify-between text-slate-400">
+                        <span className="text-slate-500">Empresas afiliadas:</span>
+                        <span className="font-bold text-white bg-slate-800 px-2 py-0.5 rounded-md">
+                          {asoc.empresas?.length || 0} afiliadas
+                        </span>
+                      </div>
+                      {asoc.representante_legal ? (
+                        <div className="flex items-center gap-2 truncate pt-1 border-t border-slate-900">
+                          <UserIcon className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                          <span className="text-slate-300 truncate font-medium">{asoc.representante_legal}</span>
+                        </div>
+                      ) : null}
+                      {asoc.telefono ? (
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <Phone className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                          <span className="text-slate-300 font-medium">{asoc.telefono}</span>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
-                  <div className="mt-5 pt-3.5 border-t border-slate-800 flex items-center justify-between text-xs">
-                    <span className="text-slate-400 font-medium">
-                      {asoc.empresas?.length || 0} {asoc.empresas?.length === 1 ? "empresa asociada" : "empresas asociadas"}
-                    </span>
-                    <span className="font-bold text-blue-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                      <span>Ver Planilla</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </span>
+                  {/* Botón de Entrada */}
+                  <div className="mt-5 pt-3.5 border-t border-slate-800/80">
+                    <div className="w-full py-2.5 px-4 rounded-xl bg-blue-500/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md group-hover:shadow-blue-500/20">
+                      <span>Ver Planilla Consolidada</span>
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -845,23 +818,56 @@ export default function SeleccionarAsociacionPage() {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-5">
               {filteredEmpresas.map((emp) => (
                 <div
                   key={emp.id}
                   onClick={() => router.push(`/${emp.schema_name}/dashboard`)}
-                  className="p-5 sm:p-6 rounded-2xl bg-slate-900/90 hover:bg-slate-850/80 border border-slate-800 hover:border-amber-500/40 shadow-xl shadow-black/40 transition-all cursor-pointer flex flex-col justify-between group"
+                  className="p-6 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/90 hover:from-slate-850/90 hover:to-slate-900 border border-slate-800/90 hover:border-amber-500/50 shadow-xl shadow-black/40 hover:shadow-2xl hover:shadow-amber-500/10 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
                 >
-                  <div>
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
-                        <Truck className="w-5 h-5" />
+                  <div className="space-y-4">
+                    {/* Header de la tarjeta */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-inner">
+                          <Truck className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                            {emp.tipo_empresa === "Unipersonal" ? (
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 inline-flex items-center gap-1">
+                                <UserIcon className="w-2.5 h-2.5" />
+                                Unipersonal
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-500/20 inline-flex items-center gap-1">
+                                <Building2 className="w-2.5 h-2.5" />
+                                Sociedad
+                              </span>
+                            )}
+                            {emp.asociacion_name ? (
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20 inline-flex items-center gap-1">
+                                <Building2 className="w-2.5 h-2.5" />
+                                Asoc: {emp.asociacion_name}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 inline-flex items-center gap-1">
+                                <ShieldCheck className="w-2.5 h-2.5" />
+                                Independiente
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="text-base font-extrabold text-white group-hover:text-amber-300 transition-colors leading-snug line-clamp-1 mt-0.5">
+                            {emp.name}
+                          </h4>
+                        </div>
                       </div>
+
                       <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={(e) => handleOpenEditEmpresa(emp, e)}
                           title="Editar Empresa"
-                          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-lg transition"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
@@ -875,52 +881,40 @@ export default function SeleccionarAsociacionPage() {
                       </div>
                     </div>
 
-                    <h4 className="text-base font-bold text-white group-hover:text-amber-400 transition leading-snug line-clamp-2">
-                      {emp.name}
-                    </h4>
-
-                    <div className="mt-1">
-                      {emp.asociacion_name ? (
-                        <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                          Asoc: {emp.asociacion_name}
+                    {/* Metadata limpia y estilizada */}
+                    <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-850/80 space-y-1.5 text-xs text-slate-300">
+                      <div className="flex items-center justify-between text-slate-400">
+                        <span className="text-slate-500">Esquema BD:</span>
+                        <span className="font-mono text-amber-400/90 bg-amber-500/10 px-2 py-0.5 rounded-md text-[11px] font-semibold">
+                          {emp.schema_name}
                         </span>
-                      ) : (
-                        <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-                          Empresa Independiente
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="mt-4 space-y-1.5 text-xs text-slate-400">
-                      {emp.nit && (
-                        <p className="flex items-center gap-2">
-                          <span className="text-slate-500 font-semibold">NIT:</span>
-                          <span className="text-slate-300 font-mono">{emp.nit}</span>
-                        </p>
-                      )}
-                      {emp.representante_legal && (
-                        <p className="flex items-center gap-2 truncate">
-                          <span className="text-slate-500 font-semibold">Gerente:</span>
-                          <span className="text-slate-300 truncate">{emp.representante_legal}</span>
-                        </p>
-                      )}
-                      {emp.telefono && (
-                        <p className="flex items-center gap-2">
-                          <Phone className="w-3.5 h-3.5 text-slate-500" />
-                          <span className="text-slate-300">{emp.telefono}</span>
-                        </p>
-                      )}
+                      </div>
+                      {emp.representante_legal ? (
+                        <div className="flex items-center gap-2 truncate pt-1 border-t border-slate-900">
+                          <UserIcon className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                          <span className="text-slate-300 truncate font-medium">{emp.representante_legal}</span>
+                        </div>
+                      ) : null}
+                      {emp.telefono ? (
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <Phone className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                          <span className="text-slate-300 font-medium">{emp.telefono}</span>
+                        </div>
+                      ) : null}
+                      {!emp.representante_legal && !emp.telefono ? (
+                        <div className="text-[11px] text-slate-500 italic pt-1 border-t border-slate-900 flex items-center gap-1.5">
+                          <span>Base de datos activa y lista para viajes</span>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
-                  <div className="mt-5 pt-3.5 border-t border-slate-800 flex items-center justify-between text-xs">
-                    <span className="text-[11px] font-mono text-slate-500 truncate max-w-[130px]">
-                      {emp.schema_name}
-                    </span>
-                    <span className="font-bold text-amber-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                  {/* Botón de Entrada */}
+                  <div className="mt-5 pt-3.5 border-t border-slate-800/80">
+                    <div className="w-full py-2.5 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-slate-950 border border-amber-500/30 font-black text-xs flex items-center justify-center gap-2 transition-all shadow-md group-hover:shadow-amber-500/20">
                       <span>Ingresar a Operaciones</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </span>
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1098,6 +1092,39 @@ export default function SeleccionarAsociacionPage() {
                   className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                   autoFocus
                 />
+              </div>
+
+              {/* Selector de Tipo de Empresa */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                  Tipo Jurídico de Empresa *
+                </label>
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setEmpresaForm({ ...empresaForm, tipo_empresa: "Sociedad" })}
+                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
+                      empresaForm.tipo_empresa === "Sociedad"
+                        ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-extrabold"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>Sociedad / Empresa</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEmpresaForm({ ...empresaForm, tipo_empresa: "Unipersonal" })}
+                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
+                      empresaForm.tipo_empresa === "Unipersonal"
+                        ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-extrabold"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <UserIcon className="w-3.5 h-3.5" />
+                    <span>Unipersonal</span>
+                  </button>
+                </div>
               </div>
 
               <div>

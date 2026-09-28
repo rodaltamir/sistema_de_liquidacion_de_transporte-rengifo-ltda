@@ -21,6 +21,9 @@ class ViajeBase(BaseModel):
     tipo_tarifa: Optional[str] = "BS_POR_M3"  # BS_POR_M3 | USD_POR_M3 | BS_TOTAL_VIAJE
     precio_merma_litro_bs: Optional[float] = None
     observaciones: Optional[str] = None
+    es_apoyo: Optional[bool] = False
+    empresa_apoyo_id: Optional[int] = None
+    empresa_apoyo_nombre: Optional[str] = None
 
 class ViajeCreate(ViajeBase):
     pass
@@ -45,6 +48,9 @@ class ViajeUpdate(BaseModel):
     precio_merma_litro_bs: Optional[float] = None
     observaciones: Optional[str] = None
     estado: Optional[str] = None
+    es_apoyo: Optional[bool] = None
+    empresa_apoyo_id: Optional[int] = None
+    empresa_apoyo_nombre: Optional[str] = None
 
 class ViajeResponse(ViajeBase):
     id: int

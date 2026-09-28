@@ -17,7 +17,10 @@ import {
   X,
   ShieldCheck,
   Calendar,
-  Layers
+  Layers,
+  ChevronDown,
+  Phone,
+  CreditCard
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
@@ -73,6 +76,7 @@ function FlotaContent() {
 
   const [showModal, setShowModal] = useState(false);
   const [editingUnidad, setEditingUnidad] = useState<Unidad | null>(null);
+  const [showOptionalFields, setShowOptionalFields] = useState(false);
 
   const [formData, setFormData] = useState({
     placa: "",
@@ -117,6 +121,7 @@ function FlotaContent() {
 
   const handleOpenCreate = () => {
     setEditingUnidad(null);
+    setShowOptionalFields(false);
     setFormData({
       placa: "",
       marca: "",
@@ -146,6 +151,7 @@ function FlotaContent() {
 
   const handleOpenEdit = (unidad: Unidad) => {
     setEditingUnidad(unidad);
+    setShowOptionalFields(Boolean(unidad.marca || unidad.b_sisa || unidad.soat_numero));
     setFormData({
       placa: unidad.placa,
       marca: unidad.marca || "",
@@ -317,56 +323,37 @@ function FlotaContent() {
         </div>
       </div>
 
-      {/* Tarjetas KPI Simétricas y Balanceadas */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+      {/* Tarjetas KPI Simétricas y Balanceadas (3 Tarjetas) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         
         {/* Tarjeta 1: Total Flota */}
-        <div className="bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+        <div className="bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800/90 hover:border-amber-500/40 rounded-2xl p-5 shadow-xl shadow-black/25 transition-all flex flex-col justify-between min-h-[130px] group">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Flota</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
-              <Truck className="w-4.5 h-4.5" />
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform shadow-inner">
+              <Truck className="w-5 h-5" />
             </div>
           </div>
-          <div className="my-2.5">
+          <div className="my-2">
             <div className="text-3xl font-black text-white tracking-tight">
               {unidades.length}
             </div>
           </div>
           <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-            <span>Unidades registradas</span>
-            <span className="font-semibold text-slate-300">{unidades.length} en sistema</span>
+            <span>Cisternas registradas</span>
+            <span className="font-semibold text-amber-400">{unidades.length} unidades</span>
           </div>
         </div>
 
-        {/* Tarjeta 2: Capacidad Total */}
-        <div className="bg-slate-900/90 border border-slate-800 hover:border-sky-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Capacidad Total</span>
-            <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-105 transition-transform">
-              <Fuel className="w-4.5 h-4.5" />
-            </div>
-          </div>
-          <div className="my-2.5">
-            <div className="text-3xl font-black text-white tracking-tight flex items-baseline gap-1.5">
-              <span>{formatLitros(totalCapacidadLitros)}</span>
-            </div>
-          </div>
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-            <span>Carga volumétrica</span>
-            <span className="font-bold text-sky-400">{formatM3(totalCapacidadLitros / 1000)}</span>
-          </div>
-        </div>
-
-        {/* Tarjeta 3: Disponibles */}
-        <div className="bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+        {/* Tarjeta 2: Disponibles */}
+        <div className="bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800/90 hover:border-emerald-500/40 rounded-2xl p-5 shadow-xl shadow-black/25 transition-all flex flex-col justify-between min-h-[130px] group">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Disponibles</span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
-              <CheckCircle2 className="w-4.5 h-4.5" />
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform shadow-inner">
+              <CheckCircle2 className="w-5 h-5" />
             </div>
           </div>
-          <div className="my-2.5">
+          <div className="my-2">
             <div className="text-3xl font-black text-emerald-400 tracking-tight">
               {totalActivas}
             </div>
@@ -379,15 +366,15 @@ function FlotaContent() {
           </div>
         </div>
 
-        {/* Tarjeta 4: En Ruta */}
-        <div className="bg-slate-900/90 border border-slate-800 hover:border-indigo-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+        {/* Tarjeta 3: En Ruta */}
+        <div className="bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800/90 hover:border-indigo-500/40 rounded-2xl p-5 shadow-xl shadow-black/25 transition-all flex flex-col justify-between min-h-[130px] group">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Ruta</span>
-            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-transform">
-              <Clock className="w-4.5 h-4.5" />
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/25 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-transform shadow-inner">
+              <Clock className="w-5 h-5" />
             </div>
           </div>
-          <div className="my-2.5">
+          <div className="my-2">
             <div className="text-3xl font-black text-indigo-400 tracking-tight">
               {totalRuta}
             </div>
@@ -452,59 +439,26 @@ function FlotaContent() {
         ) : filteredUnidades.length === 0 ? (
           unidades.length === 0 ? (
             /* Guía de Inicio Rápido cuando la flota está vacía */
-            <div className="text-center py-16 px-6 max-w-2xl mx-auto flex flex-col items-center">
-              <div className="w-20 h-20 rounded-3xl bg-amber-500/10 border border-amber-500/25 text-amber-400 flex items-center justify-center mb-5 shadow-xl shadow-amber-500/10">
-                <Truck className="w-10 h-10" />
+            <div className="text-center py-16 px-6 max-w-xl mx-auto flex flex-col items-center">
+              <div className="w-16 h-16 rounded-3xl bg-amber-500/10 border border-amber-500/25 text-amber-400 flex items-center justify-center mb-4 shadow-xl shadow-amber-500/10">
+                <Truck className="w-8 h-8" />
               </div>
               
-              <h3 className="text-xl font-bold text-white mb-2">
-                Comienza registrando las cisternas de tu flota
+              <h3 className="text-xl font-black text-white mb-2">
+                Registra tus unidades de transporte
               </h3>
               
-              <p className="text-xs sm:text-sm text-slate-400 text-center max-w-lg mb-6 leading-relaxed">
-                Para habilitar la asignación de viajes, el cálculo automático de fletes en Bs y el control de mermas YPFB (0.35%), debes ingresar los camiones cisternas de la empresa.
+              <p className="text-xs sm:text-sm text-slate-400 text-center max-w-md mb-6 leading-relaxed">
+                Ingresa la placa y los datos del conductor para comenzar a cargar despachos, asignar viajes y calcular fletes.
               </p>
 
               <button
                 onClick={handleOpenCreate}
-                className="inline-flex items-center gap-2.5 px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs sm:text-sm shadow-xl shadow-amber-500/25 transition transform hover:scale-105 active:scale-95 mb-8"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs sm:text-sm shadow-xl shadow-amber-500/25 transition transform hover:scale-105 active:scale-95"
               >
-                <Plus className="w-5 h-5 stroke-[3]" />
-                <span>Registrar Primera Cisterna</span>
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>Registrar Primer Camión</span>
               </button>
-
-              {/* Tarjetas de características y datos clave */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 w-full text-left">
-                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
-                  <div className="text-amber-400 font-bold text-xs flex items-center gap-2 mb-1.5">
-                    <Fuel className="w-4 h-4 flex-shrink-0" />
-                    <span>Capacidad y Litros</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 leading-snug">
-                    Registra volumen en litros, m³ y número de compartimentos.
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
-                  <div className="text-emerald-400 font-bold text-xs flex items-center gap-2 mb-1.5">
-                    <ShieldCheck className="w-4 h-4 flex-shrink-0" />
-                    <span>Documentos Oficiales</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 leading-snug">
-                    Control de B-SISA, SOAT y calibración Senasac al día.
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
-                  <div className="text-sky-400 font-bold text-xs flex items-center gap-2 mb-1.5">
-                    <User className="w-4 h-4 flex-shrink-0" />
-                    <span>Chofer Asignado</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 leading-snug">
-                    Vincula conductor con licencia y teléfono de contacto.
-                  </p>
-                </div>
-              </div>
             </div>
           ) : (
             /* Mensaje cuando no hay resultados de búsqueda */
@@ -527,78 +481,70 @@ function FlotaContent() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm border-collapse">
-              <thead className="bg-slate-950 border-b border-slate-800 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <thead className="bg-slate-950/80 border-b border-slate-800 text-xs font-bold text-slate-400 uppercase tracking-wider">
                 <tr>
-                  <th className="py-3.5 px-4">Placa / Unidad</th>
-                  <th className="py-3.5 px-4">Tipo y Marca</th>
-                  <th className="py-3.5 px-4 text-right">Capacidad</th>
-                  <th className="py-3.5 px-4">Chofer Asignado</th>
-                  <th className="py-3.5 px-4">Habilitaciones</th>
-                  <th className="py-3.5 px-4 text-center">Estado</th>
-                  <th className="py-3.5 px-4 text-right">Acciones</th>
+                  <th className="py-3.5 px-5">Placa / Cisterna</th>
+                  <th className="py-3.5 px-5">Conductor Asignado</th>
+                  <th className="py-3.5 px-5">Capacidad Estándar</th>
+                  <th className="py-3.5 px-5 text-center">Estado Operativo</th>
+                  <th className="py-3.5 px-5 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80">
                 {filteredUnidades.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-800/50 transition">
+                  <tr key={u.id} className="hover:bg-slate-850/60 transition group">
                     
                     {/* Placa */}
-                    <td className="py-3.5 px-4">
-                      <div className="inline-flex items-center gap-2 font-mono font-bold text-white text-sm px-3 py-1 bg-slate-950 rounded-xl border border-slate-800">
-                        <Truck className="w-3.5 h-3.5 text-amber-400" />
+                    <td className="py-4 px-5">
+                      <div className="inline-flex items-center gap-2.5 font-mono font-black text-white text-sm px-3.5 py-1.5 bg-slate-950 rounded-xl border border-slate-800 shadow-inner group-hover:border-amber-500/40 transition">
+                        <Truck className="w-4 h-4 text-amber-400" />
                         <span>{u.placa}</span>
                       </div>
-                    </td>
-
-                    {/* Tipo y Marca */}
-                    <td className="py-3.5 px-4">
-                      <div className="font-semibold text-white text-xs">{u.marca || "Sin Marca"} ({u.modelo_ano || "N/A"})</div>
-                      <div className="text-[11px] text-slate-400">{u.tipo_unidad}</div>
-                    </td>
-
-                    {/* Capacidad */}
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="font-mono font-bold text-white text-xs">
-                        {formatLitros(u.capacidad_litros)}
-                      </div>
-                      <div className="text-[11px] font-mono text-slate-400">
-                        {formatM3(u.capacidad_m3)} &bull; {u.num_compartimentos} comp.
-                      </div>
-                    </td>
-
-                    {/* Chofer */}
-                    <td className="py-3.5 px-4">
-                      {u.conductor_nombre ? (
-                        <div className="text-xs">
-                          <div className="font-semibold text-white">{u.conductor_nombre}</div>
-                          {u.conductor_telefono && (
-                            <div className="text-[11px] text-slate-400">{u.conductor_telefono}</div>
-                          )}
+                      {u.marca && (
+                        <div className="text-[11px] text-slate-500 mt-1 pl-1">
+                          {u.marca} {u.modelo_ano ? `(${u.modelo_ano})` : ""}
                         </div>
-                      ) : (
-                        <span className="text-xs text-slate-500 italic">Sin chofer asignado</span>
                       )}
                     </td>
 
-                    {/* Habilitaciones */}
-                    <td className="py-3.5 px-4 text-xs">
-                      <div className="space-y-0.5">
-                        {u.b_sisa && (
-                          <div className="text-[11px] text-slate-300">
-                            <span className="text-slate-500">B-SISA:</span> {u.b_sisa}
+                    {/* Conductor Asignado */}
+                    <td className="py-4 px-5">
+                      {u.conductor_nombre ? (
+                        <div className="space-y-1">
+                          <div className="font-bold text-white text-xs flex items-center gap-1.5">
+                            <User className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                            <span>{u.conductor_nombre}</span>
                           </div>
-                        )}
-                        {u.soat_numero && (
-                          <div className="text-[11px] text-slate-300">
-                            <span className="text-slate-500">SOAT:</span> {u.soat_numero}
+                          <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                            {u.conductor_telefono && (
+                              <span className="flex items-center gap-1 text-slate-300">
+                                <Phone className="w-3 h-3 text-slate-500" />
+                                <span>{u.conductor_telefono}</span>
+                              </span>
+                            )}
+                            {u.conductor_ci && (
+                              <span className="text-slate-500 font-mono">CI: {u.conductor_ci}</span>
+                            )}
                           </div>
-                        )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-500 italic">Sin conductor asignado</span>
+                      )}
+                    </td>
+
+                    {/* Capacidad */}
+                    <td className="py-4 px-5">
+                      <div className="font-mono font-bold text-slate-200 text-xs">
+                        {formatLitros(u.capacidad_litros || 34000)}
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-500">
+                        {formatM3((u.capacidad_litros || 34000) / 1000)}
                       </div>
                     </td>
 
                     {/* Estado */}
-                    <td className="py-3.5 px-4 text-center">
-                      <span className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-bold border ${
+                    <td className="py-4 px-5 text-center">
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
                         u.estado === "Activo"
                           ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
                           : u.estado === "En Ruta"
@@ -617,7 +563,7 @@ function FlotaContent() {
                     </td>
 
                     {/* Acciones */}
-                    <td className="py-3.5 px-4 text-right">
+                    <td className="py-4 px-5 text-right">
                       <div className="inline-flex items-center gap-1">
                         <button
                           onClick={() => handleOpenEdit(u)}
@@ -644,10 +590,10 @@ function FlotaContent() {
         )}
       </div>
 
-      {/* Modal Crear / Editar Unidad */}
+      {/* Modal Crear / Editar Unidad (Formulario Simplificado) */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 w-full max-w-2xl p-6 sm:p-7 max-h-[90vh] overflow-y-auto">
+          <div className="bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 w-full max-w-lg p-6 sm:p-7 max-h-[92vh] overflow-y-auto">
             
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-5">
               <div>
@@ -655,7 +601,7 @@ function FlotaContent() {
                   {editingUnidad ? `Editar Cisterna: ${editingUnidad.placa}` : "Nueva Cisterna / Camión"}
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Datos técnicos de la unidad y documentación de transporte
+                  Ingresa la placa del vehículo y los datos del conductor
                 </p>
               </div>
               <button
@@ -668,162 +614,190 @@ function FlotaContent() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               
-              {/* Sección 1: Datos Técnicos */}
-              <div>
-                <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                  <Truck className="w-3.5 h-3.5" />
-                  <span>1. Identificación y Capacidades</span>
-                </h4>
+              {/* Sección Principal y Esencial */}
+              <div className="space-y-3.5">
                 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Placa *</label>
+                {/* Placa */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                    Placa del Camión / Cisterna *
+                  </label>
+                  <div className="relative">
+                    <Truck className="w-4 h-4 text-amber-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
                       required
                       value={formData.placa}
                       onChange={(e) => setFormData({ ...formData, placa: e.target.value.toUpperCase() })}
-                      placeholder="ej. 4412-DPC"
-                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-amber-500 uppercase"
+                      placeholder="ej. 4412-DCP"
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm font-mono font-black text-white focus:outline-none focus:border-amber-500 uppercase tracking-wider"
                     />
                   </div>
+                  <p className="text-[11px] text-slate-500 mt-1">Identificador único vehicular según RUAT</p>
+                </div>
+
+                {/* Conductor y Teléfono */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Marca</label>
-                    <input
-                      type="text"
-                      value={formData.marca}
-                      onChange={(e) => setFormData({ ...formData, marca: e.target.value })}
-                      placeholder="ej. Volvo FH12"
-                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                    />
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      Nombre del Conductor
+                    </label>
+                    <div className="relative">
+                      <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={formData.conductor_nombre}
+                        onChange={(e) => setFormData({ ...formData, conductor_nombre: e.target.value })}
+                        placeholder="ej. CARLOS MAMANI CONDORI"
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
                   </div>
+
                   <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Modelo / Año</label>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      Teléfono del Conductor
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={formData.conductor_telefono}
+                        onChange={(e) => setFormData({ ...formData, conductor_telefono: e.target.value })}
+                        placeholder="ej. 71599882"
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* C.I. Conductor */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                    C.I. del Conductor (Opcional)
+                  </label>
+                  <div className="relative">
+                    <CreditCard className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
-                      value={formData.modelo_ano}
-                      onChange={(e) => setFormData({ ...formData, modelo_ano: e.target.value })}
-                      placeholder="ej. 2020"
-                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                      value={formData.conductor_ci}
+                      onChange={(e) => setFormData({ ...formData, conductor_ci: e.target.value })}
+                      placeholder="ej. 6842109 LP"
+                      className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Capacidad (Litros)</label>
-                    <input
-                      type="number"
-                      required
-                      value={formData.capacidad_litros}
-                      onChange={(e) => {
-                        const l = Number(e.target.value);
-                        setFormData({ ...formData, capacidad_litros: l, capacidad_m3: Number((l / 1000).toFixed(2)) });
-                      }}
-                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Capacidad (m³)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      required
-                      value={formData.capacidad_m3}
-                      onChange={(e) => {
-                        const m = Number(e.target.value);
-                        setFormData({ ...formData, capacidad_m3: m, capacidad_litros: m * 1000 });
-                      }}
-                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Nº Compartimentos</label>
-                    <input
-                      type="number"
-                      value={formData.num_compartimentos}
-                      onChange={(e) => setFormData({ ...formData, num_compartimentos: Number(e.target.value) })}
-                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                </div>
               </div>
 
-              {/* Sección 2: Conductor y Propietario */}
-              <div className="pt-2 border-t border-slate-800">
-                <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5" />
-                  <span>2. Conductor y Propietario</span>
-                </h4>
+              {/* Sección Opcional Colapsable para Especificaciones Técnicas */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowOptionalFields(!showOptionalFields)}
+                  className="w-full py-2.5 px-3 bg-slate-950/60 hover:bg-slate-950 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-slate-200 transition flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <span>{showOptionalFields ? "− Ocultar datos técnicos opcionales" : "+ Datos técnicos o documentación adicional (Opcional)"}</span>
+                  </span>
+                  <ChevronDown className={`w-4 h-4 transition-transform ${showOptionalFields ? "rotate-180" : ""}`} />
+                </button>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Nombre Conductor</label>
-                    <input
-                      type="text"
-                      value={formData.conductor_nombre}
-                      onChange={(e) => setFormData({ ...formData, conductor_nombre: e.target.value })}
-                      placeholder="ej. CARLOS MAMANI CONDORI"
-                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                    />
+                {showOptionalFields && (
+                  <div className="mt-3 p-4 bg-slate-950/80 rounded-2xl border border-slate-800/80 space-y-3.5 animate-in fade-in">
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">Capacidad (Litros)</label>
+                        <input
+                          type="number"
+                          value={formData.capacidad_litros}
+                          onChange={(e) => {
+                            const l = Number(e.target.value);
+                            setFormData({ ...formData, capacidad_litros: l, capacidad_m3: Number((l / 1000).toFixed(2)) });
+                          }}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">Capacidad (m³)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={formData.capacidad_m3}
+                          onChange={(e) => {
+                            const m = Number(e.target.value);
+                            setFormData({ ...formData, capacidad_m3: m, capacidad_litros: m * 1000 });
+                          }}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">Marca del Camión</label>
+                        <input
+                          type="text"
+                          value={formData.marca}
+                          onChange={(e) => setFormData({ ...formData, marca: e.target.value })}
+                          placeholder="ej. Volvo FH12 / Scania"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">Modelo / Año</label>
+                        <input
+                          type="text"
+                          value={formData.modelo_ano}
+                          onChange={(e) => setFormData({ ...formData, modelo_ano: e.target.value })}
+                          placeholder="ej. 2021"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">B-SISA</label>
+                        <input
+                          type="text"
+                          value={formData.b_sisa}
+                          onChange={(e) => setFormData({ ...formData, b_sisa: e.target.value })}
+                          placeholder="ej. BS-90921"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">SOAT</label>
+                        <input
+                          type="text"
+                          value={formData.soat_numero}
+                          onChange={(e) => setFormData({ ...formData, soat_numero: e.target.value })}
+                          placeholder="ej. 2025-SOAT-4892"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">Estado</label>
+                        <select
+                          value={formData.estado}
+                          onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                        >
+                          <option value="Activo">Activo</option>
+                          <option value="En Ruta">En Ruta</option>
+                          <option value="Mantenimiento">Mantenimiento</option>
+                          <option value="Inactivo">Inactivo</option>
+                        </select>
+                      </div>
+                    </div>
+
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Teléfono Conductor</label>
-                    <input
-                      type="text"
-                      value={formData.conductor_telefono}
-                      onChange={(e) => setFormData({ ...formData, conductor_telefono: e.target.value })}
-                      placeholder="ej. 71599882"
-                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                </div>
+                )}
               </div>
 
-              {/* Sección 3: Habilitaciones y Documentos */}
-              <div className="pt-2 border-t border-slate-800">
-                <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>3. Documentación Oficial</span>
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">B-SISA</label>
-                    <input
-                      type="text"
-                      value={formData.b_sisa}
-                      onChange={(e) => setFormData({ ...formData, b_sisa: e.target.value })}
-                      placeholder="ej. BS-90921"
-                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Nº SOAT</label>
-                    <input
-                      type="text"
-                      value={formData.soat_numero}
-                      onChange={(e) => setFormData({ ...formData, soat_numero: e.target.value })}
-                      placeholder="ej. 2025-SOAT-4892"
-                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Estado</label>
-                    <select
-                      value={formData.estado}
-                      onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
-                    >
-                      <option value="Activo" className="bg-slate-900">Activo</option>
-                      <option value="En Ruta" className="bg-slate-900">En Ruta</option>
-                      <option value="Mantenimiento" className="bg-slate-900">Mantenimiento</option>
-                      <option value="Inactivo" className="bg-slate-900">Inactivo</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
+              {/* Botones de acción */}
               <div className="pt-3 border-t border-slate-800 flex justify-end gap-2.5">
                 <button
                   type="button"
@@ -834,9 +808,10 @@ function FlotaContent() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95"
+                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95 flex items-center gap-1.5"
                 >
-                  {editingUnidad ? "Guardar Cambios" : "Registrar Unidad"}
+                  <Truck className="w-4 h-4" />
+                  <span>{editingUnidad ? "Guardar Cambios" : "Registrar Unidad"}</span>
                 </button>
               </div>
 

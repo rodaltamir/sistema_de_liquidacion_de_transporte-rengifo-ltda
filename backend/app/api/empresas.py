@@ -28,13 +28,15 @@ def init_tenant_schema(schema_name: str):
     connectable = engine.execution_options(
         schema_translate_map={"tenant": schema_name}
     )
-    from app.models.tenant import UnidadTransporte, ParametroLiquidacion, Viaje, Liquidacion, Empleado
+    from app.models.tenant import UnidadTransporte, ParametroLiquidacion, Viaje, Liquidacion, Empleado, EmpresaApoyo, UnidadApoyo
     tenant_tables = [
         UnidadTransporte.__table__,
         ParametroLiquidacion.__table__,
         Viaje.__table__,
         Liquidacion.__table__,
-        Empleado.__table__
+        Empleado.__table__,
+        EmpresaApoyo.__table__,
+        UnidadApoyo.__table__
     ]
     Base.metadata.create_all(bind=connectable, tables=tenant_tables)
 
@@ -71,6 +73,7 @@ def list_empresas(
             name=emp.name,
             schema_name=emp.schema_name,
             nit=emp.nit,
+            tipo_empresa=emp.tipo_empresa or "Sociedad",
             asociacion_id=emp.asociacion_id,
             representante_legal=emp.representante_legal,
             direccion=emp.direccion,
@@ -99,6 +102,7 @@ def create_empresa(emp_in: EmpresaCreate, db: Session = Depends(get_db)):
         name=emp_in.name,
         schema_name=schema_name,
         nit=emp_in.nit,
+        tipo_empresa=emp_in.tipo_empresa or "Sociedad",
         asociacion_id=emp_in.asociacion_id,
         representante_legal=emp_in.representante_legal,
         direccion=emp_in.direccion,
@@ -119,6 +123,7 @@ def create_empresa(emp_in: EmpresaCreate, db: Session = Depends(get_db)):
         name=empresa.name,
         schema_name=empresa.schema_name,
         nit=empresa.nit,
+        tipo_empresa=empresa.tipo_empresa or "Sociedad",
         asociacion_id=empresa.asociacion_id,
         representante_legal=empresa.representante_legal,
         direccion=empresa.direccion,
@@ -192,6 +197,7 @@ def get_empresa(schema_name: str, db: Session = Depends(get_db)):
         name=emp.name,
         schema_name=emp.schema_name,
         nit=emp.nit,
+        tipo_empresa=emp.tipo_empresa or "Sociedad",
         asociacion_id=emp.asociacion_id,
         representante_legal=emp.representante_legal,
         direccion=emp.direccion,
@@ -222,6 +228,7 @@ def update_empresa(schema_name: str, emp_in: EmpresaUpdate, db: Session = Depend
         name=emp.name,
         schema_name=emp.schema_name,
         nit=emp.nit,
+        tipo_empresa=emp.tipo_empresa or "Sociedad",
         asociacion_id=emp.asociacion_id,
         representante_legal=emp.representante_legal,
         direccion=emp.direccion,

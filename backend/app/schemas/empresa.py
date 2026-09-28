@@ -10,6 +10,7 @@ class EmpresaBase(BaseModel):
     direccion: Optional[str] = None
     telefono: Optional[str] = None
     email: Optional[str] = None
+    tipo_empresa: Optional[str] = "Sociedad"
     icon: Optional[str] = "Truck"
     logo_base64: Optional[str] = None
 
@@ -19,6 +20,7 @@ class EmpresaCreate(EmpresaBase):
 class EmpresaUpdate(BaseModel):
     name: Optional[str] = None
     nit: Optional[str] = None
+    tipo_empresa: Optional[str] = None
     asociacion_id: Optional[int] = None
     representante_legal: Optional[str] = None
     direccion: Optional[str] = None

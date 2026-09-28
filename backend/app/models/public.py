@@ -63,6 +63,8 @@ class Empresa(Base):
     telefono = Column(String(50), nullable=True)
     email = Column(String(100), nullable=True)
     
+    tipo_empresa = Column(String(50), default="Sociedad")  # "Sociedad" | "Unipersonal"
+    
     icon = Column(String(50), default="Truck")
     logo_base64 = Column(Text, nullable=True)
     

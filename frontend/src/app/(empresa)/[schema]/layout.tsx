@@ -17,7 +17,8 @@ import {
   X,
   ArrowLeft,
   ChevronDown,
-  ExternalLink
+  ExternalLink,
+  Handshake
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { getCurrentUser, clearAuth, User } from "@/lib/auth";
@@ -68,10 +69,16 @@ export default function EmpresaLayout({
       description: "Resumen y métricas"
     },
     {
-      name: "Flota y Camiones",
+      name: "Flota Propia",
       href: `/${schema}/flota`,
       icon: Truck,
-      description: "Unidades y cisternas"
+      description: "Cisternas titulares"
+    },
+    {
+      name: "Flota de Apoyo",
+      href: `/${schema}/apoyo`,
+      icon: Handshake,
+      description: "Empresas aliadas y auxilio"
     },
     {
       name: "Personal y Choferes",

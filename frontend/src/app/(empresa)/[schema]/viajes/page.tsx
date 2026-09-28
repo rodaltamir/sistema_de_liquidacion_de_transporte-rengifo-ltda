@@ -21,7 +21,8 @@ import {
   X,
   FileCheck,
   Info,
-  Scale
+  Scale,
+  Handshake
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch, getApiUrl } from "@/lib/api";
@@ -53,6 +54,9 @@ interface Viaje {
   estado: string;
   liquidacion_id: number | null;
   observaciones: string | null;
+  es_apoyo?: boolean | null;
+  empresa_apoyo_id?: number | null;
+  empresa_apoyo_nombre?: string | null;
 }
 
 export default function ViajesPage() {
@@ -75,6 +79,7 @@ function ViajesContent() {
 
   const [viajes, setViajes] = useState<Viaje[]>([]);
   const [unidades, setUnidades] = useState<any[]>([]);
+  const [unidadesApoyo, setUnidadesApoyo] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filtros
@@ -86,6 +91,7 @@ function ViajesContent() {
   // Modales
   const [showModal, setShowModal] = useState(false);
   const [editingViaje, setEditingViaje] = useState<Viaje | null>(null);
+  const [manualPlaca, setManualPlaca] = useState(false);
 
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -96,6 +102,9 @@ function ViajesContent() {
     mic_dta: "",
     lote_codigo: "",
     placa: "",
+    es_apoyo: false,
+    empresa_apoyo_id: null as number | null,
+    empresa_apoyo_nombre: "",
     tramo: "ARICA - TAMBO QUEMADO - LA PAZ",
     cliente: "YPFB",
     producto: "GASOLINA",
@@ -179,8 +188,12 @@ function ViajesContent() {
 
   const loadInitialData = async () => {
     try {
-      const uData = await apiFetch(`/tenants/${schema}/unidades/`);
-      setUnidades(uData);
+      const [uData, uApoyoData] = await Promise.all([
+        apiFetch(`/tenants/${schema}/unidades/`),
+        apiFetch(`/tenants/${schema}/apoyo/unidades/todas`).catch(() => [])
+      ]);
+      setUnidades(uData || []);
+      setUnidadesApoyo(uApoyoData || []);
     } catch (err) {
       console.error(err);
     }
@@ -206,6 +219,7 @@ function ViajesContent() {
 
   const openCreateModal = () => {
     setEditingViaje(null);
+    setManualPlaca(false);
     const defMes = periodo || new Date().toISOString().slice(0, 7);
     const defPlaca = placaFiltro || (unidades.length > 0 ? unidades[0].placa : "");
 
@@ -213,6 +227,9 @@ function ViajesContent() {
       mic_dta: "",
       lote_codigo: "1",
       placa: defPlaca,
+      es_apoyo: false,
+      empresa_apoyo_id: null,
+      empresa_apoyo_nombre: "",
       tramo: "ARICA - TAMBO QUEMADO - LA PAZ",
       cliente: "YPFB",
       producto: "GASOLINA",
@@ -231,10 +248,14 @@ function ViajesContent() {
 
   const openEditModal = (v: Viaje) => {
     setEditingViaje(v);
+    setManualPlaca(false);
     setFormData({
       mic_dta: v.mic_dta || "",
       lote_codigo: v.lote_codigo || "1",
       placa: v.placa,
+      es_apoyo: Boolean(v.es_apoyo),
+      empresa_apoyo_id: v.empresa_apoyo_id || null,
+      empresa_apoyo_nombre: v.empresa_apoyo_nombre || "",
       tramo: v.tramo,
       cliente: v.cliente,
       producto: v.producto,
@@ -258,6 +279,9 @@ function ViajesContent() {
       mic_dta: "", // Dejar en blanco para que ingrese el nuevo MIC
       lote_codigo: v.lote_codigo || "1",
       placa: v.placa,
+      es_apoyo: Boolean(v.es_apoyo),
+      empresa_apoyo_id: v.empresa_apoyo_id || null,
+      empresa_apoyo_nombre: v.empresa_apoyo_nombre || "",
       tramo: v.tramo,
       cliente: v.cliente,
       producto: v.producto,
@@ -313,6 +337,9 @@ function ViajesContent() {
         mic_dta: formData.mic_dta.trim() || null,
         lote_codigo: formData.lote_codigo.trim() || null,
         placa: formData.placa.trim().toUpperCase(),
+        es_apoyo: formData.es_apoyo,
+        empresa_apoyo_id: formData.empresa_apoyo_id,
+        empresa_apoyo_nombre: formData.empresa_apoyo_nombre || null,
         tramo: formData.tramo.trim().toUpperCase(),
         cliente: formData.cliente.trim().toUpperCase(),
         producto: formData.producto.trim().toUpperCase(),
@@ -790,7 +817,19 @@ function ViajesContent() {
                 {filtered.map((v) => (
                   <tr key={v.id} className="hover:bg-slate-800/50 transition">
                     <td className="py-3 px-3 font-mono font-bold text-amber-400">{v.mic_dta || "-"}</td>
-                    <td className="py-3 px-3 font-mono font-bold text-white">{v.placa}</td>
+                    <td className="py-3 px-3">
+                      <div className="font-mono font-bold text-white flex items-center gap-1.5">
+                        <span>{v.placa}</span>
+                      </div>
+                      {v.es_apoyo ? (
+                        <div className="text-[10px] text-amber-400 font-semibold flex items-center gap-1 mt-0.5">
+                          <Handshake className="w-3 h-3 text-amber-500" />
+                          <span className="truncate max-w-[120px]" title={v.empresa_apoyo_nombre || "Empresa de Apoyo"}>
+                            {v.empresa_apoyo_nombre || "Apoyo"}
+                          </span>
+                        </div>
+                      ) : null}
+                    </td>
                     <td className="py-3 px-3 text-slate-300 truncate max-w-[170px]" title={v.tramo}>
                       {v.tramo}
                     </td>
@@ -990,15 +1029,105 @@ function ViajesContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Placa *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.placa}
-                    onChange={(e) => setFormData({ ...formData, placa: e.target.value.toUpperCase() })}
-                    placeholder="ej. 4412-DPC"
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-white focus:outline-none focus:border-amber-500"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-300">Placa / Cisterna *</label>
+                    {formData.es_apoyo && (
+                      <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/25 inline-flex items-center gap-1">
+                        <Handshake className="w-2.5 h-2.5 text-amber-400" />
+                        Apoyo: {formData.empresa_apoyo_nombre || "Aliado"}
+                      </span>
+                    )}
+                  </div>
+
+                  {!manualPlaca && (unidades.length > 0 || unidadesApoyo.length > 0) ? (
+                    <select
+                      value={formData.placa}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "__MANUAL__") {
+                          setManualPlaca(true);
+                          return;
+                        }
+                        if (!val) {
+                          setFormData({ ...formData, placa: "", es_apoyo: false, empresa_apoyo_id: null, empresa_apoyo_nombre: "" });
+                          return;
+                        }
+                        // Verificar si pertenece a la flota de apoyo
+                        const matchApoyo = unidadesApoyo.find(u => u.placa === val);
+                        if (matchApoyo) {
+                          setFormData({
+                            ...formData,
+                            placa: matchApoyo.placa,
+                            es_apoyo: true,
+                            empresa_apoyo_id: matchApoyo.empresa_apoyo_id,
+                            empresa_apoyo_nombre: matchApoyo.empresa_apoyo_nombre || "Empresa de Apoyo",
+                            volumen_origen_litros: matchApoyo.capacidad_litros || 34000,
+                            volumen_recepcionado_litros: (matchApoyo.capacidad_litros || 34000) - 80
+                          });
+                          return;
+                        }
+                        // Flota propia
+                        const matchPropia = unidades.find(u => u.placa === val);
+                        if (matchPropia) {
+                          setFormData({
+                            ...formData,
+                            placa: matchPropia.placa,
+                            es_apoyo: false,
+                            empresa_apoyo_id: null,
+                            empresa_apoyo_nombre: "",
+                            volumen_origen_litros: matchPropia.capacidad_litros || 34000,
+                            volumen_recepcionado_litros: (matchPropia.capacidad_litros || 34000) - 80
+                          });
+                          return;
+                        }
+                        setFormData({ ...formData, placa: val });
+                      }}
+                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                    >
+                      <option value="">-- Seleccionar cisterna --</option>
+                      {unidades.length > 0 && (
+                        <optgroup label="🚛 Flota Propia de la Empresa">
+                          {unidades.map(u => (
+                            <option key={`propia-${u.id}`} value={u.placa}>
+                              {u.placa} {u.conductor_nombre ? `(${u.conductor_nombre})` : ""}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {unidadesApoyo.length > 0 && (
+                        <optgroup label="🤝 Flota de Apoyo (Subcontratistas)">
+                          {unidadesApoyo.map(u => (
+                            <option key={`apoyo-${u.id}`} value={u.placa}>
+                              {u.placa} - {u.empresa_apoyo_nombre || "Apoyo"} {u.conductor_nombre ? `(${u.conductor_nombre})` : ""}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <option value="__MANUAL__">✏️ Escribir otra placa manualmente...</option>
+                    </select>
+                  ) : (
+                    <div className="relative">
+                      <input
+                        type="text"
+                        required
+                        value={formData.placa}
+                        onChange={(e) => setFormData({ ...formData, placa: e.target.value.toUpperCase() })}
+                        placeholder="ej. 4412-DPC"
+                        className="w-full pl-3.5 pr-14 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-white focus:outline-none focus:border-amber-500"
+                        autoFocus
+                      />
+                      {(unidades.length > 0 || unidadesApoyo.length > 0) && (
+                        <button
+                          type="button"
+                          onClick={() => setManualPlaca(false)}
+                          className="absolute inset-y-0 right-0 pr-3 text-[10px] text-amber-400 hover:text-amber-300 font-bold"
+                          title="Volver a la lista de cisternas"
+                        >
+                          Lista
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1">Lote</label>

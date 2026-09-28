@@ -13,7 +13,8 @@ from app.api import (
     viajes,
     liquidaciones,
     parametros,
-    empleados
+    empleados,
+    apoyo
 )
 
 # Inicializar tablas del esquema público
@@ -44,6 +45,7 @@ app.include_router(asociaciones.router, prefix=settings.API_V1_STR)
 app.include_router(empresas.router, prefix=settings.API_V1_STR)
 app.include_router(dashboard.router, prefix=settings.API_V1_STR)
 app.include_router(unidades.router, prefix=settings.API_V1_STR)
+app.include_router(apoyo.router, prefix=settings.API_V1_STR)
 app.include_router(viajes.router, prefix=settings.API_V1_STR)
 app.include_router(liquidaciones.router, prefix=settings.API_V1_STR)
 app.include_router(parametros.router, prefix=settings.API_V1_STR)
