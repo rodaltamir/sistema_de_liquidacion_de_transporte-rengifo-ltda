@@ -31,6 +31,7 @@ import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
 import { getCurrentUser, clearAuth, User } from "@/lib/auth";
 import { formatNumber } from "@/lib/format";
+import ThemeToggle from "@/components/ThemeToggle";
 
 interface Empresa {
   id: number;
@@ -285,16 +286,16 @@ function SeleccionarEmpresaContent() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950 transition-colors duration-200">
       
       {/* Barra de Navegación Superior */}
-      <header className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 shadow-lg shadow-black/20">
+      <header className="bg-white/90 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30 shadow-xs dark:shadow-lg">
         <div className="max-w-[1700px] w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 h-20 flex items-center justify-between gap-4">
           
           <div className="flex items-center gap-3.5">
             <Link
               href="/seleccionar-asociacion"
-              className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white transition group"
+              className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition group shadow-xs"
               title="Volver a Asociaciones"
             >
               <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
@@ -305,27 +306,30 @@ function SeleccionarEmpresaContent() {
             </div>
 
             <div>
-              <h1 className="text-base sm:text-lg font-black tracking-tight text-white leading-tight">
+              <h1 className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white leading-tight">
                 Rengifo Ltda. &bull; Directorio de Empresas
               </h1>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Selecciona la empresa de transporte para entrar a su panel operativo
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-3 pl-3 border-l border-slate-800">
+            {/* Alternador Global de Tema */}
+            <ThemeToggle />
+
+            <div className="flex items-center gap-3 pl-3 border-l border-slate-200 dark:border-slate-800">
               <div className="text-right hidden sm:block">
-                <div className="text-xs font-bold text-white">{currentUser?.name}</div>
-                <div className="text-[11px] text-amber-400 font-medium">
+                <div className="text-xs font-bold text-slate-900 dark:text-white">{currentUser?.name}</div>
+                <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
                   {currentUser?.role === "admin" ? "Administrador General" : "Operador"}
                 </div>
               </div>
               <button
                 onClick={handleLogout}
                 title="Cerrar Sesión"
-                className="p-2.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 rounded-xl transition"
+                className="p-2.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 border border-transparent hover:border-rose-200 dark:hover:border-rose-500/20 rounded-xl transition"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -339,81 +343,80 @@ function SeleccionarEmpresaContent() {
       <main className="flex-1 max-w-[1700px] w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-8 space-y-8">
         
         {/* ============================================================== */}
-        {/* MINI DASHBOARD DE EMPRESAS */}
-        {/* ============================================================== */}
         {/* MINI DASHBOARD DE EMPRESAS (4 TARJETAS SIMÉTRICAS) */}
+        {/* ============================================================== */}
         <section>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             
-            <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800 hover:border-amber-500/40 transition-all shadow-xl shadow-black/30 flex flex-col justify-between min-h-[130px] group">
+            <div className="p-5 rounded-2xl bg-white dark:bg-gradient-to-b dark:from-slate-900/90 dark:to-slate-950/90 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 transition-all shadow-sm dark:shadow-xl shadow-black/5 dark:shadow-black/30 flex flex-col justify-between min-h-[130px] group">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Empresas Totales</span>
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Empresas Totales</span>
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
                   <Truck className="w-5 h-5" />
                 </div>
               </div>
               <div className="my-2">
-                <div className="text-3xl font-black text-white tracking-tight">
+                <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
                   {empresas.length}
                 </div>
               </div>
-              <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+              <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                 <span>Operadores activos</span>
-                <span className="font-semibold text-amber-400">{empresas.length} registradas</span>
+                <span className="font-semibold text-amber-600 dark:text-amber-400">{empresas.length} registradas</span>
               </div>
             </div>
 
-            <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800 hover:border-sky-500/40 transition-all shadow-xl shadow-black/30 flex flex-col justify-between min-h-[130px] group">
+            <div className="p-5 rounded-2xl bg-white dark:bg-gradient-to-b dark:from-slate-900/90 dark:to-slate-950/90 border border-slate-200 dark:border-slate-800 hover:border-sky-500/40 transition-all shadow-sm dark:shadow-xl shadow-black/5 dark:shadow-black/30 flex flex-col justify-between min-h-[130px] group">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Afiliadas a Asoc.</span>
-                <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/25 text-sky-400 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Afiliadas a Asoc.</span>
+                <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/25 text-sky-600 dark:text-sky-400 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
                   <Building2 className="w-5 h-5" />
                 </div>
               </div>
               <div className="my-2">
-                <div className="text-3xl font-black text-white tracking-tight">
+                <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
                   {empresas.filter(e => e.asociacion_id !== null).length}
                 </div>
               </div>
-              <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+              <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                 <span>En consorcio</span>
-                <span className="font-semibold text-sky-400">Socias gremiales</span>
+                <span className="font-semibold text-sky-600 dark:text-sky-400">Socias gremiales</span>
               </div>
             </div>
 
-            <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800 hover:border-emerald-500/40 transition-all shadow-xl shadow-black/30 flex flex-col justify-between min-h-[130px] group">
+            <div className="p-5 rounded-2xl bg-white dark:bg-gradient-to-b dark:from-slate-900/90 dark:to-slate-950/90 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/40 transition-all shadow-sm dark:shadow-xl shadow-black/5 dark:shadow-black/30 flex flex-col justify-between min-h-[130px] group">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Independientes</span>
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Independientes</span>
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
                   <ShieldCheck className="w-5 h-5" />
                 </div>
               </div>
               <div className="my-2">
-                <div className="text-3xl font-black text-emerald-400 tracking-tight">
+                <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
                   {empresas.filter(e => e.asociacion_id === null).length}
                 </div>
               </div>
-              <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+              <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                 <span>Liquidación directa</span>
-                <span className="font-semibold text-emerald-400">Autónomas</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">Autónomas</span>
               </div>
             </div>
 
-            <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800 hover:border-indigo-500/40 transition-all shadow-xl shadow-black/30 flex flex-col justify-between min-h-[130px] group">
+            <div className="p-5 rounded-2xl bg-white dark:bg-gradient-to-b dark:from-slate-900/90 dark:to-slate-950/90 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/40 transition-all shadow-sm dark:shadow-xl shadow-black/5 dark:shadow-black/30 flex flex-col justify-between min-h-[130px] group">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Flota de Cisternas</span>
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-400 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Flota de Cisternas</span>
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-600 dark:text-indigo-400 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
                   <Layers className="w-5 h-5" />
                 </div>
               </div>
               <div className="my-2">
-                <div className="text-3xl font-black text-white tracking-tight">
+                <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
                   {globalStats?.total_camiones ?? 0}
                 </div>
               </div>
-              <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+              <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                 <span>Parque vehicular</span>
-                <span className="font-semibold text-indigo-400">{globalStats?.total_camiones ?? 0} unidades</span>
+                <span className="font-semibold text-indigo-600 dark:text-indigo-400">{globalStats?.total_camiones ?? 0} unidades</span>
               </div>
             </div>
 
@@ -423,7 +426,7 @@ function SeleccionarEmpresaContent() {
         {/* ============================================================== */}
         {/* BUSCADOR PROMINENTE Y HERRAMIENTAS DE NAVEGACIÓN */}
         {/* ============================================================== */}
-        <section className="bg-slate-900/90 backdrop-blur-md border border-slate-800/90 rounded-2xl p-5 shadow-xl shadow-black/30 space-y-4">
+        <section className="bg-white dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-800/90 rounded-2xl p-5 shadow-sm dark:shadow-xl shadow-black/5 dark:shadow-black/30 space-y-4">
           
           {/* Fila 1: Buscador Principal de Gran Visibilidad */}
           <div className="relative w-full">
@@ -435,12 +438,12 @@ function SeleccionarEmpresaContent() {
               placeholder="Buscar empresa por nombre, NIT o representante legal..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-12 pr-12 py-3.5 bg-slate-950/90 border border-slate-800 hover:border-slate-700 text-white placeholder-slate-500 text-sm rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition shadow-inner"
+              className="w-full pl-12 pr-12 py-3.5 bg-slate-50 dark:bg-slate-950/90 border border-slate-300 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition shadow-inner"
             />
             {search ? (
               <button
                 onClick={() => setSearch("")}
-                className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-white transition"
+                className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-700 dark:hover:text-white transition"
                 title="Limpiar búsqueda"
               >
                 <X className="w-5 h-5" />
@@ -452,17 +455,17 @@ function SeleccionarEmpresaContent() {
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
             
             {/* Pestañas de Filtro */}
-            <div className="flex items-center bg-slate-950/80 p-1 rounded-xl border border-slate-800/80 self-start sm:self-auto overflow-x-auto max-w-full">
+            <div className="flex items-center bg-slate-100 dark:bg-slate-950/80 p-1 rounded-xl border border-slate-200 dark:border-slate-800/80 self-start sm:self-auto overflow-x-auto max-w-full">
               <button
                 onClick={() => setFilterType("todas")}
                 className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${
                   filterType === "todas"
                     ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                    : "text-slate-400 hover:text-white"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 <span>Todas</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${filterType === "todas" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"}`}>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${filterType === "todas" ? "bg-slate-950/20 text-slate-950" : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"}`}>
                   {empresas.length}
                 </span>
               </button>
@@ -471,12 +474,12 @@ function SeleccionarEmpresaContent() {
                 className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${
                   filterType === "asociadas"
                     ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                    : "text-slate-400 hover:text-white"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 <Building2 className="w-3.5 h-3.5" />
                 <span>Afiliadas</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${filterType === "asociadas" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"}`}>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${filterType === "asociadas" ? "bg-slate-950/20 text-slate-950" : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"}`}>
                   {empresas.filter(e => e.asociacion_id !== null).length}
                 </span>
               </button>
@@ -485,12 +488,12 @@ function SeleccionarEmpresaContent() {
                 className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${
                   filterType === "independientes"
                     ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                    : "text-slate-400 hover:text-white"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>Independientes</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${filterType === "independientes" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"}`}>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${filterType === "independientes" ? "bg-slate-950/20 text-slate-950" : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"}`}>
                   {empresas.filter(e => e.asociacion_id === null).length}
                 </span>
               </button>
@@ -516,12 +519,12 @@ function SeleccionarEmpresaContent() {
               <span className="text-xs font-semibold uppercase tracking-wider">Cargando empresas de transporte...</span>
             </div>
           ) : filteredEmpresas.length === 0 ? (
-            <div className="text-center py-16 bg-slate-900/60 rounded-3xl border border-slate-800 p-8 shadow-2xl max-w-lg mx-auto">
-              <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto mb-4">
+            <div className="text-center py-16 bg-white dark:bg-slate-900/60 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 shadow-sm dark:shadow-2xl max-w-lg mx-auto">
+              <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto mb-4">
                 <Truck className="w-8 h-8" />
               </div>
-              <h3 className="text-lg font-bold text-white">No se encontraron empresas</h3>
-              <p className="text-xs text-slate-400 mt-1.5 max-w-sm mx-auto leading-relaxed">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">No se encontraron empresas</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 max-w-sm mx-auto leading-relaxed">
                 {filterType === "independientes"
                   ? "No hay empresas registradas como independientes en este momento."
                   : "No se encontraron coincidencias para los filtros aplicados."}
@@ -540,41 +543,41 @@ function SeleccionarEmpresaContent() {
                 <div
                   key={emp.id}
                   onClick={() => router.push(`/${emp.schema_name}/dashboard`)}
-                  className="p-6 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/90 hover:from-slate-850/90 hover:to-slate-900 border border-slate-800/90 hover:border-amber-500/50 shadow-xl shadow-black/40 hover:shadow-2xl hover:shadow-amber-500/10 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
+                  className="p-6 rounded-2xl bg-white dark:bg-gradient-to-b dark:from-slate-900/90 dark:to-slate-950/90 hover:from-slate-50 dark:hover:from-slate-850/90 border border-slate-200 dark:border-slate-800/90 hover:border-amber-500/50 shadow-sm dark:shadow-xl shadow-black/5 dark:shadow-black/40 hover:shadow-xl dark:hover:shadow-2xl hover:shadow-amber-500/10 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
                 >
                   <div className="space-y-4">
                     {/* Encabezado de la Tarjeta */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-inner">
+                        <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-inner">
                           <Truck className="w-6 h-6" />
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap mb-1">
                             {emp.tipo_empresa === "Unipersonal" ? (
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 inline-flex items-center gap-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 inline-flex items-center gap-1">
                                 <UserIcon className="w-2.5 h-2.5" />
                                 Unipersonal
                               </span>
                             ) : (
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-500/20 inline-flex items-center gap-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-500/20 inline-flex items-center gap-1">
                                 <Building2 className="w-2.5 h-2.5" />
                                 Sociedad
                               </span>
                             )}
                             {emp.asociacion_name ? (
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20 inline-flex items-center gap-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20 inline-flex items-center gap-1">
                                 <Building2 className="w-2.5 h-2.5" />
                                 Asoc: {emp.asociacion_name}
                               </span>
                             ) : (
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 inline-flex items-center gap-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 inline-flex items-center gap-1">
                                 <ShieldCheck className="w-2.5 h-2.5" />
                                 Independiente
                               </span>
                             )}
                           </div>
-                          <h4 className="text-base font-extrabold text-white group-hover:text-amber-300 transition-colors leading-snug line-clamp-1 mt-0.5">
+                          <h4 className="text-base font-extrabold text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors leading-snug line-clamp-1 mt-0.5">
                             {emp.name}
                           </h4>
                         </div>
@@ -584,14 +587,14 @@ function SeleccionarEmpresaContent() {
                         <button
                           onClick={(e) => handleOpenEdit(emp, e)}
                           title="Editar empresa"
-                          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-lg transition"
+                          className="p-1.5 text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-lg transition"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
                           onClick={(e) => handleDelete(emp, e)}
                           title="Eliminar empresa"
-                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -599,33 +602,33 @@ function SeleccionarEmpresaContent() {
                     </div>
 
                     {/* Metadata limpia y estilizada */}
-                    <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-850/80 space-y-1.5 text-xs text-slate-300">
-                      <div className="flex items-center justify-between text-slate-400">
-                        <span className="text-slate-500">Esquema BD:</span>
-                        <span className="font-mono text-amber-400/90 bg-amber-500/10 px-2 py-0.5 rounded-md text-[11px] font-semibold">
+                    <div className="p-3 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-850/80 space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
+                      <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
+                        <span>Esquema BD:</span>
+                        <span className="font-mono text-amber-700 dark:text-amber-400/90 bg-amber-500/10 px-2 py-0.5 rounded-md text-[11px] font-semibold">
                           {emp.schema_name}
                         </span>
                       </div>
                       {emp.nit ? (
-                        <div className="flex items-center justify-between text-slate-400 pt-1 border-t border-slate-900">
-                          <span className="text-slate-500">NIT:</span>
-                          <span className="font-mono text-slate-200">{emp.nit}</span>
+                        <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200 dark:border-slate-900">
+                          <span>NIT:</span>
+                          <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">{emp.nit}</span>
                         </div>
                       ) : null}
                       {emp.representante_legal ? (
                         <div className="flex items-center gap-2 truncate pt-0.5">
-                          <UserIcon className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
-                          <span className="text-slate-300 truncate font-medium">{emp.representante_legal}</span>
+                          <UserIcon className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                          <span className="text-slate-700 dark:text-slate-300 truncate font-medium">{emp.representante_legal}</span>
                         </div>
                       ) : null}
                       {emp.telefono ? (
                         <div className="flex items-center gap-2 pt-0.5">
-                          <Phone className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
-                          <span className="text-slate-300 font-medium">{emp.telefono}</span>
+                          <Phone className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                          <span className="text-slate-700 dark:text-slate-300 font-medium">{emp.telefono}</span>
                         </div>
                       ) : null}
                       {!emp.representante_legal && !emp.telefono && !emp.nit ? (
-                        <div className="text-[11px] text-slate-500 italic pt-1 border-t border-slate-900 flex items-center gap-1.5">
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 italic pt-1 border-t border-slate-200 dark:border-slate-900 flex items-center gap-1.5">
                           <span>Base de datos activa y lista para viajes</span>
                         </div>
                       ) : null}
@@ -633,8 +636,8 @@ function SeleccionarEmpresaContent() {
                   </div>
 
                   {/* Botón de Entrada */}
-                  <div className="mt-5 pt-3.5 border-t border-slate-800/80">
-                    <div className="w-full py-2.5 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-slate-950 border border-amber-500/30 font-black text-xs flex items-center justify-center gap-2 transition-all shadow-md group-hover:shadow-amber-500/20">
+                  <div className="mt-5 pt-3.5 border-t border-slate-100 dark:border-slate-800/80">
+                    <div className="w-full py-2.5 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500 text-amber-700 dark:text-amber-400 hover:text-slate-950 border border-amber-500/30 font-black text-xs flex items-center justify-center gap-2 transition-all shadow-xs group-hover:shadow-amber-500/20">
                       <span>Ingresar a Operaciones</span>
                       <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                     </div>
@@ -648,29 +651,29 @@ function SeleccionarEmpresaContent() {
       </main>
 
       {/* ============================================================== */}
-      {/* MODAL CREAR / EDITAR EMPRESA (TEMA OSCURO RENGIFO) */}
+      {/* MODAL CREAR / EDITAR EMPRESA */}
       {/* ============================================================== */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 w-full max-w-lg p-6 sm:p-7 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-slate-950/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg p-6 sm:p-7 max-h-[92vh] overflow-y-auto">
             
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-5">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800 mb-5">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-500">
                   <Truck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
                     {editingEmpresa ? "Editar Empresa" : "Nueva Empresa de Transporte"}
                   </h3>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     {editingEmpresa ? "Modifica los datos de la empresa de transporte" : "Aprovisiona un esquema PostgreSQL dedicado"}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setShowModal(false)}
-                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition"
+                className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -678,7 +681,7 @@ function SeleccionarEmpresaContent() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
                   Razón Social de la Empresa *
                 </label>
                 <input
@@ -687,24 +690,24 @@ function SeleccionarEmpresaContent() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="ej. EMPRESA DE TRANSPORTES BRITANIC S.R.L."
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                   autoFocus
                 />
               </div>
 
               {/* Selector de Tipo de Empresa */}
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
                   Tipo Jurídico de Empresa *
                 </label>
-                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800">
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, tipo_empresa: "Sociedad" })}
                     className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
                       formData.tipo_empresa === "Sociedad"
                         ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-extrabold"
-                        : "text-slate-400 hover:text-white"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     }`}
                   >
                     <Building2 className="w-3.5 h-3.5" />
@@ -716,7 +719,7 @@ function SeleccionarEmpresaContent() {
                     className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
                       formData.tipo_empresa === "Unipersonal"
                         ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-extrabold"
-                        : "text-slate-400 hover:text-white"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     }`}
                   >
                     <UserIcon className="w-3.5 h-3.5" />
@@ -726,13 +729,13 @@ function SeleccionarEmpresaContent() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
                   Asociación Afiliada
                 </label>
                 <select
                   value={formData.asociacion_id}
                   onChange={(e) => setFormData({ ...formData, asociacion_id: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 cursor-pointer"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 cursor-pointer"
                 >
                   <option value="">Empresa Independiente</option>
                   {asociaciones.map((a) => (
@@ -744,23 +747,23 @@ function SeleccionarEmpresaContent() {
               </div>
 
               {/* Sección Opcional Desplegable: Datos del Representante */}
-              <div className="pt-2 border-t border-slate-800/80">
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80">
                 <button
                   type="button"
                   onClick={() => setShowRepDetails(!showRepDetails)}
-                  className="flex items-center justify-between w-full py-2 px-1 text-xs font-bold text-slate-400 hover:text-amber-400 transition group"
+                  className="flex items-center justify-between w-full py-2 px-1 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition group"
                 >
                   <div className="flex items-center gap-2">
                     <UserIcon className="w-4 h-4 text-amber-500" />
                     <span>Datos del Representante (Opcional)</span>
                   </div>
-                  <ChevronDown className={`w-4 h-4 text-slate-500 group-hover:text-amber-400 transition-transform duration-200 ${showRepDetails ? "rotate-180 text-amber-400" : ""}`} />
+                  <ChevronDown className={`w-4 h-4 text-slate-400 group-hover:text-amber-500 transition-transform duration-200 ${showRepDetails ? "rotate-180 text-amber-500" : ""}`} />
                 </button>
 
                 {showRepDetails && (
-                  <div className="mt-2.5 space-y-3 p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 animate-in fade-in">
+                  <div className="mt-2.5 space-y-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 animate-in fade-in">
                     <div>
-                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
                         Nombre del Representante Legal
                       </label>
                       <input
@@ -768,13 +771,13 @@ function SeleccionarEmpresaContent() {
                         value={formData.representante_legal}
                         onChange={(e) => setFormData({ ...formData, representante_legal: e.target.value })}
                         placeholder="ej. JOSE LOVERA TIÑINI"
-                        className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                        className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
                           C.I. / NIT
                         </label>
                         <input
@@ -782,11 +785,11 @@ function SeleccionarEmpresaContent() {
                           value={formData.nit}
                           onChange={(e) => setFormData({ ...formData, nit: e.target.value })}
                           placeholder="ej. 2049182039"
-                          className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                          className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
                           Teléfono / Celular
                         </label>
                         <input
@@ -794,7 +797,7 @@ function SeleccionarEmpresaContent() {
                           value={formData.telefono}
                           onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
                           placeholder="ej. 77299100"
-                          className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                          className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
                         />
                       </div>
                     </div>
@@ -802,11 +805,11 @@ function SeleccionarEmpresaContent() {
                 )}
               </div>
 
-              <div className="mt-6 pt-4 border-t border-slate-800 flex justify-end gap-3">
+              <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4.5 py-2.5 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition"
+                  className="px-4.5 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
                 >
                   Cancelar
                 </button>

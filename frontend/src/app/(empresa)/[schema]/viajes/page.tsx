@@ -27,6 +27,7 @@ import {
 import Swal from "sweetalert2";
 import { apiFetch, getApiUrl } from "@/lib/api";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
+import DatePeriodFilter, { DateFilterChangeEvent } from "@/components/DatePeriodFilter";
 
 interface Viaje {
   id: number;
@@ -84,6 +85,8 @@ function ViajesContent() {
 
   // Filtros
   const [periodo, setPeriodo] = useState("");
+  const [dateFilterQuery, setDateFilterQuery] = useState("");
+  const [periodosDisponibles, setPeriodosDisponibles] = useState<any[]>([]);
   const [placaFiltro, setPlacaFiltro] = useState("");
   const [productoFiltro, setProductoFiltro] = useState("TODOS");
   const [search, setSearch] = useState("");
@@ -135,7 +138,7 @@ function ViajesContent() {
 
   useEffect(() => {
     loadViajes();
-  }, [schema, periodo, placaFiltro]);
+  }, [schema, periodo, dateFilterQuery, placaFiltro]);
 
   // Si viene acción de URL para abrir modal de nuevo viaje
   useEffect(() => {
@@ -188,14 +191,28 @@ function ViajesContent() {
 
   const loadInitialData = async () => {
     try {
-      const [uData, uApoyoData] = await Promise.all([
+      const [uData, uApoyoData, pData] = await Promise.all([
         apiFetch(`/tenants/${schema}/unidades/`),
-        apiFetch(`/tenants/${schema}/apoyo/unidades/todas`).catch(() => [])
+        apiFetch(`/tenants/${schema}/apoyo/unidades/todas`).catch(() => []),
+        apiFetch(`/tenants/${schema}/viajes/periodos`).catch(() => [])
       ]);
       setUnidades(uData || []);
       setUnidadesApoyo(uApoyoData || []);
+      setPeriodosDisponibles(pData || []);
+      if (pData && pData.length > 0 && !periodo) {
+        setPeriodo(pData[0].periodo_mes);
+      }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const loadPeriodos = async () => {
+    try {
+      const pData = await apiFetch(`/tenants/${schema}/viajes/periodos`);
+      setPeriodosDisponibles(pData || []);
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -204,7 +221,11 @@ function ViajesContent() {
     try {
       let query = "";
       const params: string[] = [];
-      if (periodo) params.push(`periodo_mes=${periodo}`);
+      if (dateFilterQuery) {
+        params.push(dateFilterQuery);
+      } else if (periodo) {
+        params.push(`periodo_mes=${periodo}`);
+      }
       if (placaFiltro) params.push(`placa=${placaFiltro}`);
       if (params.length > 0) query = `?${params.join("&")}`;
 
@@ -215,6 +236,24 @@ function ViajesContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDateFilterChange = (filter: DateFilterChangeEvent) => {
+    let q = "";
+    if (filter.mode === "mes" && filter.periodo_mes) {
+      q = `periodo_mes=${filter.periodo_mes}`;
+      setPeriodo(filter.periodo_mes);
+    } else if (filter.mode === "anual" && filter.anio) {
+      q = `anio=${filter.anio}`;
+      setPeriodo("");
+    } else if (filter.mode === "personalizado" && filter.fecha_desde && filter.fecha_hasta) {
+      q = `fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`;
+      setPeriodo("");
+    } else if (filter.mode === "historico") {
+      q = "";
+      setPeriodo("");
+    }
+    setDateFilterQuery(q);
   };
 
   const openCreateModal = () => {
@@ -485,21 +524,21 @@ function ViajesContent() {
     <div className="space-y-6 sm:space-y-7 font-sans selection:bg-amber-500 selection:text-slate-950">
       
       {/* Encabezado y Acciones Principales (Tarjeta Banner Ejecutiva) */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-md shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+      <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-md shadow-sm dark:shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-5">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center flex-shrink-0 shadow-md shadow-amber-500/10">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center justify-center flex-shrink-0 shadow-md shadow-amber-500/10">
             <Navigation className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                 Registro y Control de Viajes
               </h1>
-              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/25">
+              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25">
                 {filtered.length} {filtered.length === 1 ? "Viaje" : "Viajes"}
               </span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
               Fletes en Bs, control de volúmenes en destino y cálculo automático de mermas contractuales YPFB (0.35%)
             </p>
           </div>
@@ -509,10 +548,10 @@ function ViajesContent() {
         <div className="flex flex-wrap items-center gap-2.5 self-start md:self-auto">
           <button
             onClick={downloadTemplate}
-            className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold border border-slate-800 transition active:scale-95"
+            className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-950 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white text-xs font-bold border border-slate-200 dark:border-slate-800 transition active:scale-95"
             title="Descargar plantilla oficial de Excel para carga masiva de viajes"
           >
-            <Download className="w-4 h-4 text-amber-400" />
+            <Download className="w-4 h-4 text-amber-500" />
             <span>Plantilla Excel</span>
           </button>
 
@@ -535,134 +574,138 @@ function ViajesContent() {
         </div>
       </div>
 
+      {/* Visualizador de Meses y Filtros de Fechas */}
+      <DatePeriodFilter
+        currentPeriodoMes={periodo}
+        periodosDisponibles={periodosDisponibles}
+        onChange={handleDateFilterChange}
+      />
+
       {/* Barra de Métricas Sumatorias (KPIs Simétricos) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         
         {/* Card 1: Viajes Visibles */}
-        <div className="bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Viajes Visibles</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Viajes Visibles</span>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 group-hover:scale-105 transition-transform">
               <Navigation className="w-4.5 h-4.5" />
             </div>
           </div>
           <div className="my-2.5">
-            <div className="text-3xl font-black text-white tracking-tight">
+            <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
               {filtered.length}
             </div>
           </div>
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Despachos</span>
-            <span className="font-semibold text-slate-300">Periodo actual</span>
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Periodo actual</span>
           </div>
         </div>
 
         {/* Card 2: Vol. Despachado */}
-        <div className="bg-slate-900/90 border border-slate-800 hover:border-sky-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-sky-500/40 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Vol. Despachado</span>
-            <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-105 transition-transform">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Vol. Despachado</span>
+            <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-500 group-hover:scale-105 transition-transform">
               <Fuel className="w-4.5 h-4.5" />
             </div>
           </div>
           <div className="my-2.5">
-            <div className="text-3xl font-black text-white tracking-tight font-mono">
+            <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight font-mono">
               {formatNumber(totalDespachado, 0)} <span className="text-xs font-bold text-slate-400">L</span>
             </div>
           </div>
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Volumen origen</span>
-            <span className="font-bold text-sky-400">{(totalDespachado / 1000).toFixed(2)} m³</span>
+            <span className="font-bold text-sky-600 dark:text-sky-400">{(totalDespachado / 1000).toFixed(2)} m³</span>
           </div>
         </div>
 
         {/* Card 3: Vol. Recepcionado */}
-        <div className="bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/40 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Vol. Recepcionado</span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Vol. Recepcionado</span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 group-hover:scale-105 transition-transform">
               <CheckCircle2 className="w-4.5 h-4.5" />
             </div>
           </div>
           <div className="my-2.5">
-            <div className="text-3xl font-black text-emerald-400 tracking-tight font-mono">
+            <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight font-mono">
               {formatNumber(totalRecepcionado, 0)} <span className="text-xs font-bold text-slate-400">L</span>
             </div>
           </div>
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Volumen destino</span>
-            <span className="font-bold text-emerald-400">{(totalRecepcionado / 1000).toFixed(2)} m³</span>
+            <span className="font-bold text-emerald-600 dark:text-emerald-400">{(totalRecepcionado / 1000).toFixed(2)} m³</span>
           </div>
         </div>
 
         {/* Card 4: Desc. Merma Total */}
-        <div className="bg-slate-900/90 border border-slate-800 hover:border-rose-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-rose-500/40 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Desc. Mermas</span>
-            <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 group-hover:scale-105 transition-transform">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Desc. Mermas</span>
+            <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 group-hover:scale-105 transition-transform">
               <Scale className="w-4.5 h-4.5" />
             </div>
           </div>
           <div className="my-2.5">
-            <div className="text-3xl font-black text-rose-400 tracking-tight font-mono">
+            <div className="text-3xl font-black text-rose-600 dark:text-rose-400 tracking-tight font-mono">
               {formatCurrency(totalDescMermaBs)}
             </div>
           </div>
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Merma real</span>
-            <span className="font-bold text-rose-400">{formatNumber(totalMermaReal, 1)} L</span>
+            <span className="font-bold text-rose-600 dark:text-rose-400">{formatNumber(totalMermaReal, 1)} L</span>
           </div>
         </div>
 
         {/* Card 5: Flete Bruto Total */}
-        <div className="bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group sm:col-span-2 lg:col-span-1">
+        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group sm:col-span-2 lg:col-span-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Flete Bruto</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Flete Bruto</span>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 group-hover:scale-105 transition-transform">
               <DollarSign className="w-4.5 h-4.5" />
             </div>
           </div>
           <div className="my-2.5">
-            <div className="text-3xl font-black text-amber-400 tracking-tight font-mono">
+            <div className="text-3xl font-black text-amber-600 dark:text-amber-400 tracking-tight font-mono">
               {formatCurrency(totalFleteBs)}
             </div>
           </div>
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Base imponible</span>
-            <span className="font-semibold text-amber-400">Antes de ded.</span>
+            <span className="font-semibold text-amber-600 dark:text-amber-400">Antes de ded.</span>
           </div>
         </div>
 
       </div>
 
       {/* Barra de Filtros y Búsqueda */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 shadow-xl">
+      <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 shadow-xl transition-colors duration-200">
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* Periodo */}
-          <div className="flex items-center gap-2 bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800 text-xs">
+          {/* Indicador de Filtro de Fecha */}
+          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
             <Calendar className="w-4 h-4 text-amber-500" />
-            <span className="text-slate-400 font-medium">Mes:</span>
-            <input
-              type="month"
-              value={periodo}
-              onChange={(e) => setPeriodo(e.target.value)}
-              className="bg-transparent text-white font-bold focus:outline-none cursor-pointer text-xs"
-            />
+            <span className="text-slate-500 dark:text-slate-400 font-medium">Control:</span>
+            <span className="font-bold text-slate-900 dark:text-white">
+              {periodo || (dateFilterQuery ? "Personalizado" : "Todos")}
+            </span>
           </div>
 
           {/* Placa */}
-          <div className="flex items-center gap-2 bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800 text-xs">
+          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
             <Truck className="w-4 h-4 text-amber-500" />
-            <span className="text-slate-400 font-medium">Placa:</span>
+            <span className="text-slate-500 dark:text-slate-400 font-medium">Placa:</span>
             <select
               value={placaFiltro}
               onChange={(e) => setPlacaFiltro(e.target.value)}
-              className="bg-transparent text-white font-bold focus:outline-none cursor-pointer text-xs"
+              className="bg-transparent text-slate-900 dark:text-white font-bold focus:outline-none cursor-pointer text-xs"
             >
-              <option value="" className="bg-slate-900">Todas las Placas</option>
+              <option value="" className="bg-white dark:bg-slate-900">Todas las Placas</option>
               {unidades.map((u) => (
-                <option key={u.id} value={u.placa} className="bg-slate-900">
+                <option key={u.id} value={u.placa} className="bg-white dark:bg-slate-900">
                   {u.placa}
                 </option>
               ))}
@@ -670,15 +713,15 @@ function ViajesContent() {
           </div>
 
           {/* Filtro de Producto */}
-          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-bold">
             {["TODOS", "GASOLINA", "DIESEL", "IYA"].map((p) => (
               <button
                 key={p}
                 onClick={() => setProductoFiltro(p)}
                 className={`px-3 py-1.5 rounded-lg transition text-[11px] ${
                   productoFiltro === p
-                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20 font-black"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 {p}
@@ -689,13 +732,13 @@ function ViajesContent() {
 
         {/* Buscador Equilibrado */}
         <div className="relative w-full lg:w-80">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por MIC, tramo o cliente..."
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
+            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
           />
         </div>
 
@@ -703,23 +746,23 @@ function ViajesContent() {
 
       {/* Tabla de Viajes o Estado Vacío Intuitivo */}
       {loading ? (
-        <div className="flex flex-col justify-center items-center py-24 gap-3 bg-slate-900/90 border border-slate-800 rounded-2xl">
+        <div className="flex flex-col justify-center items-center py-24 gap-3 bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm dark:shadow-xl">
           <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
-          <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Cargando registros...</span>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider">Cargando registros...</span>
         </div>
       ) : filtered.length === 0 ? (
         viajes.length === 0 ? (
           /* Guía de Inicio Rápido para Viajes */
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-10 sm:p-14 text-center max-w-2xl mx-auto shadow-2xl">
-            <div className="w-20 h-20 rounded-3xl bg-amber-500/10 border border-amber-500/25 text-amber-400 flex items-center justify-center mx-auto mb-5 shadow-xl shadow-amber-500/10">
+          <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-10 sm:p-14 text-center max-w-2xl mx-auto shadow-sm dark:shadow-2xl">
+            <div className="w-20 h-20 rounded-3xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto mb-5 shadow-xl shadow-amber-500/10">
               <Navigation className="w-10 h-10" />
             </div>
             
-            <h3 className="text-xl font-bold text-white mb-2">
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
               Aún no has registrado viajes en el periodo {periodo}
             </h3>
             
-            <p className="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto mb-6 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto mb-6 leading-relaxed">
               Ingresa los despachos y recepciones de combustible. El sistema calculará en tiempo real el flete bruto en Bs y las mermas excedentes al 0.35%.
             </p>
 
@@ -743,60 +786,60 @@ function ViajesContent() {
 
             {/* Tarjetas de Guía */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-left">
-              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
-                <div className="text-amber-400 font-bold text-xs flex items-center gap-2 mb-1.5">
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800">
+                <div className="text-amber-600 dark:text-amber-400 font-bold text-xs flex items-center gap-2 mb-1.5">
                   <Scale className="w-4 h-4 flex-shrink-0" />
                   <span>Tolerancia 0.35%</span>
                 </div>
-                <p className="text-[11px] text-slate-400 leading-snug">
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">
                   Cálculo automático de merma contractual y cobro de excedente en Bs.
                 </p>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
-                <div className="text-emerald-400 font-bold text-xs flex items-center gap-2 mb-1.5">
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800">
+                <div className="text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center gap-2 mb-1.5">
                   <DollarSign className="w-4 h-4 flex-shrink-0" />
                   <span>Fletes en Bolivianos</span>
                 </div>
-                <p className="text-[11px] text-slate-400 leading-snug">
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">
                   Multiplicación por volumen recepcionado o m³ según tarifa pactada.
                 </p>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
-                <div className="text-sky-400 font-bold text-xs flex items-center gap-2 mb-1.5">
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800">
+                <div className="text-sky-600 dark:text-sky-400 font-bold text-xs flex items-center gap-2 mb-1.5">
                   <FileSpreadsheet className="w-4 h-4 flex-shrink-0" />
                   <span>Liquidación Oficial</span>
                 </div>
-                <p className="text-[11px] text-slate-400 leading-snug">
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">
                   Generación automática de Hoja 1 y Hoja 2 para auditoría YPFB.
                 </p>
               </div>
             </div>
           </div>
         ) : (
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-12 text-center max-w-md mx-auto shadow-xl">
-            <div className="w-14 h-14 rounded-2xl bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-3">
+          <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center max-w-md mx-auto shadow-sm dark:shadow-xl">
+            <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center justify-center mx-auto mb-3">
               <Search className="w-6 h-6" />
             </div>
-            <p className="text-base font-bold text-white">Sin resultados para la búsqueda</p>
-            <p className="text-xs text-slate-400 mt-1 mb-5">
+            <p className="text-base font-bold text-slate-900 dark:text-white">Sin resultados para la búsqueda</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 mb-5">
               No hay viajes que coincidan con los filtros aplicados.
             </p>
             <button
               onClick={() => { setSearch(""); setPlacaFiltro(""); setProductoFiltro("TODOS"); }}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold rounded-xl transition"
+              className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 transition"
             >
               Restablecer Filtros
             </button>
           </div>
         )
       ) : (
-        <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+        <div className="bg-white dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm dark:shadow-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-950 border-b border-slate-800 text-slate-400 font-bold uppercase text-[10px]">
+                <tr className="bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase text-[10px]">
                   <th className="py-3.5 px-3">MIC/DTA</th>
                   <th className="py-3.5 px-3">Placa</th>
                   <th className="py-3.5 px-3">Tramo</th>
@@ -813,63 +856,63 @@ function ViajesContent() {
                   <th className="py-3.5 px-3 text-center">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {filtered.map((v) => (
-                  <tr key={v.id} className="hover:bg-slate-800/50 transition">
-                    <td className="py-3 px-3 font-mono font-bold text-amber-400">{v.mic_dta || "-"}</td>
+                  <tr key={v.id} className="hover:bg-amber-50/40 dark:hover:bg-slate-800/50 transition">
+                    <td className="py-3 px-3 font-mono font-bold text-amber-700 dark:text-amber-400">{v.mic_dta || "-"}</td>
                     <td className="py-3 px-3">
-                      <div className="font-mono font-bold text-white flex items-center gap-1.5">
+                      <div className="font-mono font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                         <span>{v.placa}</span>
                       </div>
                       {v.es_apoyo ? (
-                        <div className="text-[10px] text-amber-400 font-semibold flex items-center gap-1 mt-0.5">
-                          <Handshake className="w-3 h-3 text-amber-500" />
+                        <div className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-1 mt-0.5">
+                          <Handshake className="w-3 h-3 text-amber-600 dark:text-amber-500" />
                           <span className="truncate max-w-[120px]" title={v.empresa_apoyo_nombre || "Empresa de Apoyo"}>
                             {v.empresa_apoyo_nombre || "Apoyo"}
                           </span>
                         </div>
                       ) : null}
                     </td>
-                    <td className="py-3 px-3 text-slate-300 truncate max-w-[170px]" title={v.tramo}>
+                    <td className="py-3 px-3 text-slate-700 dark:text-slate-300 truncate max-w-[170px]" title={v.tramo}>
                       {v.tramo}
                     </td>
                     <td className="py-3 px-3">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
                         v.producto === "GASOLINA" 
-                          ? "bg-amber-500/15 text-amber-400 border-amber-500/30" 
+                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" 
                           : v.producto === "DIESEL"
-                          ? "bg-sky-500/15 text-sky-400 border-sky-500/30"
-                          : "bg-purple-500/15 text-purple-400 border-purple-500/30"
+                          ? "bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30"
+                          : "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30"
                       }`}>
                         {v.producto}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-[11px] text-slate-400 whitespace-nowrap">
+                    <td className="py-3 px-3 text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
                       <div>C: {formatDate(v.fecha_carga)}</div>
                       <div>D: {formatDate(v.fecha_descarga)}</div>
                     </td>
-                    <td className="py-3 px-3 text-right font-mono text-slate-300">{formatNumber(v.volumen_origen_litros, 0)} L</td>
-                    <td className="py-3 px-3 text-right font-mono font-bold text-emerald-400">{formatNumber(v.volumen_recepcionado_litros, 0)} L</td>
-                    <td className="py-3 px-3 text-right font-mono text-slate-300">
+                    <td className="py-3 px-3 text-right font-mono text-slate-700 dark:text-slate-300">{formatNumber(v.volumen_origen_litros, 0)} L</td>
+                    <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">{formatNumber(v.volumen_recepcionado_litros, 0)} L</td>
+                    <td className="py-3 px-3 text-right font-mono text-slate-700 dark:text-slate-300">
                       {formatNumber(v.merma_real_litros, 1)} L
                     </td>
-                    <td className={`py-3 px-3 text-right font-mono ${v.merma_excedente_litros > 0 ? "text-amber-400 font-bold" : "text-slate-500"}`}>
+                    <td className={`py-3 px-3 text-right font-mono ${v.merma_excedente_litros > 0 ? "text-amber-700 dark:text-amber-400 font-bold" : "text-slate-400 dark:text-slate-500"}`}>
                       {formatNumber(v.merma_excedente_litros, 1)} L
                     </td>
-                    <td className={`py-3 px-3 text-right font-mono ${v.merma_descontar_bs > 0 ? "text-rose-400 font-bold" : "text-slate-500"}`}>
+                    <td className={`py-3 px-3 text-right font-mono ${v.merma_descontar_bs > 0 ? "text-rose-700 dark:text-rose-400 font-bold" : "text-slate-400 dark:text-slate-500"}`}>
                       {formatCurrency(v.merma_descontar_bs)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono text-slate-300">
+                    <td className="py-3 px-3 text-right font-mono text-slate-700 dark:text-slate-300">
                       Bs. {formatNumber(v.tarifa_flete, 2)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-bold text-amber-400">
+                    <td className="py-3 px-3 text-right font-mono font-bold text-amber-700 dark:text-amber-400">
                       {formatCurrency(v.flete_total_bs)}
                     </td>
                     <td className="py-3 px-3 text-center">
                       <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                         v.estado === "Liquidado"
-                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                          : "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                          : "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30"
                       }`}>
                         {v.estado}
                       </span>
@@ -878,21 +921,21 @@ function ViajesContent() {
                       <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => handleDuplicate(v)}
-                          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-amber-400 transition"
+                          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition"
                           title="Duplicar / Clonar Viaje (mismo camión y ruta)"
                         >
                           <Copy className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => openEditModal(v)}
-                          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition"
+                          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-900 dark:hover:text-white transition"
                           title="Editar Viaje"
                         >
                           <Edit className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleDelete(v)}
-                          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-rose-400 transition"
+                          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
                           title="Eliminar Viaje"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -909,39 +952,39 @@ function ViajesContent() {
 
       {/* Modal Importar Masivamente desde Excel */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 w-full max-w-md p-6 sm:p-7">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-md p-6 sm:p-7">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center">
                   <FileSpreadsheet className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">Importar Viajes (Excel)</h3>
-                  <p className="text-[11px] text-slate-400">Carga masiva de despachos y cálculo en bloque</p>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">Importar Viajes (Excel)</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Carga masiva de despachos y cálculo en bloque</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowImportModal(false)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg transition"
+                className="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleImportSubmit} className="space-y-4">
-              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-200 space-y-1.5">
-                <div className="flex items-center gap-2 font-bold text-amber-400">
+              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-900 dark:text-amber-200 space-y-1.5">
+                <div className="flex items-center gap-2 font-bold text-amber-700 dark:text-amber-400">
                   <Info className="w-4 h-4 flex-shrink-0" />
                   <span>¿No tienes la plantilla oficial?</span>
                 </div>
-                <p className="text-[11px] text-slate-300">
+                <p className="text-[11px] text-slate-600 dark:text-slate-300">
                   Descárgala antes para completar las columnas de MIC/DTA, Placas, Fechas y Volúmenes.
                 </p>
                 <button
                   type="button"
                   onClick={downloadTemplate}
-                  className="mt-1 inline-flex items-center gap-1.5 text-xs font-bold text-amber-400 hover:text-amber-300 underline"
+                  className="mt-1 inline-flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 underline"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Descargar Plantilla Oficial (.xlsx)</span>
@@ -949,7 +992,7 @@ function ViajesContent() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   Selecciona el archivo Excel (.xlsx) *
                 </label>
                 <input
@@ -957,21 +1000,21 @@ function ViajesContent() {
                   required
                   accept=".xlsx, .xlsm, .xltx"
                   onChange={(e) => setImportFile(e.target.files ? e.target.files[0] : null)}
-                  className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-amber-500/10 file:text-amber-400 hover:file:bg-amber-500/20 cursor-pointer border border-slate-800 rounded-xl p-1.5 bg-slate-950"
+                  className="w-full text-xs text-slate-600 dark:text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-amber-500/10 file:text-amber-600 dark:file:text-amber-400 hover:file:bg-amber-500/20 cursor-pointer border border-slate-200 dark:border-slate-800 rounded-xl p-1.5 bg-slate-50 dark:bg-slate-950"
                 />
                 {importFile && (
-                  <p className="text-[11px] text-emerald-400 font-semibold mt-1.5 flex items-center gap-1">
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1.5 flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>Archivo listo: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)</span>
                   </p>
                 )}
               </div>
 
-              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2.5">
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setShowImportModal(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white rounded-xl transition"
+                  className="px-4 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl transition"
                 >
                   Cancelar
                 </button>
@@ -997,20 +1040,20 @@ function ViajesContent() {
 
       {/* Modal Registrar / Editar Viaje Manual */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 w-full max-w-2xl p-6 sm:p-7 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl p-6 sm:p-7 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
               <div>
-                <h3 className="text-base font-black text-white">
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
                   {editingViaje ? "Editar Despacho / Viaje" : "Registrar Nuevo Despacho"}
                 </h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Cálculo automático de mermas técnicas (0.15% Diésel, 0.25% Gasolina, 0.20% IYA)
                 </p>
               </div>
               <button
                 onClick={() => setShowModal(false)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg transition"
+                className="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg transition"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1019,21 +1062,21 @@ function ViajesContent() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">MIC/DTA Nº</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">MIC/DTA Nº</label>
                   <input
                     type="text"
                     value={formData.mic_dta}
                     onChange={(e) => setFormData({ ...formData, mic_dta: e.target.value.toUpperCase() })}
                     placeholder="ej. 23BO051130T"
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono uppercase text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono uppercase text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-300">Placa / Cisterna *</label>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Placa / Cisterna *</label>
                     {formData.es_apoyo && (
-                      <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/25 inline-flex items-center gap-1">
-                        <Handshake className="w-2.5 h-2.5 text-amber-400" />
+                      <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/25 inline-flex items-center gap-1">
+                        <Handshake className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
                         Apoyo: {formData.empresa_apoyo_nombre || "Aliado"}
                       </span>
                     )}
@@ -1082,28 +1125,28 @@ function ViajesContent() {
                         }
                         setFormData({ ...formData, placa: val });
                       }}
-                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                     >
-                      <option value="">-- Seleccionar cisterna --</option>
+                      <option value="" className="bg-white dark:bg-slate-900">-- Seleccionar cisterna --</option>
                       {unidades.length > 0 && (
-                        <optgroup label="🚛 Flota Propia de la Empresa">
+                        <optgroup label="🚛 Flota Propia de la Empresa" className="bg-white dark:bg-slate-900">
                           {unidades.map(u => (
-                            <option key={`propia-${u.id}`} value={u.placa}>
+                            <option key={`propia-${u.id}`} value={u.placa} className="bg-white dark:bg-slate-900">
                               {u.placa} {u.conductor_nombre ? `(${u.conductor_nombre})` : ""}
                             </option>
                           ))}
                         </optgroup>
                       )}
                       {unidadesApoyo.length > 0 && (
-                        <optgroup label="🤝 Flota de Apoyo (Subcontratistas)">
+                        <optgroup label="🤝 Flota de Apoyo (Subcontratistas)" className="bg-white dark:bg-slate-900">
                           {unidadesApoyo.map(u => (
-                            <option key={`apoyo-${u.id}`} value={u.placa}>
+                            <option key={`apoyo-${u.id}`} value={u.placa} className="bg-white dark:bg-slate-900">
                               {u.placa} - {u.empresa_apoyo_nombre || "Apoyo"} {u.conductor_nombre ? `(${u.conductor_nombre})` : ""}
                             </option>
                           ))}
                         </optgroup>
                       )}
-                      <option value="__MANUAL__">✏️ Escribir otra placa manualmente...</option>
+                      <option value="__MANUAL__" className="bg-white dark:bg-slate-900">✏️ Escribir otra placa manualmente...</option>
                     </select>
                   ) : (
                     <div className="relative">
@@ -1113,14 +1156,14 @@ function ViajesContent() {
                         value={formData.placa}
                         onChange={(e) => setFormData({ ...formData, placa: e.target.value.toUpperCase() })}
                         placeholder="ej. 4412-DPC"
-                        className="w-full pl-3.5 pr-14 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-white focus:outline-none focus:border-amber-500"
+                        className="w-full pl-3.5 pr-14 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
                         autoFocus
                       />
                       {(unidades.length > 0 || unidadesApoyo.length > 0) && (
                         <button
                           type="button"
                           onClick={() => setManualPlaca(false)}
-                          className="absolute inset-y-0 right-0 pr-3 text-[10px] text-amber-400 hover:text-amber-300 font-bold"
+                          className="absolute inset-y-0 right-0 pr-3 text-[10px] text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 font-bold"
                           title="Volver a la lista de cisternas"
                         >
                           Lista
@@ -1130,183 +1173,183 @@ function ViajesContent() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Lote</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Lote</label>
                   <input
                     type="text"
                     value={formData.lote_codigo}
                     onChange={(e) => setFormData({ ...formData, lote_codigo: e.target.value })}
                     placeholder="ej. 1"
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Tramo de Transporte *</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Tramo de Transporte *</label>
                 <input
                   type="text"
                   required
                   value={formData.tramo}
                   onChange={(e) => setFormData({ ...formData, tramo: e.target.value.toUpperCase() })}
                   placeholder="ej. ARICA - TAMBO QUEMADO - LA PAZ"
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs uppercase text-white focus:outline-none focus:border-amber-500"
+                  className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs uppercase text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Cliente *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Cliente *</label>
                   <input
                     type="text"
                     required
                     value={formData.cliente}
                     onChange={(e) => setFormData({ ...formData, cliente: e.target.value.toUpperCase() })}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs uppercase text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs uppercase text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Producto *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Producto *</label>
                   <select
                     value={formData.producto}
                     onChange={(e) => setFormData({ ...formData, producto: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                   >
-                    <option value="GASOLINA" className="bg-slate-900">GASOLINA (Tol. 0.25%)</option>
-                    <option value="DIESEL" className="bg-slate-900">DIÉSEL (Tol. 0.15%)</option>
-                    <option value="IYA" className="bg-slate-900">INSUMOS Y ADITIVOS (Tol. 0.20%)</option>
+                    <option value="GASOLINA" className="bg-white dark:bg-slate-900">GASOLINA (Tol. 0.25%)</option>
+                    <option value="DIESEL" className="bg-white dark:bg-slate-900">DIÉSEL (Tol. 0.15%)</option>
+                    <option value="IYA" className="bg-white dark:bg-slate-900">INSUMOS Y ADITIVOS (Tol. 0.20%)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Periodo Mes *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Periodo Mes *</label>
                   <input
                     type="month"
                     required
                     value={formData.periodo_mes}
                     onChange={(e) => setFormData({ ...formData, periodo_mes: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Fecha de Carga *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Fecha de Carga *</label>
                   <input
                     type="date"
                     required
                     value={formData.fecha_carga}
                     onChange={(e) => setFormData({ ...formData, fecha_carga: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Fecha de Descarga *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Fecha de Descarga *</label>
                   <input
                     type="date"
                     required
                     value={formData.fecha_descarga}
                     onChange={(e) => setFormData({ ...formData, fecha_descarga: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Volumen Origen (Litros) *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Volumen Origen (Litros) *</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={formData.volumen_origen_litros}
                     onChange={(e) => setFormData({ ...formData, volumen_origen_litros: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Volumen Recepcionado (Litros) *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Volumen Recepcionado (Litros) *</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={formData.volumen_recepcionado_litros}
                     onChange={(e) => setFormData({ ...formData, volumen_recepcionado_litros: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Tarifa Flete (Bs/m³) *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Tarifa Flete (Bs/m³) *</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={formData.tarifa_flete}
                     onChange={(e) => setFormData({ ...formData, tarifa_flete: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Tipo Tarifa</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Tipo Tarifa</label>
                   <select
                     value={formData.tipo_tarifa}
                     onChange={(e) => setFormData({ ...formData, tipo_tarifa: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                   >
-                    <option value="BS_POR_M3" className="bg-slate-900">Bs. por m³</option>
-                    <option value="USD_POR_M3" className="bg-slate-900">USD por m³</option>
+                    <option value="BS_POR_M3" className="bg-white dark:bg-slate-900">Bs. por m³</option>
+                    <option value="USD_POR_M3" className="bg-white dark:bg-slate-900">USD por m³</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Precio Merma (Bs/L)</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Precio Merma (Bs/L)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.precio_merma_litro_bs}
                     onChange={(e) => setFormData({ ...formData, precio_merma_litro_bs: parseFloat(e.target.value) || 7.45 })}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               {/* Previsualización en Vivo de Cálculos */}
-              <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2 text-xs">
-                <span className="font-bold text-amber-400 uppercase tracking-wider text-[10px] block mb-1">
+              <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2 text-xs">
+                <span className="font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider text-[10px] block mb-1">
                   Cálculos Oficiales en Tiempo Real:
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
                   <div>
-                    <span className="text-slate-400 block">Merma Real:</span>
-                    <span className="font-mono font-bold text-white">{liveCalc.merma_real} L</span>
+                    <span className="text-slate-500 dark:text-slate-400 block">Merma Real:</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-white">{liveCalc.merma_real} L</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block">Tolerable ({liveCalc.tolerancia_pct}%):</span>
-                    <span className="font-mono font-bold text-white">{liveCalc.merma_tolerable} L</span>
+                    <span className="text-slate-500 dark:text-slate-400 block">Tolerable ({liveCalc.tolerancia_pct}%):</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-white">{liveCalc.merma_tolerable} L</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block">Merma a Descontar:</span>
-                    <span className={`font-mono font-bold ${liveCalc.merma_descontar_bs > 0 ? "text-rose-400" : "text-emerald-400"}`}>
+                    <span className="text-slate-500 dark:text-slate-400 block">Merma a Descontar:</span>
+                    <span className={`font-mono font-bold ${liveCalc.merma_descontar_bs > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
                       {formatCurrency(liveCalc.merma_descontar_bs)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block">Flete Bruto Estimado:</span>
-                    <span className="font-mono font-bold text-amber-400">
+                    <span className="text-slate-500 dark:text-slate-400 block">Flete Bruto Estimado:</span>
+                    <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
                       {formatCurrency(liveCalc.flete_total_bs)}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2.5">
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white rounded-xl transition"
+                  className="px-4 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl transition"
                 >
                   Cancelar
                 </button>

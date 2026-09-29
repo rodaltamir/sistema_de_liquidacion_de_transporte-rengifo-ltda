@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, date
 from app.db.session import get_db, get_tenant_session
 from app.api.deps import verify_tenant_exists
 from app.models.public import Empresa
@@ -14,22 +14,50 @@ router = APIRouter(prefix="/tenants/{schema_name}/dashboard", tags=["Dashboard d
 def get_dashboard_metrics(
     schema_name: str,
     periodo_mes: Optional[str] = None,
+    anio: Optional[int] = None,
+    fecha_desde: Optional[date] = None,
+    fecha_hasta: Optional[date] = None,
     empresa: Empresa = Depends(verify_tenant_exists),
     db: Session = Depends(get_db)
 ):
     session = get_tenant_session(schema_name)
     try:
-        # Mes actual si no se proporciona
-        if not periodo_mes:
-            # Buscar el periodo_mes más reciente con viajes
-            ultimo_viaje = session.query(Viaje).order_by(Viaje.fecha_carga.desc()).first()
-            if ultimo_viaje:
-                periodo_mes = ultimo_viaje.periodo_mes
+        # Obtener todos los periodos disponibles con conteo
+        periodos_query = session.query(
+            Viaje.periodo_mes,
+            func.count(Viaje.id).label("total_viajes")
+        ).group_by(Viaje.periodo_mes).order_by(Viaje.periodo_mes.desc()).all()
+        periodos_disponibles = [
+            {"periodo_mes": p.periodo_mes, "total_viajes": p.total_viajes}
+            for p in periodos_query if p.periodo_mes
+        ]
+
+        query_viajes = session.query(Viaje)
+        query_liq = session.query(Liquidacion)
+        label_periodo = ""
+
+        if fecha_desde and fecha_hasta:
+            query_viajes = query_viajes.filter(Viaje.fecha_carga.between(fecha_desde, fecha_hasta))
+            query_liq = query_liq.filter(Liquidacion.fecha_emision.between(fecha_desde, fecha_hasta))
+            label_periodo = f"{fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}"
+        elif anio:
+            query_viajes = query_viajes.filter(Viaje.periodo_mes.startswith(f"{anio}-"))
+            query_liq = query_liq.filter(Liquidacion.periodo_mes.startswith(f"{anio}-"))
+            label_periodo = f"Año {anio}"
+        elif periodo_mes:
+            query_viajes = query_viajes.filter(Viaje.periodo_mes == periodo_mes)
+            query_liq = query_liq.filter(Liquidacion.periodo_mes == periodo_mes)
+            label_periodo = periodo_mes
+        else:
+            if periodos_disponibles:
+                periodo_mes = periodos_disponibles[0]["periodo_mes"]
             else:
                 periodo_mes = datetime.now().strftime("%Y-%m")
+            query_viajes = query_viajes.filter(Viaje.periodo_mes == periodo_mes)
+            query_liq = query_liq.filter(Liquidacion.periodo_mes == periodo_mes)
+            label_periodo = periodo_mes
 
-        # Métricas de viajes del mes
-        viajes_mes = session.query(Viaje).filter(Viaje.periodo_mes == periodo_mes).all()
+        viajes_mes = query_viajes.all()
         
         total_viajes = len(viajes_mes)
         total_volumen_origen = sum(v.volumen_origen_litros for v in viajes_mes)
@@ -78,7 +106,8 @@ def get_dashboard_metrics(
                 "logo_base64": empresa.logo_base64,
                 "asociacion_id": empresa.asociacion_id
             },
-            "periodo_activo": periodo_mes,
+            "periodo_activo": label_periodo or periodo_mes,
+            "periodos_disponibles": periodos_disponibles,
             "kpis": {
                 "total_viajes": total_viajes,
                 "total_flete_bruto_bs": round(total_flete_bruto, 2),

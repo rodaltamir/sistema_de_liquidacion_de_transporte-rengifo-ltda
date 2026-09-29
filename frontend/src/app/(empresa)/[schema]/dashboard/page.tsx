@@ -20,10 +20,12 @@ import {
   ChevronRight,
   Users,
   ShieldCheck,
-  FileCheck
+  FileCheck,
+  Sparkles
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency, formatNumber, formatM3, formatLitros, formatDate } from "@/lib/format";
+import DatePeriodFilter, { DateFilterChangeEvent } from "@/components/DatePeriodFilter";
 
 export default function EmpresaDashboardPage() {
   const routeParams = useParams();
@@ -31,22 +33,19 @@ export default function EmpresaDashboardPage() {
 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [periodo, setPeriodo] = useState("");
+  const [currentFilterQuery, setCurrentFilterQuery] = useState("");
+  const [activeLabel, setActiveLabel] = useState("");
 
-  useEffect(() => {
-    loadDashboard();
-  }, [schema, periodo]);
-
-  const loadDashboard = async () => {
+  const loadDashboard = async (query = "") => {
     setLoading(true);
     try {
-      const url = periodo 
-        ? `/tenants/${schema}/dashboard/?periodo_mes=${periodo}`
+      const url = query
+        ? `/tenants/${schema}/dashboard/?${query}`
         : `/tenants/${schema}/dashboard/`;
       const res = await apiFetch(url);
       setData(res);
-      if (!periodo && res.periodo_activo) {
-        setPeriodo(res.periodo_activo);
+      if (res.periodo_activo && !activeLabel) {
+        setActiveLabel(res.periodo_activo);
       }
     } catch (err) {
       console.error("Error cargando dashboard", err);
@@ -55,11 +54,32 @@ export default function EmpresaDashboardPage() {
     }
   };
 
+  useEffect(() => {
+    loadDashboard(currentFilterQuery);
+  }, [schema, currentFilterQuery]);
+
+  const handleFilterChange = (filter: DateFilterChangeEvent) => {
+    setActiveLabel(filter.label);
+    let q = "";
+    if (filter.mode === "mes" && filter.periodo_mes) {
+      q = `periodo_mes=${filter.periodo_mes}`;
+    } else if (filter.mode === "anual" && filter.anio) {
+      q = `anio=${filter.anio}`;
+    } else if (filter.mode === "personalizado" && filter.fecha_desde && filter.fecha_hasta) {
+      q = `fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`;
+    } else if (filter.mode === "historico") {
+      q = `historico=true`;
+    }
+    setCurrentFilterQuery(q);
+  };
+
   if (loading && !data) {
     return (
       <div className="flex flex-col justify-center items-center py-32 gap-3">
         <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
-        <span className="text-slate-400 text-xs font-semibold tracking-wider uppercase">Cargando Panel Operativo...</span>
+        <span className="text-slate-500 dark:text-slate-400 text-xs font-semibold tracking-wider uppercase">
+          Cargando Panel Operativo...
+        </span>
       </div>
     );
   }
@@ -71,39 +91,28 @@ export default function EmpresaDashboardPage() {
     <div className="space-y-6 sm:space-y-7 font-sans selection:bg-amber-500 selection:text-slate-950">
       
       {/* Encabezado del Dashboard (Tarjeta Banner Ejecutiva) */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-md shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+      <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-md shadow-lg dark:shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-5 transition-colors duration-200">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center flex-shrink-0 shadow-md shadow-amber-500/10">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/30 flex items-center justify-center flex-shrink-0 shadow-md shadow-amber-500/10">
             <LayoutDashboard className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                 Panel de Control Operativo
               </h1>
-              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/25">
-                Periodo {periodo}
+              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+                {activeLabel || data?.periodo_activo || "Periodo Activo"}
               </span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
               Monitoreo ejecutivo de viajes, fletes facturables, mermas de hidrocarburos y liquidaciones
             </p>
           </div>
         </div>
 
-        {/* Selector de Mes y Acciones Rápidas */}
+        {/* Acciones Rápidas */}
         <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
-          <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 px-3.5 py-2 rounded-xl text-xs shadow-md">
-            <Calendar className="w-4 h-4 text-amber-500" />
-            <span className="text-slate-400 font-medium">Periodo:</span>
-            <input
-              type="month"
-              value={periodo}
-              onChange={(e) => setPeriodo(e.target.value)}
-              className="bg-transparent text-white font-bold focus:outline-none cursor-pointer text-xs"
-            />
-          </div>
-
           <Link
             href={`/${schema}/viajes?action=nuevo`}
             className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs sm:text-sm font-black shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition transform active:scale-95"
@@ -114,82 +123,93 @@ export default function EmpresaDashboardPage() {
         </div>
       </div>
 
+      {/* ======================================================== */}
+      {/* FILTROS DE FECHA Y VISUALIZADOR DE MESES INTERACTIVO     */}
+      {/* ======================================================== */}
+      <DatePeriodFilter
+        currentPeriodoMes={data?.periodo_activo}
+        periodosDisponibles={data?.periodos_disponibles || []}
+        onChange={handleFilterChange}
+      />
+
       {/* Grid de KPIs Principales Simétricos */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         
         {/* Flete Bruto Acumulado */}
-        <div className="bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-amber-500/50 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Flete Bruto</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Flete Bruto</span>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 group-hover:scale-105 transition-transform">
               <DollarSign className="w-4.5 h-4.5" />
             </div>
           </div>
           <div className="my-2.5">
-            <div className="text-3xl font-black text-amber-400 tracking-tight font-mono">
+            <div className="text-3xl font-black text-amber-600 dark:text-amber-400 tracking-tight font-mono">
               {formatCurrency(kpis.total_flete_bruto_bs)}
             </div>
           </div>
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Operaciones</span>
-            <span className="font-semibold text-slate-300">{kpis.total_viajes || 0} viajes conciliados</span>
+            <span className="font-semibold text-slate-700 dark:text-slate-300">{kpis.total_viajes || 0} viajes conciliados</span>
           </div>
         </div>
 
         {/* Líquido Pagable */}
-        <div className="bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Líquido Pagable</span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Líquido Pagable</span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 group-hover:scale-105 transition-transform">
               <CheckCircle2 className="w-4.5 h-4.5" />
             </div>
           </div>
           <div className="my-2.5">
-            <div className="text-3xl font-black text-emerald-400 tracking-tight font-mono">
+            <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight font-mono">
               {formatCurrency(kpis.total_liquido_pagable_bs)}
             </div>
           </div>
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Monto neto transportista</span>
-            <span className="font-bold text-emerald-400">{kpis.total_liquidaciones || 0} planillas</span>
+            <span className="font-bold text-emerald-600 dark:text-emerald-400">{kpis.total_liquidaciones || 0} planillas</span>
           </div>
         </div>
 
         {/* Volumen Transportado */}
-        <div className="bg-slate-900/90 border border-slate-800 hover:border-sky-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-sky-500/50 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Volumen Entregado</span>
-            <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-105 transition-transform">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Volumen Entregado</span>
+            <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-500 group-hover:scale-105 transition-transform">
               <Fuel className="w-4.5 h-4.5" />
             </div>
           </div>
           <div className="my-2.5">
-            <div className="text-3xl font-black text-white tracking-tight">
+            <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
               {formatM3(kpis.total_volumen_m3)}
             </div>
           </div>
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Equivalencia</span>
-            <span className="font-bold text-sky-400">{formatNumber(kpis.total_volumen_m3 ? kpis.total_volumen_m3 * 1000 : 0, 0)} L</span>
+            <span className="font-bold text-sky-600 dark:text-sky-400">
+              {formatNumber(kpis.total_volumen_m3 ? kpis.total_volumen_m3 * 1000 : 0, 0)} L
+            </span>
           </div>
         </div>
 
         {/* Mermas a Descontar */}
-        <div className="bg-slate-900/90 border border-slate-800 hover:border-rose-500/40 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
+        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-rose-500/50 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mermas Excedentes</span>
-            <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 group-hover:scale-105 transition-transform">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Mermas Excedentes</span>
+            <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 group-hover:scale-105 transition-transform">
               <AlertTriangle className="w-4.5 h-4.5" />
             </div>
           </div>
           <div className="my-2.5">
-            <div className="text-3xl font-black text-rose-400 tracking-tight font-mono">
+            <div className="text-3xl font-black text-rose-600 dark:text-rose-400 tracking-tight font-mono">
               {formatCurrency(kpis.total_merma_descontar_bs)}
             </div>
           </div>
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Fuera de tolerancia (0.35%)</span>
-            <span className="font-bold text-rose-400">{formatLitros(kpis.total_merma_litros)}</span>
+            <span className="font-bold text-rose-600 dark:text-rose-400">{formatLitros(kpis.total_merma_litros)}</span>
           </div>
         </div>
 
@@ -199,22 +219,24 @@ export default function EmpresaDashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Distribución de Carga por Producto */}
-        <div className="lg:col-span-2 bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 shadow-xl">
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-200">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2.5">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
                 <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
                   <Fuel className="w-4 h-4" />
                 </div>
                 <span>Volumen Transportado por Tipo de Hidrocarburo</span>
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">Desglose de productos recepcionados en planta de almacenaje</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Desglose de productos recepcionados en planta de almacenaje ({activeLabel || "Periodo"})
+              </p>
             </div>
           </div>
 
           {Object.keys(distribucion).length === 0 ? (
-            <div className="text-center py-12 text-slate-500 text-xs">
-              No hay despachos registrados para este periodo.
+            <div className="text-center py-12 text-slate-400 text-xs">
+              No hay despachos registrados para este filtro de fechas.
             </div>
           ) : (
             <div className="space-y-4">
@@ -224,10 +246,10 @@ export default function EmpresaDashboardPage() {
                 return (
                   <div key={prod} className="space-y-1.5">
                     <div className="flex justify-between text-xs font-semibold">
-                      <span className="text-slate-200">{prod}</span>
-                      <span className="text-amber-400 font-mono">{formatLitros(litros)} ({pct.toFixed(1)}%)</span>
+                      <span className="text-slate-700 dark:text-slate-200">{prod}</span>
+                      <span className="text-amber-600 dark:text-amber-400 font-mono">{formatLitros(litros)} ({pct.toFixed(1)}%)</span>
                     </div>
-                    <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                    <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-950 rounded-full overflow-hidden border border-slate-200 dark:border-slate-800">
                       <div
                         className="h-full bg-gradient-to-r from-amber-500 to-amber-600 rounded-full transition-all duration-500"
                         style={{ width: `${pct}%` }}
@@ -241,43 +263,43 @@ export default function EmpresaDashboardPage() {
         </div>
 
         {/* Estado de la Flota de Camiones */}
-        <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between transition-colors duration-200">
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2.5">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
                 <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
                   <Truck className="w-4 h-4" />
                 </div>
                 <span>Flota de Unidades</span>
               </h3>
-              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-amber-400 border border-slate-700">
+              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-amber-600 dark:text-amber-400 border border-slate-200 dark:border-slate-700">
                 {kpis.total_unidades || 0} Camiones
               </span>
             </div>
 
             <div className="space-y-3 mt-4">
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-xs font-medium text-slate-300">Unidades Operativas</span>
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Unidades Operativas</span>
                 </div>
-                <span className="text-sm font-bold text-white">{kpis.unidades_activas || 0}</span>
+                <span className="text-sm font-bold text-slate-900 dark:text-white">{kpis.unidades_activas || 0}</span>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  <span className="text-xs font-medium text-slate-300">Habilitación YPFB / ANH</span>
+                  <ShieldCheck className="w-4 h-4 text-amber-500" />
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Habilitación YPFB / ANH</span>
                 </div>
-                <span className="text-xs font-bold text-emerald-400">100% Vigente</span>
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">100% Vigente</span>
               </div>
             </div>
           </div>
 
-          <div className="pt-6 border-t border-slate-800 mt-4">
+          <div className="pt-6 border-t border-slate-200 dark:border-slate-800 mt-4">
             <Link
               href={`/${schema}/flota`}
-              className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-amber-400 hover:text-amber-300 border border-slate-700 text-xs font-bold flex items-center justify-center gap-2 transition"
+              className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-amber-600 dark:text-amber-400 border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center justify-center gap-2 transition"
             >
               <span>Administrar Flota de Camiones</span>
               <ChevronRight className="w-4 h-4" />
@@ -288,21 +310,21 @@ export default function EmpresaDashboardPage() {
       </div>
 
       {/* Sección 3: Viajes Recientes */}
-      <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 shadow-xl">
+      <div className="bg-white dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-200">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2.5">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
                 <Navigation className="w-4 h-4" />
               </div>
               <span>Despachos y Fletes Recientes</span>
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">Últimos registros de carga y recepción ingresados</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Últimos registros de carga y recepción ingresados</p>
           </div>
 
           <Link
             href={`/${schema}/viajes`}
-            className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition"
+            className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 transition"
           >
             <span>Ver Todos los Viajes</span>
             <ChevronRight className="w-4 h-4" />
@@ -310,14 +332,14 @@ export default function EmpresaDashboardPage() {
         </div>
 
         {!data?.viajes_recientes || data.viajes_recientes.length === 0 ? (
-          <div className="text-center py-12 text-slate-500 text-xs">
+          <div className="text-center py-12 text-slate-400 text-xs">
             No hay viajes registrados recientemente en esta empresa.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-400 font-bold uppercase text-[10px]">
+                <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-bold uppercase text-[10px]">
                   <th className="pb-3 px-3">Placa</th>
                   <th className="pb-3 px-3">Tramo</th>
                   <th className="pb-3 px-3">Producto</th>
@@ -327,24 +349,24 @@ export default function EmpresaDashboardPage() {
                   <th className="pb-3 px-3 text-center">Estado</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800/80">
                 {data.viajes_recientes.map((vr: any) => (
-                  <tr key={vr.id} className="hover:bg-slate-800/50 transition">
-                    <td className="py-3 px-3 font-mono font-bold text-white">{vr.placa}</td>
-                    <td className="py-3 px-3 text-slate-300">{vr.tramo}</td>
+                  <tr key={vr.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                    <td className="py-3 px-3 font-mono font-bold text-slate-900 dark:text-white">{vr.placa}</td>
+                    <td className="py-3 px-3 text-slate-700 dark:text-slate-300">{vr.tramo}</td>
                     <td className="py-3 px-3">
-                      <span className="font-semibold text-amber-400">{vr.producto}</span>
+                      <span className="font-semibold text-amber-600 dark:text-amber-400">{vr.producto}</span>
                     </td>
-                    <td className="py-3 px-3 text-slate-400">{formatDate(vr.fecha_carga)}</td>
-                    <td className="py-3 px-3 text-right font-mono text-slate-300">{formatLitros(vr.volumen_litros)}</td>
-                    <td className="py-3 px-3 text-right font-mono font-bold text-emerald-400">
+                    <td className="py-3 px-3 text-slate-500 dark:text-slate-400">{formatDate(vr.fecha_carga)}</td>
+                    <td className="py-3 px-3 text-right font-mono text-slate-700 dark:text-slate-300">{formatLitros(vr.volumen_litros)}</td>
+                    <td className="py-3 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
                       {formatCurrency(vr.flete_bs)}
                     </td>
                     <td className="py-3 px-3 text-center">
                       <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                         vr.estado === "Liquidado"
-                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                          : "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                          : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
                       }`}>
                         {vr.estado}
                       </span>

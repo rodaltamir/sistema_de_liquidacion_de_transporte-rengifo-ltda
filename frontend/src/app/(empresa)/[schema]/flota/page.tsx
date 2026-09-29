@@ -292,21 +292,21 @@ function FlotaContent() {
     <div className="space-y-6 sm:space-y-7 font-sans selection:bg-amber-500 selection:text-slate-950">
       
       {/* Encabezado y Acción Principal (Tarjeta Banner Ejecutiva) */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-md shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+      <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-md shadow-md dark:shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-5 transition-colors">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center flex-shrink-0 shadow-md shadow-amber-500/10">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center justify-center flex-shrink-0 shadow-md shadow-amber-500/10">
             <Truck className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                 Equipos y Flota de Transporte
               </h1>
-              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/25">
+              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25">
                 {unidades.length} {unidades.length === 1 ? "Cisterna" : "Cisternas"}
               </span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
               Control técnico de tractocamiones, cisternas de combustible, calibración y choferes asignados
             </p>
           </div>
@@ -327,61 +327,61 @@ function FlotaContent() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         
         {/* Tarjeta 1: Total Flota */}
-        <div className="bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800/90 hover:border-amber-500/40 rounded-2xl p-5 shadow-xl shadow-black/25 transition-all flex flex-col justify-between min-h-[130px] group">
+        <div className="bg-white dark:bg-gradient-to-b dark:from-slate-900/90 dark:to-slate-950/90 border border-slate-200 dark:border-slate-800/90 hover:border-amber-500/40 rounded-2xl p-5 shadow-md dark:shadow-xl transition-all flex flex-col justify-between min-h-[130px] group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Flota</span>
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform shadow-inner">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Flota</span>
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-600 dark:text-amber-400 group-hover:scale-105 transition-transform shadow-inner">
               <Truck className="w-5 h-5" />
             </div>
           </div>
           <div className="my-2">
-            <div className="text-3xl font-black text-white tracking-tight">
+            <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
               {unidades.length}
             </div>
           </div>
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Cisternas registradas</span>
-            <span className="font-semibold text-amber-400">{unidades.length} unidades</span>
+            <span className="font-semibold text-amber-600 dark:text-amber-400">{unidades.length} unidades</span>
           </div>
         </div>
 
         {/* Tarjeta 2: Disponibles */}
-        <div className="bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800/90 hover:border-emerald-500/40 rounded-2xl p-5 shadow-xl shadow-black/25 transition-all flex flex-col justify-between min-h-[130px] group">
+        <div className="bg-white dark:bg-gradient-to-b dark:from-slate-900/90 dark:to-slate-950/90 border border-slate-200 dark:border-slate-800/90 hover:border-emerald-500/40 rounded-2xl p-5 shadow-md dark:shadow-xl transition-all flex flex-col justify-between min-h-[130px] group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Disponibles</span>
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform shadow-inner">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Disponibles</span>
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-600 dark:text-emerald-400 group-hover:scale-105 transition-transform shadow-inner">
               <CheckCircle2 className="w-5 h-5" />
             </div>
           </div>
           <div className="my-2">
-            <div className="text-3xl font-black text-emerald-400 tracking-tight">
+            <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
               {totalActivas}
             </div>
           </div>
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Listas para viaje</span>
-            <span className="font-semibold text-emerald-400">
+            <span className="font-semibold text-emerald-600 dark:text-emerald-400">
               {unidades.length > 0 ? Math.round((totalActivas / unidades.length) * 100) : 0}% de flota
             </span>
           </div>
         </div>
 
         {/* Tarjeta 3: En Ruta */}
-        <div className="bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800/90 hover:border-indigo-500/40 rounded-2xl p-5 shadow-xl shadow-black/25 transition-all flex flex-col justify-between min-h-[130px] group">
+        <div className="bg-white dark:bg-gradient-to-b dark:from-slate-900/90 dark:to-slate-950/90 border border-slate-200 dark:border-slate-800/90 hover:border-indigo-500/40 rounded-2xl p-5 shadow-md dark:shadow-xl transition-all flex flex-col justify-between min-h-[130px] group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Ruta</span>
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/25 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-transform shadow-inner">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">En Ruta</span>
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/25 flex items-center justify-center text-indigo-600 dark:text-indigo-400 group-hover:scale-105 transition-transform shadow-inner">
               <Clock className="w-5 h-5" />
             </div>
           </div>
           <div className="my-2">
-            <div className="text-3xl font-black text-indigo-400 tracking-tight">
+            <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight">
               {totalRuta}
             </div>
           </div>
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Despachos en tránsito</span>
-            <span className="font-semibold text-indigo-400">
+            <span className="font-semibold text-indigo-600 dark:text-indigo-400">
               {unidades.length > 0 ? Math.round((totalRuta / unidades.length) * 100) : 0}% de flota
             </span>
           </div>
@@ -390,38 +390,38 @@ function FlotaContent() {
       </div>
 
       {/* Barra de Filtros y Búsqueda Equilibrada */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-xl">
+      <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-md dark:shadow-xl transition-colors">
         <div className="relative flex-1 max-w-lg">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             placeholder="Buscar por placa, conductor, marca o B-SISA..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition shadow-inner"
           />
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-xs text-slate-400 font-medium">
+          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-medium">
             <span>Estado:</span>
             <select
               value={estadoFiltro}
               onChange={(e) => setEstadoFiltro(e.target.value)}
-              className="px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+              className="px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
             >
-              <option value="Todos" className="bg-slate-900">Todos los Estados</option>
-              <option value="Activo" className="bg-slate-900">Activo</option>
-              <option value="En Ruta" className="bg-slate-900">En Ruta</option>
-              <option value="Mantenimiento" className="bg-slate-900">Mantenimiento</option>
-              <option value="Inactivo" className="bg-slate-900">Inactivo</option>
+              <option value="Todos" className="bg-white dark:bg-slate-900">Todos los Estados</option>
+              <option value="Activo" className="bg-white dark:bg-slate-900">Activo</option>
+              <option value="En Ruta" className="bg-white dark:bg-slate-900">En Ruta</option>
+              <option value="Mantenimiento" className="bg-white dark:bg-slate-900">Mantenimiento</option>
+              <option value="Inactivo" className="bg-white dark:bg-slate-900">Inactivo</option>
             </select>
           </div>
 
           {(search || estadoFiltro !== "Todos") && (
             <button
               onClick={() => { setSearch(""); setEstadoFiltro("Todos"); }}
-              className="px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition"
+              className="px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
             >
               Restablecer
             </button>
@@ -430,7 +430,7 @@ function FlotaContent() {
       </div>
 
       {/* Tabla de Unidades o Estado Vacío Intuitivo */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+      <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-md dark:shadow-xl transition-colors">
         {loading ? (
           <div className="py-20 flex flex-col items-center justify-center text-slate-400 gap-3">
             <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
@@ -440,15 +440,15 @@ function FlotaContent() {
           unidades.length === 0 ? (
             /* Guía de Inicio Rápido cuando la flota está vacía */
             <div className="text-center py-16 px-6 max-w-xl mx-auto flex flex-col items-center">
-              <div className="w-16 h-16 rounded-3xl bg-amber-500/10 border border-amber-500/25 text-amber-400 flex items-center justify-center mb-4 shadow-xl shadow-amber-500/10">
+              <div className="w-16 h-16 rounded-3xl bg-amber-500/10 border border-amber-500/25 text-amber-500 flex items-center justify-center mb-4 shadow-xl shadow-amber-500/10">
                 <Truck className="w-8 h-8" />
               </div>
               
-              <h3 className="text-xl font-black text-white mb-2">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">
                 Registra tus unidades de transporte
               </h3>
               
-              <p className="text-xs sm:text-sm text-slate-400 text-center max-w-md mb-6 leading-relaxed">
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 text-center max-w-md mb-6 leading-relaxed">
                 Ingresa la placa y los datos del conductor para comenzar a cargar despachos, asignar viajes y calcular fletes.
               </p>
 
@@ -462,17 +462,17 @@ function FlotaContent() {
             </div>
           ) : (
             /* Mensaje cuando no hay resultados de búsqueda */
-            <div className="text-center py-16 px-6 text-slate-400 max-w-md mx-auto">
-              <div className="w-14 h-14 rounded-2xl bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-3">
+            <div className="text-center py-16 px-6 text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+              <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-3">
                 <Search className="w-6 h-6" />
               </div>
-              <p className="text-base font-bold text-white">No se encontraron camiones</p>
-              <p className="text-xs text-slate-400 mt-1 mb-5">
+              <p className="text-base font-bold text-slate-900 dark:text-white">No se encontraron camiones</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 mb-5">
                 No hay resultados para los filtros seleccionados. Intenta con otra placa o término.
               </p>
               <button
                 onClick={() => { setSearch(""); setEstadoFiltro("Todos"); }}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold rounded-xl transition"
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition"
               >
                 Limpiar Búsqueda
               </button>
@@ -481,7 +481,7 @@ function FlotaContent() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm border-collapse">
-              <thead className="bg-slate-950/80 border-b border-slate-800 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <thead className="bg-slate-50 dark:bg-slate-950/80 border-b border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 <tr>
                   <th className="py-3.5 px-5">Placa / Cisterna</th>
                   <th className="py-3.5 px-5">Conductor Asignado</th>
@@ -490,14 +490,14 @@ function FlotaContent() {
                   <th className="py-3.5 px-5 text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {filteredUnidades.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-850/60 transition group">
+                  <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition group">
                     
                     {/* Placa */}
                     <td className="py-4 px-5">
-                      <div className="inline-flex items-center gap-2.5 font-mono font-black text-white text-sm px-3.5 py-1.5 bg-slate-950 rounded-xl border border-slate-800 shadow-inner group-hover:border-amber-500/40 transition">
-                        <Truck className="w-4 h-4 text-amber-400" />
+                      <div className="inline-flex items-center gap-2.5 font-mono font-black text-slate-900 dark:text-white text-sm px-3.5 py-1.5 bg-slate-100 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 shadow-inner group-hover:border-amber-500/40 transition">
+                        <Truck className="w-4 h-4 text-amber-500" />
                         <span>{u.placa}</span>
                       </div>
                       {u.marca && (
@@ -511,30 +511,30 @@ function FlotaContent() {
                     <td className="py-4 px-5">
                       {u.conductor_nombre ? (
                         <div className="space-y-1">
-                          <div className="font-bold text-white text-xs flex items-center gap-1.5">
-                            <User className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                          <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
+                            <User className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
                             <span>{u.conductor_nombre}</span>
                           </div>
-                          <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                          <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
                             {u.conductor_telefono && (
-                              <span className="flex items-center gap-1 text-slate-300">
-                                <Phone className="w-3 h-3 text-slate-500" />
+                              <span className="flex items-center gap-1 text-slate-700 dark:text-slate-300">
+                                <Phone className="w-3 h-3 text-slate-400" />
                                 <span>{u.conductor_telefono}</span>
                               </span>
                             )}
                             {u.conductor_ci && (
-                              <span className="text-slate-500 font-mono">CI: {u.conductor_ci}</span>
+                              <span className="text-slate-400 dark:text-slate-500 font-mono">CI: {u.conductor_ci}</span>
                             )}
                           </div>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-500 italic">Sin conductor asignado</span>
+                        <span className="text-xs text-slate-400 italic">Sin conductor asignado</span>
                       )}
                     </td>
 
                     {/* Capacidad */}
                     <td className="py-4 px-5">
-                      <div className="font-mono font-bold text-slate-200 text-xs">
+                      <div className="font-mono font-bold text-slate-800 dark:text-slate-200 text-xs">
                         {formatLitros(u.capacidad_litros || 34000)}
                       </div>
                       <div className="text-[11px] font-mono text-slate-500">
@@ -546,17 +546,17 @@ function FlotaContent() {
                     <td className="py-4 px-5 text-center">
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
                         u.estado === "Activo"
-                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
                           : u.estado === "En Ruta"
-                          ? "bg-sky-500/15 text-sky-400 border-sky-500/30"
+                          ? "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30"
                           : u.estado === "Mantenimiento"
-                          ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                          : "bg-slate-800 text-slate-400 border-slate-700"
+                          ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700"
                       }`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${
-                          u.estado === "Activo" ? "bg-emerald-400" :
-                          u.estado === "En Ruta" ? "bg-sky-400" :
-                          u.estado === "Mantenimiento" ? "bg-amber-400" : "bg-slate-500"
+                          u.estado === "Activo" ? "bg-emerald-500" :
+                          u.estado === "En Ruta" ? "bg-sky-500" :
+                          u.estado === "Mantenimiento" ? "bg-amber-500" : "bg-slate-400"
                         }`} />
                         <span>{u.estado}</span>
                       </span>
@@ -568,14 +568,14 @@ function FlotaContent() {
                         <button
                           onClick={() => handleOpenEdit(u)}
                           title="Editar unidad"
-                          className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition"
+                          className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(u)}
                           title="Eliminar unidad"
-                          className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-xl transition"
+                          className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-slate-800 rounded-xl transition"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -592,12 +592,12 @@ function FlotaContent() {
 
       {/* Modal Crear / Editar Unidad (Formulario Simplificado) */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 w-full max-w-lg p-6 sm:p-7 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg p-6 sm:p-7 max-h-[92vh] overflow-y-auto text-slate-900 dark:text-white transition-colors">
             
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-5">
               <div>
-                <h3 className="text-base font-black text-white">
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
                   {editingUnidad ? `Editar Cisterna: ${editingUnidad.placa}` : "Nueva Cisterna / Camión"}
                 </h3>
                 <p className="text-xs text-slate-400">
@@ -606,7 +606,7 @@ function FlotaContent() {
               </div>
               <button
                 onClick={() => setShowModal(false)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg transition"
+                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg transition"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -619,7 +619,7 @@ function FlotaContent() {
                 
                 {/* Placa */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Placa del Camión / Cisterna *
                   </label>
                   <div className="relative">
@@ -630,7 +630,7 @@ function FlotaContent() {
                       value={formData.placa}
                       onChange={(e) => setFormData({ ...formData, placa: e.target.value.toUpperCase() })}
                       placeholder="ej. 4412-DCP"
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm font-mono font-black text-white focus:outline-none focus:border-amber-500 uppercase tracking-wider"
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-sm font-mono font-black text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 uppercase tracking-wider"
                     />
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">Identificador único vehicular según RUAT</p>
@@ -639,33 +639,33 @@ function FlotaContent() {
                 {/* Conductor y Teléfono */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                       Nombre del Conductor
                     </label>
                     <div className="relative">
-                      <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
                         value={formData.conductor_nombre}
                         onChange={(e) => setFormData({ ...formData, conductor_nombre: e.target.value })}
                         placeholder="ej. CARLOS MAMANI CONDORI"
-                        className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                       Teléfono del Conductor
                     </label>
                     <div className="relative">
-                      <Phone className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
                         value={formData.conductor_telefono}
                         onChange={(e) => setFormData({ ...formData, conductor_telefono: e.target.value })}
                         placeholder="ej. 71599882"
-                        className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
                       />
                     </div>
                   </div>
@@ -673,17 +673,17 @@ function FlotaContent() {
 
                 {/* C.I. Conductor */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     C.I. del Conductor (Opcional)
                   </label>
                   <div className="relative">
-                    <CreditCard className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <CreditCard className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
                       value={formData.conductor_ci}
                       onChange={(e) => setFormData({ ...formData, conductor_ci: e.target.value })}
                       placeholder="ej. 6842109 LP"
-                      className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                      className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
                     />
                   </div>
                 </div>
@@ -695,7 +695,7 @@ function FlotaContent() {
                 <button
                   type="button"
                   onClick={() => setShowOptionalFields(!showOptionalFields)}
-                  className="w-full py-2.5 px-3 bg-slate-950/60 hover:bg-slate-950 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-slate-200 transition flex items-center justify-between"
+                  className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 dark:hover:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition flex items-center justify-between"
                 >
                   <span className="flex items-center gap-1.5 font-medium">
                     <span>{showOptionalFields ? "− Ocultar datos técnicos opcionales" : "+ Datos técnicos o documentación adicional (Opcional)"}</span>
@@ -704,11 +704,11 @@ function FlotaContent() {
                 </button>
 
                 {showOptionalFields && (
-                  <div className="mt-3 p-4 bg-slate-950/80 rounded-2xl border border-slate-800/80 space-y-3.5 animate-in fade-in">
+                  <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-950/80 rounded-2xl border border-slate-200 dark:border-slate-800/80 space-y-3.5 animate-in fade-in">
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-1">Capacidad (Litros)</label>
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Capacidad (Litros)</label>
                         <input
                           type="number"
                           value={formData.capacidad_litros}
@@ -716,11 +716,11 @@ function FlotaContent() {
                             const l = Number(e.target.value);
                             setFormData({ ...formData, capacidad_litros: l, capacidad_m3: Number((l / 1000).toFixed(2)) });
                           }}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-mono"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-1">Capacidad (m³)</label>
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Capacidad (m³)</label>
                         <input
                           type="number"
                           step="0.1"
@@ -729,61 +729,61 @@ function FlotaContent() {
                             const m = Number(e.target.value);
                             setFormData({ ...formData, capacidad_m3: m, capacidad_litros: m * 1000 });
                           }}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-mono"
                         />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-1">Marca del Camión</label>
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Marca del Camión</label>
                         <input
                           type="text"
                           value={formData.marca}
                           onChange={(e) => setFormData({ ...formData, marca: e.target.value })}
                           placeholder="ej. Volvo FH12 / Scania"
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-1">Modelo / Año</label>
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Modelo / Año</label>
                         <input
                           type="text"
                           value={formData.modelo_ano}
                           onChange={(e) => setFormData({ ...formData, modelo_ano: e.target.value })}
                           placeholder="ej. 2021"
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                         />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-1">B-SISA</label>
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">B-SISA</label>
                         <input
                           type="text"
                           value={formData.b_sisa}
                           onChange={(e) => setFormData({ ...formData, b_sisa: e.target.value })}
                           placeholder="ej. BS-90921"
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-1">SOAT</label>
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">SOAT</label>
                         <input
                           type="text"
                           value={formData.soat_numero}
                           onChange={(e) => setFormData({ ...formData, soat_numero: e.target.value })}
                           placeholder="ej. 2025-SOAT-4892"
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-1">Estado</label>
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Estado</label>
                         <select
                           value={formData.estado}
                           onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                         >
                           <option value="Activo">Activo</option>
                           <option value="En Ruta">En Ruta</option>
@@ -798,11 +798,11 @@ function FlotaContent() {
               </div>
 
               {/* Botones de acción */}
-              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2.5">
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white rounded-xl transition"
+                  className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl transition"
                 >
                   Cancelar
                 </button>

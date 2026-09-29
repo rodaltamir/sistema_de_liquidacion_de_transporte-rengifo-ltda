@@ -13,13 +13,46 @@ from app.schemas.viaje import ViajeCreate, ViajeUpdate, ViajeResponse, ViajeCalc
 from app.services.calculation_engine import calculate_viaje_values
 from app.services.excel_export import generate_viajes_template_excel
 
+from sqlalchemy import func
+
 router = APIRouter(prefix="/tenants/{schema_name}/viajes", tags=["Viajes y Despachos"])
+
+
+@router.get("/periodos")
+def get_periodos_disponibles(
+    schema_name: str,
+    empresa: Empresa = Depends(verify_tenant_exists)
+):
+    session = get_tenant_session(schema_name)
+    try:
+        results = session.query(
+            Viaje.periodo_mes,
+            func.count(Viaje.id).label("total_viajes"),
+            func.sum(Viaje.volumen_recepcionado_litros).label("total_volumen"),
+            func.sum(Viaje.flete_total_bs).label("total_flete")
+        ).group_by(Viaje.periodo_mes).order_by(Viaje.periodo_mes.desc()).all()
+        
+        periodos = []
+        for r in results:
+            if r.periodo_mes:
+                periodos.append({
+                    "periodo_mes": r.periodo_mes,
+                    "total_viajes": r.total_viajes,
+                    "total_volumen_litros": float(r.total_volumen or 0),
+                    "total_flete_bs": float(r.total_flete or 0)
+                })
+        return periodos
+    finally:
+        session.close()
 
 
 @router.get("/", response_model=List[ViajeResponse])
 def list_viajes(
     schema_name: str,
     periodo_mes: Optional[str] = None,
+    anio: Optional[int] = None,
+    fecha_desde: Optional[date] = None,
+    fecha_hasta: Optional[date] = None,
     placa: Optional[str] = None,
     estado: Optional[str] = None,
     empresa: Empresa = Depends(verify_tenant_exists)
@@ -29,6 +62,12 @@ def list_viajes(
         query = session.query(Viaje)
         if periodo_mes:
             query = query.filter(Viaje.periodo_mes == periodo_mes)
+        if anio:
+            query = query.filter(Viaje.periodo_mes.startswith(f"{anio}-"))
+        if fecha_desde:
+            query = query.filter(Viaje.fecha_carga >= fecha_desde)
+        if fecha_hasta:
+            query = query.filter(Viaje.fecha_carga <= fecha_hasta)
         if placa:
             query = query.filter(Viaje.placa == placa.upper().strip())
         if estado:

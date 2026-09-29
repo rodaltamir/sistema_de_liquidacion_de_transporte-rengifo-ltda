@@ -17,9 +17,9 @@ export function getCurrentUser(): User | null {
   }
 }
 
-export function isAdmin(): boolean {
-  const user = getCurrentUser();
-  return user?.role === 'admin';
+export function isAdmin(user?: User | null): boolean {
+  const targetUser = user !== undefined ? user : getCurrentUser();
+  return targetUser?.role === 'admin';
 }
 
 export function setAuth(token: string, user: User) {
