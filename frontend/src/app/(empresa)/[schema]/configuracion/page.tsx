@@ -64,6 +64,8 @@ export default function ConfiguracionPage() {
   // Errores de validación de empresa
   const [empresaErrors, setEmpresaErrors] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
   // Parámetros Técnicos y Normativa YPFB
   const [formData, setFormData] = useState({
@@ -245,16 +247,23 @@ export default function ConfiguracionPage() {
     }
   };
 
-  // Manejador de subida de Logo
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Manejador de subida de Logo (Compatible con SVG, PNG, JPG, JPEG, WebP y GIF)
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
+    // Resetear valor para permitir volver a seleccionar el mismo archivo si se desea
+    e.target.value = "";
+
+    const fileName = file.name.toLowerCase();
+    const isSvg = fileName.endsWith(".svg") || file.type.includes("svg") || file.type === "image/svg+xml";
+    const isStandardImg = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg|ico)$/i.test(fileName);
+
+    if (!isSvg && !isStandardImg) {
       Swal.fire({
         icon: "error",
-        title: "Formato no válido",
-        text: "Por favor selecciona un archivo de imagen (PNG, JPG, SVG o WebP).",
+        title: "Formato no compatible",
+        text: "Por favor selecciona un archivo de imagen válido: SVG (Vectorial), PNG, JPG, JPEG o WebP.",
         background: resolvedTheme === "dark" ? "#0f172a" : "#ffffff",
         color: resolvedTheme === "dark" ? "#f8fafc" : "#0f172a",
         confirmButtonColor: "#f59e0b"
@@ -262,11 +271,11 @@ export default function ConfiguracionPage() {
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
+    if (file.size > 3 * 1024 * 1024) {
       Swal.fire({
         icon: "warning",
         title: "Archivo muy pesado",
-        text: "El tamaño máximo permitido para el logotipo es de 2 MB.",
+        text: "El tamaño máximo permitido para el logotipo corporativo es de 3 MB.",
         background: resolvedTheme === "dark" ? "#0f172a" : "#ffffff",
         color: resolvedTheme === "dark" ? "#f8fafc" : "#0f172a",
         confirmButtonColor: "#f59e0b"
@@ -274,12 +283,118 @@ export default function ConfiguracionPage() {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result as string;
-      setEmpresaData(prev => ({ ...prev, logo_base64: base64 }));
-    };
-    reader.readAsDataURL(file);
+    setLogoUploading(true);
+    setLogoError(false);
+
+    try {
+      if (isSvg) {
+        // 1. Procesamiento especializado para archivos SVG Vectoriales
+        const textContent = await file.text();
+        
+        if (!textContent.includes("<svg") && !textContent.includes("<SVG")) {
+          throw new Error("El archivo seleccionado no contiene una estructura SVG válida.");
+        }
+
+        // Asegurar que el elemento <svg> tenga el atributo xmlns obligatorio para renderizarse en etiquetas <img>
+        let sanitizedSvg = textContent;
+        if (!sanitizedSvg.includes('xmlns="http://www.w3.org/2000/svg"')) {
+          sanitizedSvg = sanitizedSvg.replace(/<svg\b([^>]*)>/i, '<svg xmlns="http://www.w3.org/2000/svg" $1>');
+        }
+
+        // Convertir a Data URL Base64 con soporte UTF-8 completo
+        let base64Svg: string;
+        try {
+          base64Svg = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(sanitizedSvg)));
+        } catch {
+          base64Svg = "data:image/svg+xml;utf8," + encodeURIComponent(sanitizedSvg);
+        }
+
+        // Validar pre-renderizado en un objeto Image en memoria
+        const testImg = new Image();
+        testImg.onload = () => {
+          setEmpresaData(prev => ({ ...prev, logo_base64: base64Svg }));
+          setLogoUploading(false);
+          setLogoError(false);
+        };
+        testImg.onerror = () => {
+          // Fallback a UTF-8 URI encoding si Base64 estricto falla en el motor del navegador
+          const utf8Url = "data:image/svg+xml;utf8," + encodeURIComponent(sanitizedSvg);
+          const fallbackImg = new Image();
+          fallbackImg.onload = () => {
+            setEmpresaData(prev => ({ ...prev, logo_base64: utf8Url }));
+            setLogoUploading(false);
+            setLogoError(false);
+          };
+          fallbackImg.onerror = () => {
+            setLogoUploading(false);
+            setLogoError(true);
+            Swal.fire({
+              icon: "error",
+              title: "Error al interpretar SVG",
+              text: "No se pudo renderizar el archivo vectorial SVG. Verifica que el código XML sea válido.",
+              background: resolvedTheme === "dark" ? "#0f172a" : "#ffffff",
+              color: resolvedTheme === "dark" ? "#f8fafc" : "#0f172a",
+              confirmButtonColor: "#f59e0b"
+            });
+          };
+          fallbackImg.src = utf8Url;
+        };
+        testImg.src = base64Svg;
+
+      } else {
+        // 2. Procesamiento para imágenes convencionales (PNG, JPG, JPEG, WebP, GIF)
+        const reader = new FileReader();
+        reader.onload = () => {
+          let resultStr = reader.result as string;
+
+          // Si el navegador no detectó el MIME type correcto y generó data:;base64,
+          if (resultStr.startsWith("data:;base64,") || resultStr.startsWith("data:application/octet-stream;base64,")) {
+            let mime = "image/png";
+            if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) mime = "image/jpeg";
+            else if (fileName.endsWith(".webp")) mime = "image/webp";
+            else if (fileName.endsWith(".gif")) mime = "image/gif";
+            resultStr = resultStr.replace(/^data:[^;]*;base64,/, `data:${mime};base64,`);
+          }
+
+          // Pre-validar imagen en memoria
+          const testImg = new Image();
+          testImg.onload = () => {
+            setEmpresaData(prev => ({ ...prev, logo_base64: resultStr }));
+            setLogoUploading(false);
+            setLogoError(false);
+          };
+          testImg.onerror = () => {
+            setLogoUploading(false);
+            setLogoError(true);
+            Swal.fire({
+              icon: "error",
+              title: "Imagen no válida",
+              text: "No se pudo decodificar el archivo de imagen. Intenta con un archivo PNG o JPG válido.",
+              background: resolvedTheme === "dark" ? "#0f172a" : "#ffffff",
+              color: resolvedTheme === "dark" ? "#f8fafc" : "#0f172a",
+              confirmButtonColor: "#f59e0b"
+            });
+          };
+          testImg.src = resultStr;
+        };
+        reader.onerror = () => {
+          setLogoUploading(false);
+          setLogoError(true);
+        };
+        reader.readAsDataURL(file);
+      }
+    } catch (err: any) {
+      setLogoUploading(false);
+      setLogoError(true);
+      Swal.fire({
+        icon: "error",
+        title: "Error al procesar archivo",
+        text: err.message || "Ocurrió un error al leer el archivo seleccionado.",
+        background: resolvedTheme === "dark" ? "#0f172a" : "#ffffff",
+        color: resolvedTheme === "dark" ? "#f8fafc" : "#0f172a",
+        confirmButtonColor: "#f59e0b"
+      });
+    }
   };
 
   // Guardar parámetros de liquidación
@@ -427,53 +542,94 @@ export default function ConfiguracionPage() {
 
             {/* SECCIÓN DE LOGOTIPO DE LA EMPRESA */}
             <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center gap-5">
-              <div className="w-24 h-24 rounded-2xl bg-white dark:bg-slate-900 border-2 border-dashed border-amber-500/40 p-2 flex items-center justify-center shadow-inner flex-shrink-0 overflow-hidden relative group">
-                {empresaData.logo_base64 ? (
-                  <img 
-                    src={empresaData.logo_base64} 
-                    alt="Logo Empresa" 
-                    className="w-full h-full object-contain"
-                  />
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                className="w-28 h-28 rounded-2xl bg-white dark:bg-slate-900 border-2 border-dashed border-amber-500/50 hover:border-amber-500 p-2.5 flex items-center justify-center shadow-inner flex-shrink-0 overflow-hidden relative group cursor-pointer transition-all hover:scale-105"
+                title="Haz clic para seleccionar o cambiar el logotipo"
+              >
+                {logoUploading ? (
+                  <div className="flex flex-col items-center justify-center gap-1.5 text-amber-500">
+                    <div className="w-6 h-6 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Procesando...</span>
+                  </div>
+                ) : empresaData.logo_base64 && !logoError ? (
+                  <>
+                    <img 
+                      src={empresaData.logo_base64} 
+                      alt="Logo Empresa" 
+                      className="w-full h-full object-contain"
+                      onError={() => setLogoError(true)}
+                    />
+                    <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] font-bold gap-1">
+                      <Upload className="w-4 h-4 text-amber-400" />
+                      <span>Cambiar</span>
+                    </div>
+                  </>
                 ) : (
-                  <img 
-                    src="/rengifo_logo_icon.svg" 
-                    alt="Logo Predeterminado" 
-                    className="w-full h-full object-contain opacity-80"
-                  />
+                  <>
+                    <img 
+                      src="/rengifo_logo_icon.svg" 
+                      alt="Logo Predeterminado" 
+                      className="w-full h-full object-contain opacity-80"
+                    />
+                    <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] font-bold gap-1">
+                      <Upload className="w-4 h-4 text-amber-400" />
+                      <span>Subir</span>
+                    </div>
+                  </>
                 )}
               </div>
 
-              <div className="flex-1 text-center sm:text-left space-y-1.5">
-                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase">
-                  Logotipo Corporativo / Membrete
-                </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Formato PNG, JPG o SVG (máx. 2 MB). Se visualizará en el navbar superior, sidebar y planillas PDF oficiales.
+              <div className="flex-1 text-center sm:text-left space-y-2">
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                    Logotipo Corporativo / Membrete
+                  </h4>
+                  {empresaData.logo_base64 && !logoError && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                      <Check className="w-3 h-3 stroke-[3]" />
+                      {empresaData.logo_base64.includes("image/svg+xml") ? "SVG Vectorial" : "Imagen Cargada"}
+                    </span>
+                  )}
+                  {logoError && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+                      <AlertCircle className="w-3 h-3" />
+                      Archivo no compatible o dañado
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Admite archivos vectoriales <b>.SVG</b> y formatos convencionales <b>.PNG</b>, <b>.JPG</b>, <b>.JPEG</b> o <b>.WebP</b> (máx. 3 MB). Se visualiza con alta nitidez en el navbar, sidebar y hojas oficiales.
                 </p>
 
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1.5">
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
                   <input
                     type="file"
                     ref={fileInputRef}
                     onChange={handleLogoUpload}
-                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                    accept="image/svg+xml,image/png,image/jpeg,image/webp,image/gif,.svg,.png,.jpg,.jpeg,.webp,.gif"
                     className="hidden"
                   />
 
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-300 text-xs font-bold transition"
+                    disabled={logoUploading}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-300 text-xs font-bold transition shadow-xs active:scale-95 disabled:opacity-50"
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Subir Logotipo</span>
+                    <span>{empresaData.logo_base64 ? "Cambiar Logotipo" : "Subir Logotipo"}</span>
                   </button>
 
                   {empresaData.logo_base64 && (
                     <button
                       type="button"
-                      onClick={() => setEmpresaData(prev => ({ ...prev, logo_base64: "" }))}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-xs font-bold transition"
+                      onClick={() => {
+                        setEmpresaData(prev => ({ ...prev, logo_base64: "" }));
+                        setLogoError(false);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-xs font-bold transition active:scale-95"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Restaurar Predeterminado</span>

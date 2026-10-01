@@ -159,7 +159,14 @@ export default function EmpresaLayout({
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 p-1 flex items-center justify-center shadow-xs flex-shrink-0 overflow-hidden">
                 {empresa?.logo_base64 ? (
-                  <img src={empresa.logo_base64} alt={empresa.name} className="w-full h-full object-contain" />
+                  <img
+                    src={empresa.logo_base64}
+                    alt={empresa.name}
+                    className="w-full h-full object-contain"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = "/rengifo_logo_icon.svg";
+                    }}
+                  />
                 ) : (
                   <img src="/rengifo_logo_icon.svg" alt="Rengifo" className="w-full h-full object-contain" />
                 )}
@@ -301,7 +308,14 @@ export default function EmpresaLayout({
           </button>
           <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 p-1 flex items-center justify-center flex-shrink-0">
             {empresa?.logo_base64 ? (
-              <img src={empresa.logo_base64} alt="Logo" className="w-full h-full object-contain" />
+              <img
+                src={empresa.logo_base64}
+                alt="Logo"
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = "/rengifo_logo_icon.svg";
+                }}
+              />
             ) : (
               <img src="/rengifo_logo_icon.svg" alt="Rengifo" className="w-full h-full object-contain" />
             )}
