@@ -13,7 +13,6 @@ import {
   Trash2, 
   LogOut, 
   ShieldCheck, 
-  Users, 
   Search, 
   Phone, 
   MapPin, 
@@ -33,8 +32,7 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
-import { getCurrentUser, clearAuth, isAdmin, User } from "@/lib/auth";
-import UserManagementModal from "@/components/UserManagementModal";
+import { getCurrentUser, clearAuth, User } from "@/lib/auth";
 import ThemeToggle from "@/components/ThemeToggle";
 
 interface Asociacion {
@@ -107,8 +105,6 @@ export default function SeleccionarAsociacionPage() {
   
   const [showAsocRepDetails, setShowAsocRepDetails] = useState(false);
   const [showEmpRepDetails, setShowEmpRepDetails] = useState(false);
-  
-  const [showUserModal, setShowUserModal] = useState(false);
 
   // Formulario Asociación
   const [asocForm, setAsocForm] = useState({
@@ -474,17 +470,6 @@ export default function SeleccionarAsociacionPage() {
           {/* Menú de Usuario & Controles */}
           <div className="flex items-center gap-2 sm:gap-3">
             
-            {/* Botón Gestión de Usuarios para Administradores */}
-            {isAdmin(currentUser) && (
-              <button
-                onClick={() => setShowUserModal(true)}
-                title="Gestión de Usuarios"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold transition"
-              >
-                <Users className="w-3.5 h-3.5 text-amber-500" />
-                <span className="hidden sm:inline">Usuarios</span>
-              </button>
-            )}
 
             {/* Alternador Global de Tema (Claro / Oscuro) */}
             <ThemeToggle />
@@ -1241,12 +1226,6 @@ export default function SeleccionarAsociacionPage() {
           </div>
         </div>
       )}
-
-      {/* Modal Gestión de Usuarios */}
-      <UserManagementModal
-        isOpen={showUserModal}
-        onClose={() => setShowUserModal(false)}
-      />
 
     </div>
   );
