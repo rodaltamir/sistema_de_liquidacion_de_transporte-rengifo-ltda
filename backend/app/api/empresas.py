@@ -28,7 +28,7 @@ def init_tenant_schema(schema_name: str):
     connectable = engine.execution_options(
         schema_translate_map={"tenant": schema_name}
     )
-    from app.models.tenant import UnidadTransporte, ParametroLiquidacion, Viaje, Liquidacion, Empleado, EmpresaApoyo, UnidadApoyo
+    from app.models.tenant import UnidadTransporte, ParametroLiquidacion, Viaje, Liquidacion, Empleado, EmpresaApoyo, UnidadApoyo, Cliente
     tenant_tables = [
         UnidadTransporte.__table__,
         ParametroLiquidacion.__table__,
@@ -36,7 +36,8 @@ def init_tenant_schema(schema_name: str):
         Liquidacion.__table__,
         Empleado.__table__,
         EmpresaApoyo.__table__,
-        UnidadApoyo.__table__
+        UnidadApoyo.__table__,
+        Cliente.__table__
     ]
     Base.metadata.create_all(bind=connectable, tables=tenant_tables)
 
@@ -189,7 +190,15 @@ def get_resumen_global(db: Session = Depends(get_db)):
 
 @router.get("/{schema_name}", response_model=EmpresaResponse)
 def get_empresa(schema_name: str, db: Session = Depends(get_db)):
-    emp = db.query(Empresa).filter(Empresa.schema_name == schema_name).first()
+    clean_schema = schema_name.strip().lower()
+    alt_with_prefix = f"empresa_{clean_schema}" if not clean_schema.startswith("empresa_") else clean_schema
+    alt_without_prefix = clean_schema.replace("empresa_", "", 1)
+
+    emp = db.query(Empresa).filter(
+        (Empresa.schema_name.ilike(clean_schema)) | 
+        (Empresa.schema_name.ilike(alt_with_prefix)) | 
+        (Empresa.schema_name.ilike(alt_without_prefix))
+    ).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     return EmpresaResponse(
@@ -212,7 +221,15 @@ def get_empresa(schema_name: str, db: Session = Depends(get_db)):
 
 @router.put("/{schema_name}", response_model=EmpresaResponse)
 def update_empresa(schema_name: str, emp_in: EmpresaUpdate, db: Session = Depends(get_db)):
-    emp = db.query(Empresa).filter(Empresa.schema_name == schema_name).first()
+    clean_schema = schema_name.strip().lower()
+    alt_with_prefix = f"empresa_{clean_schema}" if not clean_schema.startswith("empresa_") else clean_schema
+    alt_without_prefix = clean_schema.replace("empresa_", "", 1)
+
+    emp = db.query(Empresa).filter(
+        (Empresa.schema_name.ilike(clean_schema)) | 
+        (Empresa.schema_name.ilike(alt_with_prefix)) | 
+        (Empresa.schema_name.ilike(alt_without_prefix))
+    ).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     

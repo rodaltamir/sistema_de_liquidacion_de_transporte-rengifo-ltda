@@ -81,6 +81,7 @@ function ViajesContent() {
   const [viajes, setViajes] = useState<Viaje[]>([]);
   const [unidades, setUnidades] = useState<any[]>([]);
   const [unidadesApoyo, setUnidadesApoyo] = useState<any[]>([]);
+  const [clientes, setClientes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filtros
@@ -103,17 +104,17 @@ function ViajesContent() {
   // Formulario de viaje
   const [formData, setFormData] = useState({
     mic_dta: "",
-    lote_codigo: "",
+    lote_codigo: "1",
     placa: "",
     es_apoyo: false,
     empresa_apoyo_id: null as number | null,
     empresa_apoyo_nombre: "",
     tramo: "ARICA - TAMBO QUEMADO - LA PAZ",
-    cliente: "YPFB",
+    cliente: "Y.P.F.B.",
     producto: "GASOLINA",
     fecha_carga: new Date().toISOString().split("T")[0],
     fecha_descarga: new Date().toISOString().split("T")[0],
-    periodo_mes: "",
+    periodo_mes: new Date().toISOString().slice(0, 7),
     volumen_origen_litros: 34000,
     volumen_recepcionado_litros: 33900,
     tarifa_flete: 392.00,
@@ -124,12 +125,12 @@ function ViajesContent() {
 
   // Cálculo en vivo dentro del modal
   const [liveCalc, setLiveCalc] = useState({
-    merma_real: 0,
+    merma_real: -100,
     tolerancia_pct: 0.25,
-    merma_tolerable: 0,
-    merma_excedente: 0,
-    merma_descontar_bs: 0,
-    flete_total_bs: 0
+    merma_tolerable: 85,
+    merma_excedente: 15,
+    merma_descontar_bs: 111.75,
+    flete_total_bs: 13288.80
   });
 
   useEffect(() => {
@@ -147,38 +148,47 @@ function ViajesContent() {
     }
   }, [searchParams, loading]);
 
-  // Recálculo dinámico en el formulario modal
+  // Recálculo dinámico en el formulario modal (estándar físico YPFB)
   useEffect(() => {
     const vOri = Number(formData.volumen_origen_litros) || 0;
     const vRec = Number(formData.volumen_recepcionado_litros) || 0;
-    const mReal = Math.max(0, vOri - vRec);
+    // Merma Real: volumen recepcionado - volumen origen (ej. 33900 - 33999 = -99.0 L)
+    const mReal = Math.round((vRec - vOri) * 10) / 10;
 
     let tol = 0.25;
-    if (formData.producto.toUpperCase().includes("DIESEL") || formData.producto.toUpperCase().includes("DIÉSEL")) {
+    const prodUpper = (formData.producto || "").toUpperCase();
+    if (prodUpper.includes("DIESEL") || prodUpper.includes("DIÉSEL") || prodUpper === "DO") {
       tol = 0.15;
-    } else if (formData.producto.toUpperCase().includes("IYA") || formData.producto.toUpperCase().includes("INSUMOS")) {
+    } else if (prodUpper.includes("IYA") || prodUpper.includes("INSUMOS") || prodUpper.includes("ADIT")) {
       tol = 0.20;
     }
 
-    const mTol = (vOri * tol) / 100.0;
-    const mExc = Math.max(0, mReal - mTol);
-    const mDescBs = mExc * (Number(formData.precio_merma_litro_bs) || 7.45);
+    // Merma Tolerable en Litros = Volumen Origen * Tolerancia %
+    const mTol = Math.round((vOri * (tol / 100.0)) * 10) / 10;
+    
+    // Total Merma Excedente = si la pérdida absoluta excede la tolerable
+    const mExc = Math.max(0, Math.round((Math.abs(mReal) - mTol) * 10) / 10);
+    
+    // Descuento por Merma en Bs = Merma Excedente * 7.45 Bs/L
+    const precioMerma = Number(formData.precio_merma_litro_bs) || 7.45;
+    const mDescBs = Math.round(mExc * precioMerma * 100) / 100;
 
-    let fleteBs = 0;
+    // Flete Bruto = Volumen Recepcionado en m3 * Tarifa
     const volM3 = vRec / 1000.0;
+    let fleteBs = 0;
     if (formData.tipo_tarifa === "BS_POR_M3") {
-      fleteBs = volM3 * (Number(formData.tarifa_flete) || 0);
+      fleteBs = Math.round(volM3 * (Number(formData.tarifa_flete) || 0) * 100) / 100;
     } else {
-      fleteBs = volM3 * (Number(formData.tarifa_flete) || 0) * 6.96;
+      fleteBs = Math.round(volM3 * (Number(formData.tarifa_flete) || 0) * 6.96 * 100) / 100;
     }
 
     setLiveCalc({
-      merma_real: Math.round(mReal * 100) / 100,
+      merma_real: mReal,
       tolerancia_pct: tol,
-      merma_tolerable: Math.round(mTol * 100) / 100,
-      merma_excedente: Math.round(mExc * 100) / 100,
-      merma_descontar_bs: Math.round(mDescBs * 100) / 100,
-      flete_total_bs: Math.round(fleteBs * 100) / 100
+      merma_tolerable: mTol,
+      merma_excedente: mExc,
+      merma_descontar_bs: mDescBs,
+      flete_total_bs: fleteBs
     });
   }, [
     formData.volumen_origen_litros,
@@ -191,14 +201,16 @@ function ViajesContent() {
 
   const loadInitialData = async () => {
     try {
-      const [uData, uApoyoData, pData] = await Promise.all([
+      const [uData, uApoyoData, pData, cData] = await Promise.all([
         apiFetch(`/tenants/${schema}/unidades/`),
         apiFetch(`/tenants/${schema}/apoyo/unidades/todas`).catch(() => []),
-        apiFetch(`/tenants/${schema}/viajes/periodos`).catch(() => [])
+        apiFetch(`/tenants/${schema}/viajes/periodos`).catch(() => []),
+        apiFetch(`/tenants/${schema}/clientes/`).catch(() => [])
       ]);
       setUnidades(uData || []);
       setUnidadesApoyo(uApoyoData || []);
       setPeriodosDisponibles(pData || []);
+      setClientes(cData || []);
       if (pData && pData.length > 0 && !periodo) {
         setPeriodo(pData[0].periodo_mes);
       }
@@ -259,8 +271,10 @@ function ViajesContent() {
   const openCreateModal = () => {
     setEditingViaje(null);
     setManualPlaca(false);
-    const defMes = periodo || new Date().toISOString().slice(0, 7);
-    const defPlaca = placaFiltro || (unidades.length > 0 ? unidades[0].placa : "");
+    const today = new Date().toISOString().split("T")[0];
+    const defMes = periodo || today.slice(0, 7);
+    const defPlaca = placaFiltro || (unidades.length > 0 ? unidades[0].placa : (unidadesApoyo.length > 0 ? unidadesApoyo[0].placa : ""));
+    const defCliente = clientes.length > 0 ? clientes[0].nombre : "Y.P.F.B.";
 
     setFormData({
       mic_dta: "",
@@ -270,13 +284,13 @@ function ViajesContent() {
       empresa_apoyo_id: null,
       empresa_apoyo_nombre: "",
       tramo: "ARICA - TAMBO QUEMADO - LA PAZ",
-      cliente: "YPFB",
+      cliente: defCliente,
       producto: "GASOLINA",
-      fecha_carga: new Date().toISOString().split("T")[0],
-      fecha_descarga: new Date().toISOString().split("T")[0],
+      fecha_carga: today,
+      fecha_descarga: today,
       periodo_mes: defMes,
       volumen_origen_litros: 34000,
-      volumen_recepcionado_litros: 33920,
+      volumen_recepcionado_litros: 33900,
       tarifa_flete: 392.00,
       tipo_tarifa: "BS_POR_M3",
       precio_merma_litro_bs: 7.45,
@@ -843,6 +857,7 @@ function ViajesContent() {
                   <th className="py-3.5 px-3">MIC/DTA</th>
                   <th className="py-3.5 px-3">Placa</th>
                   <th className="py-3.5 px-3">Tramo</th>
+                  <th className="py-3.5 px-3">Cliente</th>
                   <th className="py-3.5 px-3">Producto</th>
                   <th className="py-3.5 px-3">Fechas</th>
                   <th className="py-3.5 px-3 text-right">Vol. Origen</th>
@@ -873,8 +888,11 @@ function ViajesContent() {
                         </div>
                       ) : null}
                     </td>
-                    <td className="py-3 px-3 text-slate-700 dark:text-slate-300 truncate max-w-[170px]" title={v.tramo}>
+                    <td className="py-3 px-3 text-slate-700 dark:text-slate-300 truncate max-w-[160px]" title={v.tramo}>
                       {v.tramo}
+                    </td>
+                    <td className="py-3 px-3 font-bold text-slate-800 dark:text-slate-200">
+                      {v.cliente || "Y.P.F.B."}
                     </td>
                     <td className="py-3 px-3">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
@@ -950,21 +968,28 @@ function ViajesContent() {
         </div>
       )}
 
-      {/* Modal Importar Masivamente desde Excel */}
+      {/* Modal Importar Masivamente desde Excel (Responsivo sin cortes) */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-md p-6 sm:p-7">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden animate-in fade-in">
+          <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+            
+            {/* Header Fijo */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 bg-white dark:bg-slate-900">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
                   <FileSpreadsheet className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 dark:text-white">Importar Viajes (Excel)</h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Carga masiva de despachos y cálculo en bloque</p>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                    Importar Viajes (Excel)
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Carga masiva conforme a la plantilla oficial de 17 columnas
+                  </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setShowImportModal(false)}
                 className="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg transition"
               >
@@ -972,14 +997,15 @@ function ViajesContent() {
               </button>
             </div>
 
-            <form onSubmit={handleImportSubmit} className="space-y-4">
+            {/* Formulario con Scroll Interno */}
+            <form id="import-form" onSubmit={handleImportSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
               <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-900 dark:text-amber-200 space-y-1.5">
                 <div className="flex items-center gap-2 font-bold text-amber-700 dark:text-amber-400">
                   <Info className="w-4 h-4 flex-shrink-0" />
-                  <span>¿No tienes la plantilla oficial?</span>
+                  <span>Plantilla Oficial de Liquidación (17 Columnas)</span>
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                  Descárgala antes para completar las columnas de MIC/DTA, Placas, Fechas y Volúmenes.
+                  Descárgala antes para completar los despachos con el formato idéntico a la planilla física YPFB.
                 </p>
                 <button
                   type="button"
@@ -992,7 +1018,7 @@ function ViajesContent() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase">
                   Selecciona el archivo Excel (.xlsx) *
                 </label>
                 <input
@@ -1009,49 +1035,55 @@ function ViajesContent() {
                   </p>
                 )}
               </div>
-
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setShowImportModal(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={!importFile || importing}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-1.5"
-                >
-                  {importing ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Procesar e Importar</span>
-                    </>
-                  )}
-                </button>
-              </div>
             </form>
+
+            {/* Footer Fijo */}
+            <div className="flex items-center justify-end gap-3 px-5 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/80 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="import-form"
+                disabled={!importFile || importing}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-1.5 active:scale-95"
+              >
+                {importing ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Procesar e Importar</span>
+                  </>
+                )}
+              </button>
+            </div>
+
           </div>
         </div>
       )}
 
-      {/* Modal Registrar / Editar Viaje Manual */}
+      {/* Modal Registrar / Editar Despacho (Responsivo sin cortes y con cálculo automático) */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl p-6 sm:p-7 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden animate-in fade-in">
+          <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+            
+            {/* Header Fijo */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 bg-white dark:bg-slate-900">
               <div>
-                <h3 className="text-base font-black text-slate-900 dark:text-white">
+                <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-wider">
                   {editingViaje ? "Editar Despacho / Viaje" : "Registrar Nuevo Despacho"}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Cálculo automático de mermas técnicas (0.15% Diésel, 0.25% Gasolina, 0.20% IYA)
+                  Fechas, documento, cisterna, tramo, cliente, producto, volúmenes y tarifa
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setShowModal(false)}
                 className="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg transition"
               >
@@ -1059,21 +1091,65 @@ function ViajesContent() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            {/* Formulario con Scroll Interno */}
+            <form id="viaje-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
+              
+              {/* Fila 1: Fechas de Carga y Descarga */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">MIC/DTA Nº</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    Fecha de Carga *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.fecha_carga}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData({ 
+                        ...formData, 
+                        fecha_carga: val,
+                        periodo_mes: val ? val.slice(0, 7) : formData.periodo_mes 
+                      });
+                    }}
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    Fecha de Descarga *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.fecha_descarga}
+                    onChange={(e) => setFormData({ ...formData, fecha_descarga: e.target.value })}
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Fila 2: MIC/DTA y Placa */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    MIC/DTA Nº
+                  </label>
                   <input
                     type="text"
                     value={formData.mic_dta}
                     onChange={(e) => setFormData({ ...formData, mic_dta: e.target.value.toUpperCase() })}
                     placeholder="ej. 23BO051130T"
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono uppercase text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono uppercase text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
                   />
                 </div>
+
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Placa / Cisterna *</label>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
+                      Placa del Camión *
+                    </label>
                     {formData.es_apoyo && (
                       <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/25 inline-flex items-center gap-1">
                         <Handshake className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
@@ -1095,7 +1171,6 @@ function ViajesContent() {
                           setFormData({ ...formData, placa: "", es_apoyo: false, empresa_apoyo_id: null, empresa_apoyo_nombre: "" });
                           return;
                         }
-                        // Verificar si pertenece a la flota de apoyo
                         const matchApoyo = unidadesApoyo.find(u => u.placa === val);
                         if (matchApoyo) {
                           setFormData({
@@ -1105,11 +1180,10 @@ function ViajesContent() {
                             empresa_apoyo_id: matchApoyo.empresa_apoyo_id,
                             empresa_apoyo_nombre: matchApoyo.empresa_apoyo_nombre || "Empresa de Apoyo",
                             volumen_origen_litros: matchApoyo.capacidad_litros || 34000,
-                            volumen_recepcionado_litros: (matchApoyo.capacidad_litros || 34000) - 80
+                            volumen_recepcionado_litros: (matchApoyo.capacidad_litros || 34000) - 100
                           });
                           return;
                         }
-                        // Flota propia
                         const matchPropia = unidades.find(u => u.placa === val);
                         if (matchPropia) {
                           setFormData({
@@ -1119,13 +1193,13 @@ function ViajesContent() {
                             empresa_apoyo_id: null,
                             empresa_apoyo_nombre: "",
                             volumen_origen_litros: matchPropia.capacidad_litros || 34000,
-                            volumen_recepcionado_litros: (matchPropia.capacidad_litros || 34000) - 80
+                            volumen_recepcionado_litros: (matchPropia.capacidad_litros || 34000) - 100
                           });
                           return;
                         }
                         setFormData({ ...formData, placa: val });
                       }}
-                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                     >
                       <option value="" className="bg-white dark:bg-slate-900">-- Seleccionar cisterna --</option>
                       {unidades.length > 0 && (
@@ -1138,7 +1212,7 @@ function ViajesContent() {
                         </optgroup>
                       )}
                       {unidadesApoyo.length > 0 && (
-                        <optgroup label="🤝 Flota de Apoyo (Subcontratistas)" className="bg-white dark:bg-slate-900">
+                        <optgroup label="🤝 Flota de Apoyo (Aliados)" className="bg-white dark:bg-slate-900">
                           {unidadesApoyo.map(u => (
                             <option key={`apoyo-${u.id}`} value={u.placa} className="bg-white dark:bg-slate-900">
                               {u.placa} - {u.empresa_apoyo_nombre || "Apoyo"} {u.conductor_nombre ? `(${u.conductor_nombre})` : ""}
@@ -1156,14 +1230,14 @@ function ViajesContent() {
                         value={formData.placa}
                         onChange={(e) => setFormData({ ...formData, placa: e.target.value.toUpperCase() })}
                         placeholder="ej. 4412-DPC"
-                        className="w-full pl-3.5 pr-14 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                        className="w-full pl-3.5 pr-14 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
                         autoFocus
                       />
                       {(unidades.length > 0 || unidadesApoyo.length > 0) && (
                         <button
                           type="button"
                           onClick={() => setManualPlaca(false)}
-                          className="absolute inset-y-0 right-0 pr-3 text-[10px] text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 font-bold"
+                          className="absolute inset-y-0 right-0 pr-3 text-[10px] text-amber-600 dark:text-amber-400 hover:text-amber-700 font-bold"
                           title="Volver a la lista de cisternas"
                         >
                           Lista
@@ -1172,195 +1246,208 @@ function ViajesContent() {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* Fila 3: Tramo y Cliente */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Lote</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    Tramo de Transporte *
+                  </label>
                   <input
                     type="text"
-                    value={formData.lote_codigo}
-                    onChange={(e) => setFormData({ ...formData, lote_codigo: e.target.value })}
-                    placeholder="ej. 1"
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    required
+                    list="tramos-sugeridos"
+                    value={formData.tramo}
+                    onChange={(e) => setFormData({ ...formData, tramo: e.target.value.toUpperCase() })}
+                    placeholder="ej. ARICA - TAMBO QUEMADO - LA PAZ"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs uppercase text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
                   />
+                  <datalist id="tramos-sugeridos">
+                    <option value="ARICA - TAMBO QUEMADO - LA PAZ" />
+                    <option value="IQUIQUE - TAMBO QUEMADO - LA PAZ" />
+                    <option value="MEJILLONES - TAMBO QUEMADO - LA PAZ" />
+                    <option value="YACUIBA - SANTA CRUZ" />
+                    <option value="PISIGA - ORURO" />
+                  </datalist>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    Cliente / Consignatario *
+                  </label>
+                  {clientes.length > 0 ? (
+                    <div className="relative">
+                      <select
+                        value={formData.cliente}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "__OTRO__") {
+                            const custom = prompt("Ingresa el nombre del cliente:");
+                            if (custom && custom.trim()) {
+                              setFormData({ ...formData, cliente: custom.trim().toUpperCase() });
+                            }
+                            return;
+                          }
+                          setFormData({ ...formData, cliente: val });
+                        }}
+                        className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-bold uppercase text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                      >
+                        {clientes.map(c => (
+                          <option key={c.id} value={c.nombre} className="bg-white dark:bg-slate-900">
+                            {c.nombre} {c.nit ? `(NIT: ${c.nit})` : ""}
+                          </option>
+                        ))}
+                        <option value="__OTRO__" className="bg-white dark:bg-slate-900">✏️ Ingresar otro cliente...</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      required
+                      value={formData.cliente}
+                      onChange={(e) => setFormData({ ...formData, cliente: e.target.value.toUpperCase() })}
+                      placeholder="ej. Y.P.F.B."
+                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs uppercase text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                    />
+                  )}
                 </div>
               </div>
 
+              {/* Fila 4: Producto Transportado (Selector Visual) */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Tramo de Transporte *</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.tramo}
-                  onChange={(e) => setFormData({ ...formData, tramo: e.target.value.toUpperCase() })}
-                  placeholder="ej. ARICA - TAMBO QUEMADO - LA PAZ"
-                  className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs uppercase text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                />
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
+                  Producto Transportado *
+                </label>
+                <div className="grid grid-cols-3 gap-2.5">
+                  {[
+                    { id: "GASOLINA", label: "GASOLINA", tol: "0.25%" },
+                    { id: "DIESEL", label: "DIÉSEL", tol: "0.15%" },
+                    { id: "IYA", label: "IYA / ADITIVOS", tol: "0.20%" }
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, producto: p.id })}
+                      className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-0.5 ${
+                        formData.producto === p.id
+                          ? "bg-amber-500/10 border-amber-500 text-amber-600 dark:text-amber-400 font-black shadow-sm"
+                          : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                      }`}
+                    >
+                      <span className="text-xs font-bold">{p.label}</span>
+                      <span className="text-[10px] font-mono opacity-80">Tolerancia: {p.tol}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
+              {/* Fila 5: Volúmenes y Tarifa */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Cliente *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.cliente}
-                    onChange={(e) => setFormData({ ...formData, cliente: e.target.value.toUpperCase() })}
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs uppercase text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Producto *</label>
-                  <select
-                    value={formData.producto}
-                    onChange={(e) => setFormData({ ...formData, producto: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
-                  >
-                    <option value="GASOLINA" className="bg-white dark:bg-slate-900">GASOLINA (Tol. 0.25%)</option>
-                    <option value="DIESEL" className="bg-white dark:bg-slate-900">DIÉSEL (Tol. 0.15%)</option>
-                    <option value="IYA" className="bg-white dark:bg-slate-900">INSUMOS Y ADITIVOS (Tol. 0.20%)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Periodo Mes *</label>
-                  <input
-                    type="month"
-                    required
-                    value={formData.periodo_mes}
-                    onChange={(e) => setFormData({ ...formData, periodo_mes: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Fecha de Carga *</label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.fecha_carga}
-                    onChange={(e) => setFormData({ ...formData, fecha_carga: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Fecha de Descarga *</label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.fecha_descarga}
-                    onChange={(e) => setFormData({ ...formData, fecha_descarga: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Volumen Origen (Litros) *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    Volumen Origen (Lt) *
+                  </label>
                   <input
                     type="number"
-                    step="0.01"
+                    step="1"
                     required
                     value={formData.volumen_origen_litros}
                     onChange={(e) => setFormData({ ...formData, volumen_origen_litros: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                    placeholder="ej. 33999"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Volumen Recepcionado (Litros) *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    Volumen Recepcionado (Lt) *
+                  </label>
                   <input
                     type="number"
-                    step="0.01"
+                    step="1"
                     required
                     value={formData.volumen_recepcionado_litros}
                     onChange={(e) => setFormData({ ...formData, volumen_recepcionado_litros: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                    placeholder="ej. 33900"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-3 gap-3.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Tarifa Flete (Bs/m³) *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    Tarifa Flete (Bs/m³) *
+                  </label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={formData.tarifa_flete}
                     onChange={(e) => setFormData({ ...formData, tarifa_flete: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Tipo Tarifa</label>
-                  <select
-                    value={formData.tipo_tarifa}
-                    onChange={(e) => setFormData({ ...formData, tipo_tarifa: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
-                  >
-                    <option value="BS_POR_M3" className="bg-white dark:bg-slate-900">Bs. por m³</option>
-                    <option value="USD_POR_M3" className="bg-white dark:bg-slate-900">USD por m³</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Precio Merma (Bs/L)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.precio_merma_litro_bs}
-                    onChange={(e) => setFormData({ ...formData, precio_merma_litro_bs: parseFloat(e.target.value) || 7.45 })}
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                    placeholder="ej. 392.00"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
-              {/* Previsualización en Vivo de Cálculos */}
-              <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2 text-xs">
-                <span className="font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider text-[10px] block mb-1">
-                  Cálculos Oficiales en Tiempo Real:
+              {/* Fila 6: Panel de Cálculos Automáticos Oficiales (Tiempo Real) */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
+                <span className="font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider text-[10px] block">
+                  Cálculos Automáticos YPFB en Tiempo Real:
                 </span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-                  <div>
-                    <span className="text-slate-500 dark:text-slate-400 block">Merma Real:</span>
-                    <span className="font-mono font-bold text-slate-900 dark:text-white">{liveCalc.merma_real} L</span>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                  <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80">
+                    <span className="text-slate-500 dark:text-slate-400 text-[10px] block uppercase font-bold">Merma Real:</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                      {liveCalc.merma_real > 0 ? `+${liveCalc.merma_real}` : liveCalc.merma_real} L
+                    </span>
                   </div>
-                  <div>
-                    <span className="text-slate-500 dark:text-slate-400 block">Tolerable ({liveCalc.tolerancia_pct}%):</span>
-                    <span className="font-mono font-bold text-slate-900 dark:text-white">{liveCalc.merma_tolerable} L</span>
+
+                  <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80">
+                    <span className="text-slate-500 dark:text-slate-400 text-[10px] block uppercase font-bold">Tolerable ({liveCalc.tolerancia_pct}%):</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                      {liveCalc.merma_tolerable} L
+                    </span>
                   </div>
-                  <div>
-                    <span className="text-slate-500 dark:text-slate-400 block">Merma a Descontar:</span>
-                    <span className={`font-mono font-bold ${liveCalc.merma_descontar_bs > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+
+                  <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80">
+                    <span className="text-slate-500 dark:text-slate-400 text-[10px] block uppercase font-bold">Descuento Merma:</span>
+                    <span className={`font-mono font-bold text-xs ${liveCalc.merma_descontar_bs > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
                       {formatCurrency(liveCalc.merma_descontar_bs)}
                     </span>
                   </div>
-                  <div>
-                    <span className="text-slate-500 dark:text-slate-400 block">Flete Bruto Estimado:</span>
-                    <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
+
+                  <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80">
+                    <span className="text-slate-500 dark:text-slate-400 text-[10px] block uppercase font-bold">Flete Total:</span>
+                    <span className="font-mono font-bold text-amber-600 dark:text-amber-400 text-xs">
                       {formatCurrency(liveCalc.flete_total_bs)}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95"
-                >
-                  {editingViaje ? "Actualizar Despacho" : "Guardar Despacho"}
-                </button>
-              </div>
             </form>
+
+            {/* Footer Fijo con Botones de Acción */}
+            <div className="flex items-center justify-end gap-3 px-5 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/80 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-800 transition active:scale-95"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="viaje-form"
+                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-xl shadow-md shadow-amber-500/20 transition active:scale-95 flex items-center gap-1.5"
+              >
+                <Save className="w-3.5 h-3.5 stroke-[3]" />
+                <span>{editingViaje ? "Actualizar Despacho" : "Guardar Despacho"}</span>
+              </button>
+            </div>
+
           </div>
         </div>
       )}

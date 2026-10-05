@@ -271,3 +271,20 @@ class UnidadApoyo(Base):
 
     empresa_apoyo = relationship("EmpresaApoyo", back_populates="unidades")
 
+
+class Cliente(Base):
+    """
+    Clientes consignatarios / remitentes del transporte (ej. YPFB, Repsol, Petrobras).
+    Datos simples para selección rápida en viajes.
+    """
+    __tablename__ = "clientes"
+    __table_args__ = {"schema": "tenant"}
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(200), nullable=False, index=True)
+    nit = Column(String(50), nullable=True)
+    telefono = Column(String(50), nullable=True)
+    direccion = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+

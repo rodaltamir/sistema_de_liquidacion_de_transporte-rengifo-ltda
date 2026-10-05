@@ -206,22 +206,98 @@ async def importar_viajes_excel(
         errores = []
         periodos_detectados = set()
 
-        start_row = 5
+        # Detección inteligente de encabezados y mapeo de columnas
+        col_map = {}
+        header_row_idx = 4
+        for r_cand in range(1, 8):
+            row_vals = [str(ws.cell(row=r_cand, column=c).value or "").strip().upper() for c in range(1, ws.max_column + 1)]
+            for col_i, val in enumerate(row_vals, 1):
+                if ("CARGA" in val and "FECHA" in val) or val == "FECHA DE CARGA" or val == "F. CARGA":
+                    col_map["fecha_carga"] = col_i
+                elif ("DESCARGA" in val and "FECHA" in val) or val == "FECHA DE DESCARGA" or val == "F. DESCARGA":
+                    col_map["fecha_descarga"] = col_i
+                elif "MIC" in val or "DTA" in val:
+                    col_map["mic_dta"] = col_i
+                elif "PLACA" in val:
+                    col_map["placa"] = col_i
+                elif "TRAMO" in val:
+                    col_map["tramo"] = col_i
+                elif "CLIENTE" in val:
+                    col_map["cliente"] = col_i
+                elif "PRODUCTO" in val:
+                    col_map["producto"] = col_i
+                elif "ORIGEN" in val:
+                    col_map["vol_origen"] = col_i
+                elif "RECEPCIONADO" in val:
+                    col_map["vol_rec"] = col_i
+                elif "TARIFA" in val:
+                    col_map["tarifa"] = col_i
+                elif "OBS" in val:
+                    col_map["obs"] = col_i
+                elif "LOTE" in val:
+                    col_map["lote"] = col_i
+
+            if "placa" in col_map and ("vol_origen" in col_map or "vol_rec" in col_map):
+                header_row_idx = r_cand
+                break
+
+        # Si no se detectaron encabezados por texto, aplicar mapeo por posición según cantidad de columnas
+        if not col_map.get("placa"):
+            if ws.max_column >= 15:
+                # Formato oficial 17 columnas de la liquidación física
+                col_map = {
+                    "fecha_carga": 2,
+                    "fecha_descarga": 3,
+                    "mic_dta": 4,
+                    "placa": 6,
+                    "tramo": 7,
+                    "cliente": 8,
+                    "producto": 9,
+                    "vol_origen": 10,
+                    "vol_rec": 11,
+                    "tarifa": 16
+                }
+                header_row_idx = 4
+            else:
+                # Formato estándar 14 columnas
+                col_map = {
+                    "mic_dta": 1,
+                    "placa": 2,
+                    "tramo": 3,
+                    "cliente": 4,
+                    "producto": 5,
+                    "fecha_carga": 6,
+                    "fecha_descarga": 7,
+                    "vol_origen": 8,
+                    "vol_rec": 9,
+                    "tarifa": 10,
+                    "tipo_tarifa": 11,
+                    "precio_merma": 12,
+                    "lote": 13,
+                    "obs": 14
+                }
+                header_row_idx = 4
+
+        start_row = header_row_idx + 1
         for r in range(start_row, ws.max_row + 1):
-            mic_dta = ws.cell(row=r, column=1).value
-            placa = ws.cell(row=r, column=2).value
-            tramo = ws.cell(row=r, column=3).value
-            cliente = ws.cell(row=r, column=4).value
-            producto = ws.cell(row=r, column=5).value
-            f_carga = ws.cell(row=r, column=6).value
-            f_descarga = ws.cell(row=r, column=7).value
-            vol_origen = ws.cell(row=r, column=8).value
-            vol_rec = ws.cell(row=r, column=9).value
-            tarifa = ws.cell(row=r, column=10).value
-            tipo_tarifa = ws.cell(row=r, column=11).value
-            precio_merma = ws.cell(row=r, column=12).value
-            lote = ws.cell(row=r, column=13).value
-            obs = ws.cell(row=r, column=14).value
+            def get_val(key):
+                idx = col_map.get(key)
+                return ws.cell(row=r, column=idx).value if idx else None
+
+            mic_dta = get_val("mic_dta")
+            placa = get_val("placa")
+            tramo = get_val("tramo")
+            cliente = get_val("cliente")
+            producto = get_val("producto")
+            f_carga = get_val("fecha_carga")
+            f_descarga = get_val("fecha_descarga")
+            vol_origen = get_val("vol_origen")
+            vol_rec = get_val("vol_rec")
+            tarifa = get_val("tarifa")
+            tipo_tarifa = get_val("tipo_tarifa")
+            precio_merma = get_val("precio_merma")
+            lote = get_val("lote")
+            obs = get_val("obs")
 
             if not placa and not vol_origen and not vol_rec:
                 continue

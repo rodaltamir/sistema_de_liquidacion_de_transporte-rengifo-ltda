@@ -535,55 +535,71 @@ def export_liquidacion_asociacion_excel(asociacion_name: str, periodo_mes: str, 
 
 def generate_viajes_template_excel(empresa_name: str = "") -> io.BytesIO:
     """
-    Genera una plantilla Excel (.xlsx) estructurada y formateada para la importación
-    masiva de viajes y despachos de hidrocarburos/carga.
+    Genera una plantilla Excel (.xlsx) estructurada conforme al formato oficial
+    de liquidación de 17 columnas (Hoja 2 de Liquidación YPFB).
     """
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Carga de Viajes"
+    ws.title = "Liquidacion de Fletes"
     ws.views.sheetView[0].showGridLines = True
 
-    # Título y Guía
-    ws.merge_cells("A1:K1")
-    ws["A1"] = f"PLANTILLA DE IMPORTACIÓN MASIVA DE VIAJES - {empresa_name.upper() if empresa_name else 'EMPRESA DE TRANSPORTE'}"
+    # Encabezado Oficial
+    ws.merge_cells("A1:I1")
+    ws["A1"] = f"PLANTILLA OFICIAL DE CARGA DE VIAJES - {empresa_name.upper() if empresa_name else 'EMPRESA DE TRANSPORTE'}"
     ws["A1"].font = FONT_TITLE
     ws["A1"].alignment = Alignment(horizontal="left", vertical="center")
 
-    ws.merge_cells("A2:K2")
-    ws["A2"] = "Complete las filas a partir de la fila 4. Los cálculos de mermas y fletes se generarán automáticamente según el producto."
+    ws.merge_cells("A2:Q2")
+    ws["A2"] = "Complete las filas desde la fila 5. Los datos esenciales son: Fechas de Carga/Descarga, MIC/DTA, Placa, Tramo, Cliente, Producto, Volumen Origen, Volumen Recepcionado y Tarifa. Las mermas y fletes se calculan automáticamente."
     ws["A2"].font = FONT_MUTED
 
-    headers = [
-        ("MIC/DTA Nº", "Ej. 23BO051130T", 16),
-        ("PLACA", "Ej. 4412-DPC", 13),
-        ("TRAMO", "Ej. ARICA - TAMBO QUEMADO - LA PAZ", 32),
-        ("CLIENTE", "Ej. YPFB", 14),
-        ("PRODUCTO", "GASOLINA, DIESEL o IYA", 15),
-        ("FECHA CARGA", "YYYY-MM-DD (2026-03-01)", 16),
-        ("FECHA DESCARGA", "YYYY-MM-DD (2026-03-05)", 16),
-        ("VOL. ORIGEN (LTS)", "Litros cargados (ej. 34000)", 18),
-        ("VOL. RECEPCIONADO (LTS)", "Litros entregados (ej. 33920)", 20),
-        ("TARIFA FLETE", "Bs/m3 o USD (ej. 392.00)", 16),
-        ("TIPO TARIFA", "BS_POR_M3 o USD_POR_M3", 16),
-        ("PRECIO MERMA Bs/L", "Opcional (defecto 7.45)", 16),
-        ("LOTE", "Opcional (ej. 1)", 10),
-        ("OBSERVACIONES", "Opcional", 22)
+    # Sub-encabezado de parámetros de referencia
+    ws["A3"] = "PRECIO POR LITRO DE MERMA:"
+    ws["A3"].font = FONT_BOLD
+    ws["C3"] = 7.45
+    ws["C3"].font = Font(name="Arial", size=10, bold=True, color="B91C1C")
+    ws["C3"].number_format = '#,##0.00'
+
+    ws["E3"] = "TOLERANCIA DIESEL: 0.15% | GASOLINA: 0.25%"
+    ws["E3"].font = FONT_MUTED
+
+    headers_17 = [
+        ("Nº", 6),
+        ("FECHA DE CARGA", 16),
+        ("FECHA DE DESCARGA", 16),
+        ("MIC/DTA Nº", 18),
+        ("EMPRESA", 24),
+        ("PLACA", 14),
+        ("TRAMO", 34),
+        ("CLIENTE", 16),
+        ("PRODUCTO", 15),
+        ("Volumen en Lt. Origen", 20),
+        ("Volumen Recepcionado", 20),
+        ("Merma T/Tr", 15),
+        ("Total Merma (Lt)", 16),
+        ("MERMA Tolerable (0.15% / 0.25%)", 18),
+        ("Merma a Descontar Y.P.F.B. Bs.", 20),
+        ("TARIFA Bs.", 15),
+        ("Total a pagar en Bs.", 20)
     ]
 
     r = 4
-    for idx, (title, comment, width) in enumerate(headers, 1):
+    for idx, (title, width) in enumerate(headers_17, 1):
         cell = ws.cell(row=r, column=idx, value=title)
         cell.font = FONT_HEADER
         cell.fill = FILL_HEADER
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         cell.border = BORDER_THIN
         ws.column_dimensions[get_column_letter(idx)].width = width
-    ws.row_dimensions[r].height = 26
+    ws.row_dimensions[r].height = 28
 
-    # 2 filas de ejemplo
+    # Filas de ejemplo exactas de la planilla física real
+    emp_label = empresa_name.upper() if empresa_name else "CHAXMANA TRANSPORT LTDA."
     ejemplos = [
-        ("23BO051130T", "4412-DPC", "ARICA - TAMBO QUEMADO - LA PAZ", "YPFB", "GASOLINA", "2026-03-01", "2026-03-05", 34000.0, 33920.0, 392.00, "BS_POR_M3", 7.45, "1", "Viaje de ejemplo Gasolina"),
-        ("23CL257330A", "4412-DPC", "IQUIQUE - TAMBO QUEMADO - LA PAZ", "YPFB", "DIESEL", "2026-03-08", "2026-03-14", 33500.0, 33460.0, 738.00, "BS_POR_M3", 7.45, "1", "Viaje de ejemplo Diésel"),
+        (1, "2023-03-03", "2023-03-08", "23BO051130T", emp_label, "4412-DPC", "ARICA - TAMBO QUEMADO - LA PAZ", "Y.P.F.B.", "GASOLINA", 33999.0, 33900.0, -99.0, 14.0, 85.0, 104.30, 392.00, 13288.80),
+        (2, "2023-03-08", "2023-03-14", "23CL257330A", emp_label, "4412-DPC", "IQUIQUE - TAMBO QUEMADO - LA PAZ", "Y.P.F.B.", "DIESEL", 33242.0, 33215.0, -27.0, 0.0, 50.0, 0.00, 738.00, 24512.67),
+        (3, "2023-03-14", "2023-03-18", "23BO058221M", emp_label, "4412-DPC", "MEJILLONES - TAMBO QUEMADO - LA PAZ", "Y.P.F.B.", "DIESEL", 34000.0, 33980.0, -20.0, 0.0, 51.0, 0.00, 579.00, 19674.42),
+        (4, "2023-03-20", "2023-03-25", "23BO061092K", emp_label, "4412-DPC", "ARICA - TAMBO QUEMADO - LA PAZ", "Y.P.F.B.", "DIESEL", 34000.0, 34000.0, 0.0, 0.0, 51.0, 0.00, 532.00, 18088.00),
     ]
 
     for row_idx, ej in enumerate(ejemplos, 5):
@@ -592,13 +608,18 @@ def generate_viajes_template_excel(empresa_name: str = "") -> io.BytesIO:
             c.font = FONT_REGULAR
             c.border = BORDER_THIN
             if isinstance(val, float):
-                c.number_format = '#,##0.00'
-                c.alignment = Alignment(horizontal="right")
-            elif col_idx in [1, 2, 4, 5, 6, 7, 11, 13]:
-                c.alignment = Alignment(horizontal="center")
+                if col_idx in [10, 11]:
+                    c.number_format = '#,##0'
+                elif col_idx in [12, 13, 14]:
+                    c.number_format = '#,##0.0'
+                else:
+                    c.number_format = '#,##0.00'
+                c.alignment = Alignment(horizontal="right", vertical="center")
+            elif col_idx in [1, 2, 3, 4, 6, 8, 9]:
+                c.alignment = Alignment(horizontal="center", vertical="center")
             else:
-                c.alignment = Alignment(horizontal="left")
-        ws.row_dimensions[row_idx].height = 20
+                c.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[row_idx].height = 22
 
     output = io.BytesIO()
     wb.save(output)

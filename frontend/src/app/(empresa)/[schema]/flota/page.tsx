@@ -592,16 +592,16 @@ function FlotaContent() {
 
       {/* Modal Crear / Editar Unidad (Formulario Simplificado) */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg p-6 sm:p-7 max-h-[92vh] overflow-y-auto text-slate-900 dark:text-white transition-colors">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden animate-in fade-in">
+          <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white overflow-hidden transition-colors">
             
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-5">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
               <div>
                 <h3 className="text-base font-black text-slate-900 dark:text-white">
                   {editingUnidad ? `Editar Cisterna: ${editingUnidad.placa}` : "Nueva Cisterna / Camión"}
                 </h3>
-                <p className="text-xs text-slate-400">
-                  Ingresa la placa del vehículo y los datos del conductor
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Ingresa el número de placa para registrar la unidad operativa
                 </p>
               </div>
               <button
@@ -612,99 +612,95 @@ function FlotaContent() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form id="flota-form" onSubmit={handleSubmit} className="p-6 space-y-4 flex-1 overflow-y-auto">
               
-              {/* Sección Principal y Esencial */}
-              <div className="space-y-3.5">
-                
-                {/* Placa */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Placa del Camión / Cisterna *
-                  </label>
-                  <div className="relative">
-                    <Truck className="w-4 h-4 text-amber-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      required
-                      value={formData.placa}
-                      onChange={(e) => setFormData({ ...formData, placa: e.target.value.toUpperCase() })}
-                      placeholder="ej. 4412-DCP"
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-sm font-mono font-black text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 uppercase tracking-wider"
-                    />
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-1">Identificador único vehicular según RUAT</p>
+              {/* Placa - Dato Esencial y Único Obligatorio */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Número de Placa del Camión / Cisterna *
+                </label>
+                <div className="relative">
+                  <Truck className="w-5 h-5 text-amber-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={formData.placa}
+                    onChange={(e) => setFormData({ ...formData, placa: e.target.value.toUpperCase() })}
+                    placeholder="ej. 4412-DPC"
+                    className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-base font-mono font-black text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 uppercase tracking-widest shadow-xs"
+                  />
                 </div>
-
-                {/* Conductor y Teléfono */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Nombre del Conductor
-                    </label>
-                    <div className="relative">
-                      <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        value={formData.conductor_nombre}
-                        onChange={(e) => setFormData({ ...formData, conductor_nombre: e.target.value })}
-                        placeholder="ej. CARLOS MAMANI CONDORI"
-                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Teléfono del Conductor
-                    </label>
-                    <div className="relative">
-                      <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        value={formData.conductor_telefono}
-                        onChange={(e) => setFormData({ ...formData, conductor_telefono: e.target.value })}
-                        placeholder="ej. 71599882"
-                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* C.I. Conductor */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    C.I. del Conductor (Opcional)
-                  </label>
-                  <div className="relative">
-                    <CreditCard className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={formData.conductor_ci}
-                      onChange={(e) => setFormData({ ...formData, conductor_ci: e.target.value })}
-                      placeholder="ej. 6842109 LP"
-                      className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                </div>
-
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Identificador único vehicular según RUAT</p>
               </div>
 
-              {/* Sección Opcional Colapsable para Especificaciones Técnicas */}
+              {/* Sección Opcional Colapsable para Conductor y Datos Técnicos */}
               <div className="pt-2">
                 <button
                   type="button"
                   onClick={() => setShowOptionalFields(!showOptionalFields)}
-                  className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 dark:hover:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition flex items-center justify-between"
+                  className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800/80 rounded-xl text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition flex items-center justify-between"
                 >
                   <span className="flex items-center gap-1.5 font-medium">
-                    <span>{showOptionalFields ? "− Ocultar datos técnicos opcionales" : "+ Datos técnicos o documentación adicional (Opcional)"}</span>
+                    <span>{showOptionalFields ? "− Ocultar datos adicionales (Conductor, capacidad...)" : "+ Añadir datos adicionales (Conductor, capacidad, estado...)"}</span>
                   </span>
-                  <ChevronDown className={`w-4 h-4 transition-transform ${showOptionalFields ? "rotate-180" : ""}`} />
+                  <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showOptionalFields ? "rotate-180 text-amber-500" : ""}`} />
                 </button>
 
                 {showOptionalFields && (
                   <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-950/80 rounded-2xl border border-slate-200 dark:border-slate-800/80 space-y-3.5 animate-in fade-in">
+                    
+                    {/* Conductor y Teléfono */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                          Nombre del Conductor
+                        </label>
+                        <div className="relative">
+                          <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            value={formData.conductor_nombre}
+                            onChange={(e) => setFormData({ ...formData, conductor_nombre: e.target.value })}
+                            placeholder="ej. CARLOS MAMANI CONDORI"
+                            className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                          Teléfono del Conductor
+                        </label>
+                        <div className="relative">
+                          <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            value={formData.conductor_telefono}
+                            onChange={(e) => setFormData({ ...formData, conductor_telefono: e.target.value })}
+                            placeholder="ej. 71599882"
+                            className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* C.I. Conductor */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                        C.I. del Conductor (Opcional)
+                      </label>
+                      <div className="relative">
+                        <CreditCard className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={formData.conductor_ci}
+                          onChange={(e) => setFormData({ ...formData, conductor_ci: e.target.value })}
+                          placeholder="ej. 6842109 LP"
+                          className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    </div>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
@@ -797,25 +793,26 @@ function FlotaContent() {
                 )}
               </div>
 
-              {/* Botones de acción */}
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95 flex items-center gap-1.5"
-                >
-                  <Truck className="w-4 h-4" />
-                  <span>{editingUnidad ? "Guardar Cambios" : "Registrar Unidad"}</span>
-                </button>
-              </div>
-
             </form>
+
+            {/* Botones de acción fijos */}
+            <div className="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 flex justify-end gap-2.5 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="flota-form"
+                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95 flex items-center gap-1.5"
+              >
+                <Truck className="w-4 h-4" />
+                <span>{editingUnidad ? "Guardar Cambios" : "Registrar Unidad"}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

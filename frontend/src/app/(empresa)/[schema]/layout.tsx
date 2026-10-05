@@ -108,10 +108,10 @@ export default function EmpresaLayout({
       description: "Empresas aliadas y auxilio"
     },
     {
-      name: "Personal y Choferes",
-      href: `/${schema}/personal`,
+      name: "Clientes",
+      href: `/${schema}/clientes`,
       icon: Users,
-      description: "Conductores y staff logístico"
+      description: "Directorio de clientes y remitentes"
     },
     {
       name: "Registro de Viajes",

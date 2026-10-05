@@ -45,10 +45,22 @@ def require_admin(current_user: User = Depends(require_current_user)) -> User:
     return current_user
 
 def verify_tenant_exists(schema_name: str, db: Session = Depends(get_db)) -> Empresa:
-    empresa = db.query(Empresa).filter(Empresa.schema_name == schema_name, Empresa.is_active == True).first()
+    # Búsqueda flexible de esquema (con o sin prefijo 'empresa_', case-insensitive)
+    clean_schema = schema_name.strip().lower()
+    alt_with_prefix = f"empresa_{clean_schema}" if not clean_schema.startswith("empresa_") else clean_schema
+    alt_without_prefix = clean_schema.replace("empresa_", "", 1)
+
+    empresa = db.query(Empresa).filter(
+        (Empresa.schema_name.ilike(clean_schema)) | 
+        (Empresa.schema_name.ilike(alt_with_prefix)) | 
+        (Empresa.schema_name.ilike(alt_without_prefix)),
+        Empresa.is_active == True
+    ).first()
+
     if not empresa:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Empresa de transporte con esquema '{schema_name}' no encontrada"
         )
     return empresa
+

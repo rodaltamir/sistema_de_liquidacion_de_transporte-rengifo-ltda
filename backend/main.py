@@ -14,7 +14,8 @@ from app.api import (
     liquidaciones,
     parametros,
     empleados,
-    apoyo
+    apoyo,
+    clientes
 )
 
 # Inicializar tablas del esquema público
@@ -50,6 +51,7 @@ app.include_router(viajes.router, prefix=settings.API_V1_STR)
 app.include_router(liquidaciones.router, prefix=settings.API_V1_STR)
 app.include_router(parametros.router, prefix=settings.API_V1_STR)
 app.include_router(empleados.router, prefix=settings.API_V1_STR)
+app.include_router(clientes.router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def root():

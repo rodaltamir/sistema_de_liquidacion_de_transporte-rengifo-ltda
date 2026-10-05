@@ -561,14 +561,14 @@ export default function LiquidacionesPage() {
                       <th className="py-2 px-2 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-left">TRAMO</th>
                       <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">CLIENTE</th>
                       <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">PRODUCTO</th>
-                      <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Volumen en LL Origen</th>
+                      <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Volumen en Lt. Origen</th>
                       <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Volumen Recepcionado</th>
-                      <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Merma T:T</th>
-                      <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Total Merma Litros</th>
-                      <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-center">MERMA [0,15% D / 0,25% G]</th>
-                      <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Merma a Descontar Y.P.F.B.</th>
+                      <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Merma T/Tr</th>
+                      <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Total Merma (Lt)</th>
+                      <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-center">MERMA Tolerable (0.15% / 0.25%)</th>
+                      <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Merma a Descontar Y.P.F.B. Bs.</th>
                       <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">TARIFA Bs.</th>
-                      <th className="py-2 px-2 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Total a pagar en Bob.</th>
+                      <th className="py-2 px-2 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Total a pagar en Bs.</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -788,9 +788,9 @@ export default function LiquidacionesPage() {
 
       {/* Modal para Ajustar Deducciones Manualmente */}
       {showAdjustModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden animate-in fade-in">
+          <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
               <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
                   <SlidersHorizontal className="w-4 h-4" />
@@ -799,13 +799,13 @@ export default function LiquidacionesPage() {
               </h3>
               <button
                 onClick={() => setShowAdjustModal(false)}
-                className="text-slate-400 hover:text-slate-900 dark:hover:text-white p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-900 dark:hover:text-white p-1 rounded-lg transition"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSaveAdjustments} className="p-6 space-y-3.5 max-h-[75vh] overflow-y-auto text-xs">
+            <form id="adjust-form" onSubmit={handleSaveAdjustments} className="p-6 space-y-3.5 flex-1 overflow-y-auto text-xs">
               <div className="grid grid-cols-2 gap-3.5">
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Descuento Merma (Bs)</label>
@@ -897,23 +897,24 @@ export default function LiquidacionesPage() {
                   />
                 </div>
               </div>
-
-              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAdjustModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-xs font-bold transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold shadow-lg shadow-amber-500/20 transition"
-                >
-                  Guardar y Recalcular
-                </button>
-              </div>
             </form>
+
+            <div className="px-6 py-3.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 flex justify-end gap-3 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowAdjustModal(false)}
+                className="px-4 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-xs font-bold transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="adjust-form"
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold shadow-lg shadow-amber-500/20 transition active:scale-95"
+              >
+                Guardar y Recalcular
+              </button>
+            </div>
           </div>
         </div>
       )}

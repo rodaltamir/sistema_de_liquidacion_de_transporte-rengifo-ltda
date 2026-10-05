@@ -85,7 +85,6 @@ function SeleccionarEmpresaContent() {
 
   const [showModal, setShowModal] = useState(false);
   const [editingEmpresa, setEditingEmpresa] = useState<Empresa | null>(null);
-  const [showRepDetails, setShowRepDetails] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -146,7 +145,6 @@ function SeleccionarEmpresaContent() {
       telefono: "",
       email: ""
     });
-    setShowRepDetails(false);
     setShowModal(true);
   };
 
@@ -163,19 +161,65 @@ function SeleccionarEmpresaContent() {
       telefono: emp.telefono || "",
       email: emp.email || ""
     });
-    setShowRepDetails(Boolean(emp.representante_legal || emp.nit || emp.telefono));
     setShowModal(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const nameTrimmed = formData.name.trim();
+      let repTrimmed = formData.representante_legal.trim();
+
+      // Validación estricta según Tipo Jurídico
+      if (formData.tipo_empresa === "Unipersonal") {
+        if (!nameTrimmed) {
+          Swal.fire({
+            icon: "warning",
+            title: "Nombre requerido",
+            text: "Por favor ingresa el nombre de la empresa unipersonal / titular.",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+        // En unipersonal el nombre de la empresa y del representante coinciden obligatoriamente
+        repTrimmed = nameTrimmed;
+      } else {
+        // Sociedad / Empresa
+        if (!nameTrimmed) {
+          Swal.fire({
+            icon: "warning",
+            title: "Razón Social requerida",
+            text: "Por favor ingresa la Razón Social o Nombre Comercial de la empresa.",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+        if (!repTrimmed) {
+          Swal.fire({
+            icon: "warning",
+            title: "Representante Legal requerido",
+            text: "Para una Sociedad/Empresa, debes ingresar el nombre del Representante Legal.",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+        if (nameTrimmed.toLowerCase() === repTrimmed.toLowerCase()) {
+          Swal.fire({
+            icon: "warning",
+            title: "Nombres deben ser diferentes",
+            text: "En una Sociedad/Empresa, la Razón Social y el Representante Legal deben ser dos nombres diferentes. Si pertenece a una sola persona natural, elige la opción 'Unipersonal'.",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+      }
+
       const payload: any = {
-        name: formData.name.trim(),
+        name: nameTrimmed,
         tipo_empresa: formData.tipo_empresa,
         nit: formData.nit.trim() || null,
         asociacion_id: formData.asociacion_id !== "" ? Number(formData.asociacion_id) : null,
-        representante_legal: formData.representante_legal.trim() || null,
+        representante_legal: repTrimmed || null,
         direccion: formData.direccion.trim() || null,
         telefono: formData.telefono.trim() || null,
         email: formData.email.trim() || null
@@ -654,10 +698,10 @@ function SeleccionarEmpresaContent() {
       {/* MODAL CREAR / EDITAR EMPRESA */}
       {/* ============================================================== */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg p-6 sm:p-7 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 dark:bg-slate-950/80 backdrop-blur-md overflow-hidden animate-in fade-in">
+          <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             
-            <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800 mb-5">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-500">
                   <Truck className="w-5 h-5" />
@@ -679,22 +723,8 @@ function SeleccionarEmpresaContent() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                  Razón Social de la Empresa *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="ej. EMPRESA DE TRANSPORTES BRITANIC S.R.L."
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
-                  autoFocus
-                />
-              </div>
-
+            <form id="empresa-form" onSubmit={handleSubmit} className="p-6 space-y-4 flex-1 overflow-y-auto">
+              
               {/* Selector de Tipo de Empresa */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
@@ -715,7 +745,10 @@ function SeleccionarEmpresaContent() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setFormData({ ...formData, tipo_empresa: "Unipersonal" })}
+                    onClick={() => {
+                      const currentName = formData.name;
+                      setFormData({ ...formData, tipo_empresa: "Unipersonal", representante_legal: currentName });
+                    }}
                     className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
                       formData.tipo_empresa === "Unipersonal"
                         ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-extrabold"
@@ -728,6 +761,62 @@ function SeleccionarEmpresaContent() {
                 </div>
               </div>
 
+              {/* Razón Social */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                  {formData.tipo_empresa === "Unipersonal" ? "Nombre Completo del Titular (Razón Social) *" : "Razón Social / Nombre Comercial *"}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (formData.tipo_empresa === "Unipersonal") {
+                      setFormData({ ...formData, name: val, representante_legal: val });
+                    } else {
+                      setFormData({ ...formData, name: val });
+                    }
+                  }}
+                  placeholder={formData.tipo_empresa === "Unipersonal" ? "ej. JUAN PÉREZ FLORES" : "ej. EMPRESA DE TRANSPORTES BRITANIC S.R.L."}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                  autoFocus
+                />
+              </div>
+
+              {/* Nombre del Representante Legal */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Nombre del Representante Legal *
+                  </label>
+                  {formData.tipo_empresa === "Unipersonal" && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                      (Coincide con el titular)
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  required
+                  disabled={formData.tipo_empresa === "Unipersonal"}
+                  value={formData.tipo_empresa === "Unipersonal" ? formData.name : formData.representante_legal}
+                  onChange={(e) => setFormData({ ...formData, representante_legal: e.target.value })}
+                  placeholder={formData.tipo_empresa === "Unipersonal" ? "Mismo nombre del titular" : "ej. Jhonny Rengifo"}
+                  className={`w-full px-4 py-3 border rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 ${
+                    formData.tipo_empresa === "Unipersonal"
+                      ? "bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed"
+                      : "bg-slate-50 dark:bg-slate-950 border-slate-300 dark:border-slate-800"
+                  }`}
+                />
+                {formData.tipo_empresa === "Sociedad" && (
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Debe ser una persona diferente a la Razón Social.
+                  </p>
+                )}
+              </div>
+
+              {/* Asociación Afiliada */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
                   Asociación Afiliada
@@ -737,7 +826,7 @@ function SeleccionarEmpresaContent() {
                   onChange={(e) => setFormData({ ...formData, asociacion_id: e.target.value })}
                   className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 cursor-pointer"
                 >
-                  <option value="">Empresa Independiente</option>
+                  <option value="">(Empresa Independiente)</option>
                   {asociaciones.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.name} {a.sigla ? `(${a.sigla})` : ""}
@@ -746,81 +835,24 @@ function SeleccionarEmpresaContent() {
                 </select>
               </div>
 
-              {/* Sección Opcional Desplegable: Datos del Representante */}
-              <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80">
-                <button
-                  type="button"
-                  onClick={() => setShowRepDetails(!showRepDetails)}
-                  className="flex items-center justify-between w-full py-2 px-1 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition group"
-                >
-                  <div className="flex items-center gap-2">
-                    <UserIcon className="w-4 h-4 text-amber-500" />
-                    <span>Datos del Representante (Opcional)</span>
-                  </div>
-                  <ChevronDown className={`w-4 h-4 text-slate-400 group-hover:text-amber-500 transition-transform duration-200 ${showRepDetails ? "rotate-180 text-amber-500" : ""}`} />
-                </button>
-
-                {showRepDetails && (
-                  <div className="mt-2.5 space-y-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 animate-in fade-in">
-                    <div>
-                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                        Nombre del Representante Legal
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.representante_legal}
-                        onChange={(e) => setFormData({ ...formData, representante_legal: e.target.value })}
-                        placeholder="ej. JOSE LOVERA TIÑINI"
-                        className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                          C.I. / NIT
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.nit}
-                          onChange={(e) => setFormData({ ...formData, nit: e.target.value })}
-                          placeholder="ej. 2049182039"
-                          className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                          Teléfono / Celular
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.telefono}
-                          onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                          placeholder="ej. 77299100"
-                          className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4.5 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95"
-                >
-                  {editingEmpresa ? "Guardar Cambios" : "Crear Empresa"}
-                </button>
-              </div>
             </form>
+
+            <div className="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 flex justify-end gap-3 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="px-4.5 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="empresa-form"
+                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95"
+              >
+                {editingEmpresa ? "Guardar Cambios" : "Crear Empresa"}
+              </button>
+            </div>
           </div>
         </div>
       )}

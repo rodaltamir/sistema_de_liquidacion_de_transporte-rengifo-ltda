@@ -157,7 +157,7 @@ export default function ConfiguracionPage() {
     }
   };
 
-  // Validación de datos de la empresa
+  // Validación de datos de la empresa (simplificada según requerimientos)
   const validateEmpresa = () => {
     const errs: Record<string, string> = {};
 
@@ -167,29 +167,8 @@ export default function ConfiguracionPage() {
       errs.name = "El nombre debe tener al menos 3 caracteres.";
     }
 
-    if (!empresaData.nit.trim()) {
-      errs.nit = "El NIT es obligatorio para las liquidaciones y facturación.";
-    } else if (!/^[0-9-]+$/.test(empresaData.nit.trim())) {
-      errs.nit = "El NIT solo debe contener números y guiones.";
-    }
-
     if (!empresaData.representante_legal.trim()) {
       errs.representante_legal = "El nombre del Representante Legal o Gerente es obligatorio.";
-    }
-
-    if (!empresaData.direccion.trim()) {
-      errs.direccion = "La dirección legal u oficinas es obligatoria.";
-    }
-
-    if (!empresaData.telefono.trim()) {
-      errs.telefono = "El teléfono o celular de contacto es obligatorio.";
-    }
-
-    if (empresaData.email.trim()) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(empresaData.email.trim())) {
-        errs.email = "Ingresa un correo electrónico corporativo válido.";
-      }
     }
 
     setEmpresaErrors(errs);
@@ -639,13 +618,13 @@ export default function ConfiguracionPage() {
               </div>
             </div>
 
-            {/* FORMULARIO DE DATOS INSTITUCIONALES */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* FORMULARIO DE DATOS INSTITUCIONALES (SOLO LO RELEVANTE) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               
-              {/* Razón Social */}
+              {/* Razón Social / Nombre Comercial */}
               <div className="sm:col-span-2">
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  Razón Social / Nombre Comercial <span className="text-rose-500">*</span>
+                  Nombre Comercial / Razón Social <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -665,49 +644,6 @@ export default function ConfiguracionPage() {
                     <span>{empresaErrors.name}</span>
                   </p>
                 )}
-              </div>
-
-              {/* NIT */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  NIT (Número de Identificación Tributaria) <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={empresaData.nit}
-                  onChange={(e) => {
-                    setEmpresaData({ ...empresaData, nit: e.target.value });
-                    if (empresaErrors.nit) setEmpresaErrors({ ...empresaErrors, nit: "" });
-                  }}
-                  placeholder="Ej. 1028475029"
-                  className={`w-full bg-slate-50 dark:bg-slate-950 border rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none transition ${
-                    empresaErrors.nit ? "border-rose-500 focus:border-rose-500 ring-1 ring-rose-500/30" : "border-slate-300 dark:border-slate-800 focus:border-amber-500"
-                  }`}
-                />
-                {empresaErrors.nit && (
-                  <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    <span>{empresaErrors.nit}</span>
-                  </p>
-                )}
-              </div>
-
-              {/* Tipo de Empresa */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  Tipo de Organización Societaria
-                </label>
-                <select
-                  value={empresaData.tipo_empresa}
-                  onChange={(e) => setEmpresaData({ ...empresaData, tipo_empresa: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
-                >
-                  <option value="Sociedad de Responsabilidad Limitada (S.R.L.)">Sociedad de Responsabilidad Limitada (S.R.L.)</option>
-                  <option value="Sociedad Anónima (S.A.)">Sociedad Anónima (S.A.)</option>
-                  <option value="Empresa Unipersonal">Empresa Unipersonal</option>
-                  <option value="Cooperativa de Transporte">Cooperativa de Transporte</option>
-                  <option value="Asociación Accidental">Asociación Accidental</option>
-                </select>
               </div>
 
               {/* Representante Legal */}
@@ -738,7 +674,7 @@ export default function ConfiguracionPage() {
               {/* Asociación Matriz */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  Asociación de Transporte Afiliada
+                  Asociación de Transporte a la que pertenece
                 </label>
                 <select
                   value={empresaData.asociacion_id === null ? "" : empresaData.asociacion_id}
@@ -746,7 +682,7 @@ export default function ConfiguracionPage() {
                     const val = e.target.value ? parseInt(e.target.value, 10) : null;
                     setEmpresaData({ ...empresaData, asociacion_id: val });
                   }}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                 >
                   <option value="">Empresa Independiente (Sin Asociación Matriz)</option>
                   {asociaciones.map((a) => (
@@ -755,90 +691,6 @@ export default function ConfiguracionPage() {
                     </option>
                   ))}
                 </select>
-              </div>
-
-              {/* Dirección */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  Dirección Legal y Oficinas Centrales <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={empresaData.direccion}
-                    onChange={(e) => {
-                      setEmpresaData({ ...empresaData, direccion: e.target.value });
-                      if (empresaErrors.direccion) setEmpresaErrors({ ...empresaErrors, direccion: "" });
-                    }}
-                    placeholder="Ej. Av. 6 de Marzo Nro 1234, El Alto - La Paz"
-                    className={`w-full bg-slate-50 dark:bg-slate-950 border rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none transition ${
-                      empresaErrors.direccion ? "border-rose-500 focus:border-rose-500" : "border-slate-300 dark:border-slate-800 focus:border-amber-500"
-                    }`}
-                  />
-                </div>
-                {empresaErrors.direccion && (
-                  <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    <span>{empresaErrors.direccion}</span>
-                  </p>
-                )}
-              </div>
-
-              {/* Teléfono */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  Teléfono / Móvil de Contacto <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={empresaData.telefono}
-                    onChange={(e) => {
-                      setEmpresaData({ ...empresaData, telefono: e.target.value });
-                      if (empresaErrors.telefono) setEmpresaErrors({ ...empresaErrors, telefono: "" });
-                    }}
-                    placeholder="Ej. +591 2 2841234 / 71520000"
-                    className={`w-full bg-slate-50 dark:bg-slate-950 border rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none transition ${
-                      empresaErrors.telefono ? "border-rose-500 focus:border-rose-500" : "border-slate-300 dark:border-slate-800 focus:border-amber-500"
-                    }`}
-                  />
-                </div>
-                {empresaErrors.telefono && (
-                  <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    <span>{empresaErrors.telefono}</span>
-                  </p>
-                )}
-              </div>
-
-              {/* Email Corporativo */}
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  Correo Electrónico Corporativo
-                </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="email"
-                    value={empresaData.email}
-                    onChange={(e) => {
-                      setEmpresaData({ ...empresaData, email: e.target.value });
-                      if (empresaErrors.email) setEmpresaErrors({ ...empresaErrors, email: "" });
-                    }}
-                    placeholder="Ej. administracion@rengifoltda.com"
-                    className={`w-full bg-slate-50 dark:bg-slate-950 border rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none transition ${
-                      empresaErrors.email ? "border-rose-500 focus:border-rose-500" : "border-slate-300 dark:border-slate-800 focus:border-amber-500"
-                    }`}
-                  />
-                </div>
-                {empresaErrors.email && (
-                  <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    <span>{empresaErrors.email}</span>
-                  </p>
-                )}
               </div>
 
             </div>

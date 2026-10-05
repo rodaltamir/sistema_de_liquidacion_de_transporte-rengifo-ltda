@@ -86,6 +86,7 @@ export default function ApoyoPage() {
   const [showEmpresaDetails, setShowEmpresaDetails] = useState(false);
   const [empresaFormData, setEmpresaFormData] = useState({
     nombre: "",
+    tipo_empresa: "Sociedad",
     representante: "",
     telefono: "",
     ci_nit: "",
@@ -147,6 +148,7 @@ export default function ApoyoPage() {
     setEditingEmpresa(null);
     setEmpresaFormData({
       nombre: "",
+      tipo_empresa: "Sociedad",
       representante: "",
       telefono: "",
       ci_nit: "",
@@ -159,24 +161,72 @@ export default function ApoyoPage() {
 
   const handleOpenEditEmpresa = (emp: EmpresaApoyo) => {
     setEditingEmpresa(emp);
+    const isUnipersonal = Boolean(emp.nombre && emp.representante && emp.nombre.trim().toLowerCase() === emp.representante.trim().toLowerCase());
     setEmpresaFormData({
       nombre: emp.nombre,
+      tipo_empresa: isUnipersonal ? "Unipersonal" : "Sociedad",
       representante: emp.representante || "",
       telefono: emp.telefono || "",
       ci_nit: emp.ci_nit || "",
       direccion: emp.direccion || "",
       notas: emp.notas || ""
     });
-    setShowEmpresaDetails(Boolean(emp.ci_nit || emp.direccion || emp.notas));
+    setShowEmpresaDetails(Boolean(emp.telefono || emp.ci_nit || emp.direccion || emp.notas));
     setShowEmpresaModal(true);
   };
 
   const handleSubmitEmpresa = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const nombreTrimmed = empresaFormData.nombre.trim();
+      let repTrimmed = empresaFormData.representante.trim();
+
+      // Validación estricta según Tipo Jurídico
+      if (empresaFormData.tipo_empresa === "Unipersonal") {
+        if (!nombreTrimmed) {
+          Swal.fire({
+            icon: "warning",
+            title: "Nombre requerido",
+            text: "Por favor ingresa el nombre de la empresa unipersonal / titular aliado.",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+        repTrimmed = nombreTrimmed;
+      } else {
+        // Sociedad / Empresa
+        if (!nombreTrimmed) {
+          Swal.fire({
+            icon: "warning",
+            title: "Nombre requerido",
+            text: "Por favor ingresa la Razón Social o Nombre de la empresa de apoyo.",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+        if (!repTrimmed) {
+          Swal.fire({
+            icon: "warning",
+            title: "Representante requerido",
+            text: "Para una Sociedad/Empresa de apoyo, debes ingresar el nombre del Representante o Contacto.",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+        if (nombreTrimmed.toLowerCase() === repTrimmed.toLowerCase()) {
+          Swal.fire({
+            icon: "warning",
+            title: "Nombres deben ser diferentes",
+            text: "En una Sociedad/Empresa, el Nombre de la Empresa y el Representante deben ser dos nombres diferentes. Si pertenece a una sola persona natural, elige la opción 'Unipersonal'.",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+      }
+
       const payload = {
-        nombre: empresaFormData.nombre.trim(),
-        representante: empresaFormData.representante.trim() || null,
+        nombre: nombreTrimmed,
+        representante: repTrimmed || null,
         telefono: empresaFormData.telefono.trim() || null,
         ci_nit: empresaFormData.ci_nit.trim() || null,
         direccion: empresaFormData.direccion.trim() || null,
@@ -858,10 +908,10 @@ export default function ApoyoPage() {
       {/* MODAL CREAR / EDITAR EMPRESA DE APOYO */}
       {/* ============================================================== */}
       {showEmpresaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg p-6 sm:p-7 max-h-[92vh] overflow-y-auto text-slate-900 dark:text-white transition-colors">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden animate-in fade-in">
+          <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white overflow-hidden transition-colors">
             
-            <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800 mb-5">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-500">
                   <Handshake className="w-5 h-5" />
@@ -883,50 +933,100 @@ export default function ApoyoPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmitEmpresa} className="space-y-4">
+            <form id="empresa-apoyo-form" onSubmit={handleSubmitEmpresa} className="p-6 space-y-4 flex-1 overflow-y-auto">
+              
+              {/* Selector de Tipo de Empresa */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                  Nombre de la Empresa de Apoyo / Aliado *
+                  Tipo Jurídico de Empresa *
+                </label>
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setEmpresaFormData({ ...empresaFormData, tipo_empresa: "Sociedad" })}
+                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
+                      empresaFormData.tipo_empresa === "Sociedad"
+                        ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-extrabold"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>Sociedad / Empresa</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const currentName = empresaFormData.nombre;
+                      setEmpresaFormData({ ...empresaFormData, tipo_empresa: "Unipersonal", representante: currentName });
+                    }}
+                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
+                      empresaFormData.tipo_empresa === "Unipersonal"
+                        ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-extrabold"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <UserIcon className="w-3.5 h-3.5" />
+                    <span>Unipersonal</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Nombre de la Empresa */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                  {empresaFormData.tipo_empresa === "Unipersonal" ? "Nombre Completo del Titular (Razón Social) *" : "Nombre de la Empresa de Apoyo / Aliado *"}
                 </label>
                 <input
                   type="text"
                   required
                   value={empresaFormData.nombre}
-                  onChange={(e) => setEmpresaFormData({ ...empresaFormData, nombre: e.target.value })}
-                  placeholder="ej. TRANSPORTES SAN CRISTÓBAL"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (empresaFormData.tipo_empresa === "Unipersonal") {
+                      setEmpresaFormData({ ...empresaFormData, nombre: val, representante: val });
+                    } else {
+                      setEmpresaFormData({ ...empresaFormData, nombre: val });
+                    }
+                  }}
+                  placeholder={empresaFormData.tipo_empresa === "Unipersonal" ? "ej. JUAN PÉREZ FLORES" : "ej. TRANSPORTES SAN CRISTÓBAL"}
                   className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                   autoFocus
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                    Representante / Contacto
+              {/* Nombre del Representante / Titular */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Representante / Titular *
                   </label>
-                  <input
-                    type="text"
-                    value={empresaFormData.representante}
-                    onChange={(e) => setEmpresaFormData({ ...empresaFormData, representante: e.target.value })}
-                    placeholder="ej. Carlos Mendoza"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                  />
+                  {empresaFormData.tipo_empresa === "Unipersonal" && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                      (Coincide con el titular)
+                    </span>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                    Teléfono / Celular
-                  </label>
-                  <input
-                    type="text"
-                    value={empresaFormData.telefono}
-                    onChange={(e) => setEmpresaFormData({ ...empresaFormData, telefono: e.target.value })}
-                    placeholder="ej. 77201928"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
+                <input
+                  type="text"
+                  required
+                  disabled={empresaFormData.tipo_empresa === "Unipersonal"}
+                  value={empresaFormData.tipo_empresa === "Unipersonal" ? empresaFormData.nombre : empresaFormData.representante}
+                  onChange={(e) => setEmpresaFormData({ ...empresaFormData, representante: e.target.value })}
+                  placeholder={empresaFormData.tipo_empresa === "Unipersonal" ? "Mismo nombre del titular" : "ej. Carlos Mendoza"}
+                  className={`w-full px-4 py-3 border rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 ${
+                    empresaFormData.tipo_empresa === "Unipersonal"
+                      ? "bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed"
+                      : "bg-slate-50 dark:bg-slate-950 border-slate-300 dark:border-slate-800"
+                  }`}
+                />
+                {empresaFormData.tipo_empresa === "Sociedad" && (
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Debe ser un nombre diferente a la Razón Social.
+                  </p>
+                )}
               </div>
 
-              {/* Acordeón Opcional */}
+              {/* Acordeón Opcional para Contacto */}
               <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80">
                 <button
                   type="button"
@@ -935,24 +1035,38 @@ export default function ApoyoPage() {
                 >
                   <div className="flex items-center gap-2">
                     <FileText className="w-4 h-4 text-amber-500" />
-                    <span>Datos Adicionales (NIT, Dirección, Notas)</span>
+                    <span>Datos de contacto opcionales (Teléfono, C.I., notas)</span>
                   </div>
                   <ChevronDown className={`w-4 h-4 text-slate-400 dark:text-slate-500 group-hover:text-amber-500 transition-transform duration-200 ${showEmpresaDetails ? "rotate-180 text-amber-500" : ""}`} />
                 </button>
 
                 {showEmpresaDetails && (
                   <div className="mt-2.5 space-y-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 animate-in fade-in">
-                    <div>
-                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                        C.I. o NIT del Aliado
-                      </label>
-                      <input
-                        type="text"
-                        value={empresaFormData.ci_nit}
-                        onChange={(e) => setEmpresaFormData({ ...empresaFormData, ci_nit: e.target.value })}
-                        placeholder="ej. 394819201"
-                        className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                          Teléfono / Celular
+                        </label>
+                        <input
+                          type="text"
+                          value={empresaFormData.telefono}
+                          onChange={(e) => setEmpresaFormData({ ...empresaFormData, telefono: e.target.value })}
+                          placeholder="ej. 77201928"
+                          className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                          C.I. o NIT del Aliado
+                        </label>
+                        <input
+                          type="text"
+                          value={empresaFormData.ci_nit}
+                          onChange={(e) => setEmpresaFormData({ ...empresaFormData, ci_nit: e.target.value })}
+                          placeholder="ej. 394819201"
+                          className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
                     </div>
 
                     <div>
@@ -984,22 +1098,24 @@ export default function ApoyoPage() {
                 )}
               </div>
 
-              <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowEmpresaModal(false)}
-                  className="px-4.5 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95"
-                >
-                  {editingEmpresa ? "Guardar Cambios" : "Registrar Empresa"}
-                </button>
-              </div>
             </form>
+
+            <div className="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 flex justify-end gap-3 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowEmpresaModal(false)}
+                className="px-4.5 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="empresa-apoyo-form"
+                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95"
+              >
+                {editingEmpresa ? "Guardar Cambios" : "Registrar Empresa"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1008,10 +1124,10 @@ export default function ApoyoPage() {
       {/* MODAL CREAR / EDITAR CAMIÓN DE APOYO */}
       {/* ============================================================== */}
       {showUnidadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg p-6 sm:p-7 max-h-[92vh] overflow-y-auto text-slate-900 dark:text-white transition-colors">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden animate-in fade-in">
+          <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white overflow-hidden transition-colors">
             
-            <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800 mb-5">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-500">
                   <Truck className="w-5 h-5" />
@@ -1033,9 +1149,9 @@ export default function ApoyoPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmitUnidad} className="space-y-4">
+            <form id="unidad-apoyo-form" onSubmit={handleSubmitUnidad} className="p-6 space-y-4 flex-1 overflow-y-auto">
               
-              {/* Selector de Empresa de Apoyo */}
+              {/* Selector de Empresa de Apoyo - Obligatorio */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
                   Empresa de Apoyo Aliada *
@@ -1055,82 +1171,86 @@ export default function ApoyoPage() {
                 </select>
               </div>
 
-              {/* Placa y Estado */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                    Placa / Cisterna *
-                  </label>
+              {/* Placa - Obligatorio y Principal */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                  Número de Placa de la Cisterna / Camión *
+                </label>
+                <div className="relative">
+                  <Truck className="w-5 h-5 text-amber-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     required
                     value={unidadFormData.placa}
                     onChange={(e) => setUnidadFormData({ ...unidadFormData, placa: e.target.value.toUpperCase() })}
                     placeholder="ej. 3844-XZY"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white uppercase placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 font-mono font-bold"
+                    className="w-full pl-11 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-sm font-mono font-black text-slate-900 dark:text-white uppercase placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 tracking-wider"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                    Estado Operativo
-                  </label>
-                  <select
-                    value={unidadFormData.estado}
-                    onChange={(e) => setUnidadFormData({ ...unidadFormData, estado: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
-                  >
-                    <option value="Disponible">Disponible (Listo)</option>
-                    <option value="En Ruta">En Ruta (En tránsito)</option>
-                    <option value="Mantenimiento">Mantenimiento</option>
-                    <option value="Inactivo">Inactivo</option>
-                  </select>
-                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Identificador único vehicular del transportista aliado</p>
               </div>
 
-              {/* Conductor y Teléfono */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                    Nombre del Conductor
-                  </label>
-                  <input
-                    type="text"
-                    value={unidadFormData.conductor_nombre}
-                    onChange={(e) => setUnidadFormData({ ...unidadFormData, conductor_nombre: e.target.value })}
-                    placeholder="ej. Juan Choque"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                    Teléfono del Conductor
-                  </label>
-                  <input
-                    type="text"
-                    value={unidadFormData.conductor_telefono}
-                    onChange={(e) => setUnidadFormData({ ...unidadFormData, conductor_telefono: e.target.value })}
-                    placeholder="ej. 71928300"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
-
-              {/* Acordeón Opcional: Capacidad y CI */}
+              {/* Acordeón Opcional para Conductor, Capacidad y Estado */}
               <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80">
                 <button
                   type="button"
                   onClick={() => setShowUnidadDetails(!showUnidadDetails)}
-                  className="flex items-center justify-between w-full py-2 px-1 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition group"
+                  className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800/80 rounded-xl text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition flex items-center justify-between"
                 >
-                  <div className="flex items-center gap-2">
-                    <Fuel className="w-4 h-4 text-amber-500" />
-                    <span>Capacidad y Detalles Técnicos (Opcional)</span>
-                  </div>
-                  <ChevronDown className={`w-4 h-4 text-slate-400 dark:text-slate-500 group-hover:text-amber-500 transition-transform duration-200 ${showUnidadDetails ? "rotate-180 text-amber-500" : ""}`} />
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <span>{showUnidadDetails ? "− Ocultar datos adicionales (Conductor, capacidad, estado...)" : "+ Añadir datos adicionales (Conductor, capacidad, estado...)"}</span>
+                  </span>
+                  <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showUnidadDetails ? "rotate-180 text-amber-500" : ""}`} />
                 </button>
 
                 {showUnidadDetails && (
-                  <div className="mt-2.5 space-y-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 animate-in fade-in">
+                  <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-950/80 rounded-2xl border border-slate-200 dark:border-slate-800/80 space-y-3.5 animate-in fade-in">
+                    
+                    {/* Estado Operativo */}
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                        Estado Operativo
+                      </label>
+                      <select
+                        value={unidadFormData.estado}
+                        onChange={(e) => setUnidadFormData({ ...unidadFormData, estado: e.target.value })}
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                      >
+                        <option value="Disponible">Disponible (Listo)</option>
+                        <option value="En Ruta">En Ruta (En tránsito)</option>
+                        <option value="Mantenimiento">Mantenimiento</option>
+                        <option value="Inactivo">Inactivo</option>
+                      </select>
+                    </div>
+
+                    {/* Conductor y Teléfono */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                          Nombre del Conductor
+                        </label>
+                        <input
+                          type="text"
+                          value={unidadFormData.conductor_nombre}
+                          onChange={(e) => setUnidadFormData({ ...unidadFormData, conductor_nombre: e.target.value })}
+                          placeholder="ej. Juan Choque"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                          Teléfono del Conductor
+                        </label>
+                        <input
+                          type="text"
+                          value={unidadFormData.conductor_telefono}
+                          onChange={(e) => setUnidadFormData({ ...unidadFormData, conductor_telefono: e.target.value })}
+                          placeholder="ej. 71928300"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
@@ -1147,7 +1267,7 @@ export default function ApoyoPage() {
                               capacidad_m3: +(l / 1000.0).toFixed(2)
                             });
                           }}
-                          className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                         />
                       </div>
                       <div>
@@ -1166,7 +1286,7 @@ export default function ApoyoPage() {
                               capacidad_litros: +(m3 * 1000.0).toFixed(0)
                             });
                           }}
-                          className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                         />
                       </div>
                     </div>
@@ -1181,7 +1301,7 @@ export default function ApoyoPage() {
                           value={unidadFormData.conductor_ci}
                           onChange={(e) => setUnidadFormData({ ...unidadFormData, conductor_ci: e.target.value })}
                           placeholder="ej. 8271920"
-                          className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                         />
                       </div>
                       <div>
@@ -1192,7 +1312,7 @@ export default function ApoyoPage() {
                           type="number"
                           value={unidadFormData.num_compartimentos}
                           onChange={(e) => setUnidadFormData({ ...unidadFormData, num_compartimentos: parseInt(e.target.value) || 4 })}
-                          className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                         />
                       </div>
                     </div>
@@ -1200,23 +1320,25 @@ export default function ApoyoPage() {
                 )}
               </div>
 
-              <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowUnidadModal(false)}
-                  className="px-4.5 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95"
-                >
-                  {editingUnidad ? "Guardar Cambios" : "Asignar Camión"}
-                </button>
-              </div>
-
             </form>
+
+            <div className="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 flex justify-end gap-3 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowUnidadModal(false)}
+                className="px-4.5 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="unidad-apoyo-form"
+                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95 flex items-center gap-1.5"
+              >
+                <Truck className="w-4 h-4" />
+                <span>{editingUnidad ? "Guardar Cambios" : "Asignar Camión"}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
