@@ -25,6 +25,8 @@ import {
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
 import { formatLitros, formatM3, formatDate } from "@/lib/format";
+import DirectoryNav from "@/components/DirectoryNav";
+import ModalPortal from "@/components/ModalPortal";
 
 interface Unidad {
   id: number;
@@ -110,10 +112,11 @@ function FlotaContent() {
   const loadUnidades = async () => {
     setLoading(true);
     try {
-      const data = await apiFetch(`/tenants/${schema}/unidades/`);
-      setUnidades(data);
+      const data = await apiFetch(`/tenants/${schema}/unidades/`).catch(() => []);
+      setUnidades(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+      setUnidades([]);
     } finally {
       setLoading(false);
     }
@@ -185,9 +188,9 @@ function FlotaContent() {
       const payload = {
         ...formData,
         placa: formData.placa.trim().toUpperCase(),
-        capacidad_litros: Number(formData.capacidad_litros),
-        capacidad_m3: Number(formData.capacidad_m3),
-        num_compartimentos: Number(formData.num_compartimentos),
+        capacidad_litros: Number(formData.capacidad_litros) || 0,
+        capacidad_m3: Number(formData.capacidad_m3) || 0,
+        num_compartimentos: Number(formData.num_compartimentos) || 4,
         soat_vencimiento: formData.soat_vencimiento || null
       };
 
@@ -272,7 +275,8 @@ function FlotaContent() {
     }
   };
 
-  const filteredUnidades = unidades.filter((u) => {
+  const safeUnidades = Array.isArray(unidades) ? unidades : [];
+  const filteredUnidades = safeUnidades.filter((u) => {
     const matchesSearch =
       u.placa.toLowerCase().includes(search.toLowerCase()) ||
       (u.marca && u.marca.toLowerCase().includes(search.toLowerCase())) ||
@@ -284,13 +288,16 @@ function FlotaContent() {
     return matchesSearch && matchesEstado;
   });
 
-  const totalCapacidadLitros = unidades.reduce((acc, u) => acc + (u.capacidad_litros || 0), 0);
-  const totalActivas = unidades.filter((u) => u.estado === "Activo").length;
-  const totalRuta = unidades.filter((u) => u.estado === "En Ruta").length;
+  const totalCapacidadLitros = safeUnidades.reduce((acc, u) => acc + (u.capacidad_litros || 0), 0);
+  const totalActivas = safeUnidades.filter((u) => u.estado === "Activo").length;
+  const totalRuta = safeUnidades.filter((u) => u.estado === "En Ruta").length;
 
   return (
     <div className="space-y-6 sm:space-y-7 font-sans selection:bg-amber-500 selection:text-slate-950">
       
+      {/* Navegación Consolidada de Directorio */}
+      <DirectoryNav schema={schema} counts={{ propia: unidades.length }} />
+
       {/* Encabezado y Acción Principal (Tarjeta Banner Ejecutiva) */}
       <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-md shadow-md dark:shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-5 transition-colors">
         <div className="flex items-center gap-4">
@@ -592,7 +599,8 @@ function FlotaContent() {
 
       {/* Modal Crear / Editar Unidad (Formulario Simplificado) */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden animate-in fade-in">
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-hidden animate-in fade-in">
           <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white overflow-hidden transition-colors">
             
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
@@ -709,9 +717,20 @@ function FlotaContent() {
                           type="number"
                           value={formData.capacidad_litros}
                           onChange={(e) => {
-                            const l = Number(e.target.value);
-                            setFormData({ ...formData, capacidad_litros: l, capacidad_m3: Number((l / 1000).toFixed(2)) });
+                            const v = e.target.value;
+                            if (v === "") {
+                              setFormData({ ...formData, capacidad_litros: "" as any, capacidad_m3: "" as any });
+                            } else {
+                              const l = Number(v) || 0;
+                              setFormData({ ...formData, capacidad_litros: l, capacidad_m3: Number((l / 1000).toFixed(2)) });
+                            }
                           }}
+                          onBlur={(e) => {
+                            if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                              setFormData((prev) => ({ ...prev, capacidad_litros: 0, capacidad_m3: 0 }));
+                            }
+                          }}
+                          placeholder="0"
                           className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-mono"
                         />
                       </div>
@@ -722,9 +741,20 @@ function FlotaContent() {
                           step="0.1"
                           value={formData.capacidad_m3}
                           onChange={(e) => {
-                            const m = Number(e.target.value);
-                            setFormData({ ...formData, capacidad_m3: m, capacidad_litros: m * 1000 });
+                            const v = e.target.value;
+                            if (v === "") {
+                              setFormData({ ...formData, capacidad_m3: "" as any, capacidad_litros: "" as any });
+                            } else {
+                              const m = Number(v) || 0;
+                              setFormData({ ...formData, capacidad_m3: m, capacidad_litros: Math.round(m * 1000) });
+                            }
                           }}
+                          onBlur={(e) => {
+                            if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                              setFormData((prev) => ({ ...prev, capacidad_m3: 0, capacidad_litros: 0 }));
+                            }
+                          }}
+                          placeholder="0.0"
                           className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-mono"
                         />
                       </div>
@@ -815,6 +845,7 @@ function FlotaContent() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
     </div>

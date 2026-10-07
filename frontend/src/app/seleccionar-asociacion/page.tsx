@@ -34,6 +34,7 @@ import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
 import { getCurrentUser, clearAuth, User } from "@/lib/auth";
 import ThemeToggle from "@/components/ThemeToggle";
+import ModalPortal from "@/components/ModalPortal";
 
 interface Asociacion {
   id: number;
@@ -145,8 +146,8 @@ export default function SeleccionarAsociacionPage() {
         apiFetch("/empresas/"),
         apiFetch("/empresas/resumen-global").catch(() => null)
       ]);
-      setAsociaciones(asocData || []);
-      setEmpresas(empData || []);
+      setAsociaciones(Array.isArray(asocData) ? asocData : []);
+      setEmpresas(Array.isArray(empData) ? empData : []);
       if (resumenData) {
         setResumen(resumenData);
       }
@@ -467,14 +468,16 @@ export default function SeleccionarAsociacionPage() {
   };
 
   // Filtrado de búsquedas
-  const filteredAsocs = asociaciones.filter(a => 
-    a.name.toLowerCase().includes(search.toLowerCase()) ||
+  const safeAsocs = Array.isArray(asociaciones) ? asociaciones : [];
+  const filteredAsocs = safeAsocs.filter(a => 
+    a.name?.toLowerCase().includes(search.toLowerCase()) ||
     (a.sigla && a.sigla.toLowerCase().includes(search.toLowerCase())) ||
     (a.nit && a.nit.includes(search))
   );
 
-  const filteredEmpresas = empresas.filter(e =>
-    e.name.toLowerCase().includes(search.toLowerCase()) ||
+  const safeEmpresas = Array.isArray(empresas) ? empresas : [];
+  const filteredEmpresas = safeEmpresas.filter(e =>
+    e.name?.toLowerCase().includes(search.toLowerCase()) ||
     (e.nit && e.nit.includes(search)) ||
     (e.asociacion_name && e.asociacion_name.toLowerCase().includes(search.toLowerCase()))
   );
@@ -989,7 +992,8 @@ export default function SeleccionarAsociacionPage() {
 
       {/* Modal Crear / Editar Asociación */}
       {showAsocModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 dark:bg-black/75 backdrop-blur-sm overflow-hidden animate-in fade-in">
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-hidden animate-in fade-in">
           <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
               <div>
@@ -1103,11 +1107,13 @@ export default function SeleccionarAsociacionPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* Modal Crear / Editar Empresa */}
       {showEmpresaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 dark:bg-black/75 backdrop-blur-sm overflow-hidden animate-in fade-in">
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-hidden animate-in fade-in">
           <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
               <div>
@@ -1258,6 +1264,7 @@ export default function SeleccionarAsociacionPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
     </div>

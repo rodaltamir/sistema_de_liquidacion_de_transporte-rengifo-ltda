@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Users, Plus, Edit, Trash2, X, ShieldCheck, UserCheck, Check, AlertCircle } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
+import ModalPortal from "@/components/ModalPortal";
 
 interface UserItem {
   id: number;
@@ -186,7 +187,8 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-sm animate-in fade-in">
+    <ModalPortal>
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in">
       <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Cabecera */}
@@ -399,6 +401,6 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
         )}
 
       </div>
-    </div>
+    </ModalPortal>
   );
 }

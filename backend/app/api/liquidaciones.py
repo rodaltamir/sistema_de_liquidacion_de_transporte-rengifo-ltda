@@ -20,6 +20,9 @@ def list_liquidaciones(
     schema_name: str,
     periodo_mes: Optional[str] = None,
     placa: Optional[str] = None,
+    anio: Optional[int] = None,
+    fecha_desde: Optional[date] = None,
+    fecha_hasta: Optional[date] = None,
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     session = get_tenant_session(schema_name)
@@ -27,9 +30,18 @@ def list_liquidaciones(
         query = session.query(Liquidacion)
         if periodo_mes:
             query = query.filter(Liquidacion.periodo_mes == periodo_mes)
+        elif anio:
+            query = query.filter(Liquidacion.periodo_mes.startswith(f"{anio}-"))
+        elif fecha_desde and fecha_hasta:
+            desde_str = fecha_desde.strftime("%Y-%m")
+            hasta_str = fecha_hasta.strftime("%Y-%m")
+            query = query.filter(
+                (Liquidacion.fecha_emision.between(fecha_desde, fecha_hasta)) |
+                (Liquidacion.periodo_mes.between(desde_str, hasta_str))
+            )
         if placa:
             query = query.filter(Liquidacion.placa == placa.upper().strip())
-        return query.order_by(Liquidacion.created_at.desc()).all()
+        return query.order_by(Liquidacion.periodo_mes.desc(), Liquidacion.created_at.desc()).all()
     finally:
         session.close()
 

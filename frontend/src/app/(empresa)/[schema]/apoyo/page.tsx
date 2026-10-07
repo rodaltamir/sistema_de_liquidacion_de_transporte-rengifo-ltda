@@ -26,6 +26,8 @@ import {
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
 import { formatNumber } from "@/lib/format";
+import DirectoryNav from "@/components/DirectoryNav";
+import ModalPortal from "@/components/ModalPortal";
 
 interface UnidadApoyo {
   id: number;
@@ -118,7 +120,7 @@ export default function ApoyoPage() {
     setLoading(true);
     try {
       const [empresasData, statsData] = await Promise.all([
-        apiFetch(`/tenants/${schema}/apoyo/`),
+        apiFetch(`/tenants/${schema}/apoyo/`).catch(() => []),
         apiFetch(`/tenants/${schema}/apoyo/stats`).catch(() => ({
           total_empresas: 0,
           total_unidades: 0,
@@ -126,18 +128,16 @@ export default function ApoyoPage() {
           unidades_en_ruta: 0
         }))
       ]);
-      setEmpresas(empresasData || []);
-      setStats(statsData);
+      setEmpresas(Array.isArray(empresasData) ? empresasData : []);
+      setStats(statsData || {
+        total_empresas: 0,
+        total_unidades: 0,
+        unidades_disponibles: 0,
+        unidades_en_ruta: 0
+      });
     } catch (err: any) {
       console.error(err);
-      Swal.fire({
-        icon: "error",
-        title: "Error al cargar datos",
-        text: err.message,
-        background: "#0f172a",
-        color: "#f8fafc",
-        confirmButtonColor: "#f59e0b"
-      });
+      setEmpresas([]);
     } finally {
       setLoading(false);
     }
@@ -475,26 +475,31 @@ export default function ApoyoPage() {
   };
 
   // Filtrado de empresas y sus unidades
-  const filteredEmpresas = empresas.filter((emp) => {
+  const safeEmpresas = Array.isArray(empresas) ? empresas : [];
+  const filteredEmpresas = safeEmpresas.filter((emp) => {
     const query = search.toLowerCase();
-    const matchEmpresa = emp.nombre.toLowerCase().includes(query) ||
+    const matchEmpresa = emp.nombre?.toLowerCase().includes(query) ||
       (emp.representante && emp.representante.toLowerCase().includes(query)) ||
       (emp.telefono && emp.telefono.toLowerCase().includes(query));
 
-    const matchUnidad = emp.unidades.some((u) => 
-      u.placa.toLowerCase().includes(query) ||
+    const unidadesList = Array.isArray(emp.unidades) ? emp.unidades : [];
+    const matchUnidad = unidadesList.some((u) => 
+      u.placa?.toLowerCase().includes(query) ||
       (u.conductor_nombre && u.conductor_nombre.toLowerCase().includes(query))
     );
 
     const matchesSearch = matchEmpresa || matchUnidad;
 
     if (filterEstado === "TODOS") return matchesSearch;
-    return matchesSearch && emp.unidades.some((u) => u.estado.toUpperCase() === filterEstado);
+    return matchesSearch && unidadesList.some((u) => u.estado?.toUpperCase() === filterEstado);
   });
 
   return (
     <div className="space-y-6 animate-in fade-in pb-12">
       
+      {/* Navegación Consolidada de Directorio */}
+      <DirectoryNav schema={schema} counts={{ apoyo: stats.total_unidades }} />
+
       {/* ============================================================== */}
       {/* ENCABEZADO PRINCIPAL DE LA VISTA */}
       {/* ============================================================== */}
@@ -908,7 +913,8 @@ export default function ApoyoPage() {
       {/* MODAL CREAR / EDITAR EMPRESA DE APOYO */}
       {/* ============================================================== */}
       {showEmpresaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden animate-in fade-in">
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-hidden animate-in fade-in">
           <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white overflow-hidden transition-colors">
             
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
@@ -1118,13 +1124,15 @@ export default function ApoyoPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ============================================================== */}
       {/* MODAL CREAR / EDITAR CAMIÓN DE APOYO */}
       {/* ============================================================== */}
       {showUnidadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden animate-in fade-in">
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-hidden animate-in fade-in">
           <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white overflow-hidden transition-colors">
             
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
@@ -1260,13 +1268,24 @@ export default function ApoyoPage() {
                           type="number"
                           value={unidadFormData.capacidad_litros}
                           onChange={(e) => {
-                            const l = parseFloat(e.target.value) || 0;
-                            setUnidadFormData({
-                              ...unidadFormData,
-                              capacidad_litros: l,
-                              capacidad_m3: +(l / 1000.0).toFixed(2)
-                            });
+                            const v = e.target.value;
+                            if (v === "") {
+                              setUnidadFormData({ ...unidadFormData, capacidad_litros: "" as any, capacidad_m3: "" as any });
+                            } else {
+                              const l = parseFloat(v) || 0;
+                              setUnidadFormData({
+                                ...unidadFormData,
+                                capacidad_litros: l,
+                                capacidad_m3: +(l / 1000.0).toFixed(2)
+                              });
+                            }
                           }}
+                          onBlur={(e) => {
+                            if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                              setUnidadFormData((prev) => ({ ...prev, capacidad_litros: 0, capacidad_m3: 0 }));
+                            }
+                          }}
+                          placeholder="0"
                           className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                         />
                       </div>
@@ -1279,13 +1298,24 @@ export default function ApoyoPage() {
                           step="0.1"
                           value={unidadFormData.capacidad_m3}
                           onChange={(e) => {
-                            const m3 = parseFloat(e.target.value) || 0;
-                            setUnidadFormData({
-                              ...unidadFormData,
-                              capacidad_m3: m3,
-                              capacidad_litros: +(m3 * 1000.0).toFixed(0)
-                            });
+                            const v = e.target.value;
+                            if (v === "") {
+                              setUnidadFormData({ ...unidadFormData, capacidad_m3: "" as any, capacidad_litros: "" as any });
+                            } else {
+                              const m3 = parseFloat(v) || 0;
+                              setUnidadFormData({
+                                ...unidadFormData,
+                                capacidad_m3: m3,
+                                capacidad_litros: +(m3 * 1000.0).toFixed(0)
+                              });
+                            }
                           }}
+                          onBlur={(e) => {
+                            if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                              setUnidadFormData((prev) => ({ ...prev, capacidad_m3: 0, capacidad_litros: 0 }));
+                            }
+                          }}
+                          placeholder="0.0"
                           className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                         />
                       </div>
@@ -1311,7 +1341,16 @@ export default function ApoyoPage() {
                         <input
                           type="number"
                           value={unidadFormData.num_compartimentos}
-                          onChange={(e) => setUnidadFormData({ ...unidadFormData, num_compartimentos: parseInt(e.target.value) || 4 })}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setUnidadFormData({ ...unidadFormData, num_compartimentos: v === "" ? ("" as any) : (parseInt(v) || 4) });
+                          }}
+                          onBlur={(e) => {
+                            if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                              setUnidadFormData((prev) => ({ ...prev, num_compartimentos: 4 }));
+                            }
+                          }}
+                          placeholder="4"
                           className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                         />
                       </div>
@@ -1341,6 +1380,7 @@ export default function ApoyoPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
     </div>

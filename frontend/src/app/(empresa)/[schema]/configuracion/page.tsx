@@ -380,10 +380,24 @@ export default function ConfiguracionPage() {
   const handleSaveParametros = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingParametros(true);
+    const sanitizedForm = {
+      ...formData,
+      merma_tolerancia_diesel_pct: Number(formData.merma_tolerancia_diesel_pct) || 0,
+      merma_tolerancia_gasolina_pct: Number(formData.merma_tolerancia_gasolina_pct) || 0,
+      merma_tolerancia_iya_pct: Number(formData.merma_tolerancia_iya_pct) || 0,
+      precio_merma_general_bs: Number(formData.precio_merma_general_bs) || 0,
+      tipo_cambio_usd_bob: Number(formData.tipo_cambio_usd_bob) || 6.96,
+      comision_usd_m3: Number(formData.comision_usd_m3) || 0,
+      comision_pct_1: Number(formData.comision_pct_1) || 0,
+      comision_ypfb_bolgart_pct: Number(formData.comision_ypfb_bolgart_pct) || 0,
+      comision_pct_2: Number(formData.comision_pct_2) || 0,
+      costo_hojas_de_ruta_bs: Number(formData.costo_hojas_de_ruta_bs) || 0,
+      costo_gps_bs: Number(formData.costo_gps_bs) || 0,
+    };
     try {
       await apiFetch(`/tenants/${schema}/parametros/`, {
         method: "PUT",
-        body: JSON.stringify(formData)
+        body: JSON.stringify(sanitizedForm)
       });
       Swal.fire({
         icon: "success",
@@ -931,7 +945,16 @@ export default function ConfiguracionPage() {
                   type="number"
                   step="0.01"
                   value={formData.merma_tolerancia_diesel_pct}
-                  onChange={(e) => setFormData({ ...formData, merma_tolerancia_diesel_pct: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData({ ...formData, merma_tolerancia_diesel_pct: v === "" ? ("" as any) : v });
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                      setFormData((prev) => ({ ...prev, merma_tolerancia_diesel_pct: 0 }));
+                    }
+                  }}
+                  placeholder="0.15"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Estándar YPFB: 0.15%</span>
@@ -945,7 +968,16 @@ export default function ConfiguracionPage() {
                   type="number"
                   step="0.01"
                   value={formData.merma_tolerancia_gasolina_pct}
-                  onChange={(e) => setFormData({ ...formData, merma_tolerancia_gasolina_pct: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData({ ...formData, merma_tolerancia_gasolina_pct: v === "" ? ("" as any) : v });
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                      setFormData((prev) => ({ ...prev, merma_tolerancia_gasolina_pct: 0 }));
+                    }
+                  }}
+                  placeholder="0.25"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Estándar YPFB: 0.25%</span>
@@ -959,7 +991,16 @@ export default function ConfiguracionPage() {
                   type="number"
                   step="0.01"
                   value={formData.merma_tolerancia_iya_pct}
-                  onChange={(e) => setFormData({ ...formData, merma_tolerancia_iya_pct: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData({ ...formData, merma_tolerancia_iya_pct: v === "" ? ("" as any) : v });
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                      setFormData((prev) => ({ ...prev, merma_tolerancia_iya_pct: 0 }));
+                    }
+                  }}
+                  placeholder="0.20"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Estándar: 0.20%</span>
@@ -975,7 +1016,16 @@ export default function ConfiguracionPage() {
                   type="number"
                   step="0.01"
                   value={formData.precio_merma_general_bs}
-                  onChange={(e) => setFormData({ ...formData, precio_merma_general_bs: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData({ ...formData, precio_merma_general_bs: v === "" ? ("" as any) : v });
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                      setFormData((prev) => ({ ...prev, precio_merma_general_bs: 0 }));
+                    }
+                  }}
+                  placeholder="7.45"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Valor contractual aplicado en Hoja 2 del PDF (7.45 Bs)</span>
@@ -989,7 +1039,16 @@ export default function ConfiguracionPage() {
                   type="number"
                   step="0.01"
                   value={formData.tipo_cambio_usd_bob}
-                  onChange={(e) => setFormData({ ...formData, tipo_cambio_usd_bob: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData({ ...formData, tipo_cambio_usd_bob: v === "" ? ("" as any) : v });
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                      setFormData((prev) => ({ ...prev, tipo_cambio_usd_bob: 6.96 }));
+                    }
+                  }}
+                  placeholder="6.96"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">T/C de conversión para tarifas y comisiones (6.96 Bs)</span>
@@ -1020,7 +1079,16 @@ export default function ConfiguracionPage() {
                   type="number"
                   step="0.01"
                   value={formData.comision_usd_m3}
-                  onChange={(e) => setFormData({ ...formData, comision_usd_m3: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData({ ...formData, comision_usd_m3: v === "" ? ("" as any) : v });
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                      setFormData((prev) => ({ ...prev, comision_usd_m3: 0 }));
+                    }
+                  }}
+                  placeholder="1.00"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Cobro por metro cúbico (1 $us/m3)</span>
@@ -1034,7 +1102,16 @@ export default function ConfiguracionPage() {
                   type="number"
                   step="0.01"
                   value={formData.comision_pct_1}
-                  onChange={(e) => setFormData({ ...formData, comision_pct_1: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData({ ...formData, comision_pct_1: v === "" ? ("" as any) : v });
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                      setFormData((prev) => ({ ...prev, comision_pct_1: 0 }));
+                    }
+                  }}
+                  placeholder="7.00"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Retención Impositiva y Logística</span>
@@ -1048,7 +1125,16 @@ export default function ConfiguracionPage() {
                   type="number"
                   step="0.01"
                   value={formData.comision_ypfb_bolgart_pct}
-                  onChange={(e) => setFormData({ ...formData, comision_ypfb_bolgart_pct: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData({ ...formData, comision_ypfb_bolgart_pct: v === "" ? ("" as any) : v });
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                      setFormData((prev) => ({ ...prev, comision_ypfb_bolgart_pct: 0 }));
+                    }
+                  }}
+                  placeholder="7.00"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Boleta de Garantía de Transporte</span>
@@ -1064,7 +1150,16 @@ export default function ConfiguracionPage() {
                   type="number"
                   step="0.01"
                   value={formData.comision_pct_2}
-                  onChange={(e) => setFormData({ ...formData, comision_pct_2: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData({ ...formData, comision_pct_2: v === "" ? ("" as any) : v });
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                      setFormData((prev) => ({ ...prev, comision_pct_2: 0 }));
+                    }
+                  }}
+                  placeholder="3.00"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Gestión Operativa</span>
@@ -1078,7 +1173,16 @@ export default function ConfiguracionPage() {
                   type="number"
                   step="0.01"
                   value={formData.costo_hojas_de_ruta_bs}
-                  onChange={(e) => setFormData({ ...formData, costo_hojas_de_ruta_bs: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData({ ...formData, costo_hojas_de_ruta_bs: v === "" ? ("" as any) : v });
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                      setFormData((prev) => ({ ...prev, costo_hojas_de_ruta_bs: 0 }));
+                    }
+                  }}
+                  placeholder="240.00"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Valorado ANH/Tránsito: 240.00 Bs</span>
@@ -1092,7 +1196,16 @@ export default function ConfiguracionPage() {
                   type="number"
                   step="0.01"
                   value={formData.costo_gps_bs}
-                  onChange={(e) => setFormData({ ...formData, costo_gps_bs: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData({ ...formData, costo_gps_bs: v === "" ? ("" as any) : v });
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                      setFormData((prev) => ({ ...prev, costo_gps_bs: 0 }));
+                    }
+                  }}
+                  placeholder="135.00"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Monitoreo Satelital: 135.00 Bs</span>

@@ -16,7 +16,7 @@ import {
   TrendingUp
 } from "lucide-react";
 
-export type FilterMode = "mes" | "anual" | "personalizado" | "historico";
+export type FilterMode = "mes" | "semestral" | "anual" | "personalizado" | "historico";
 
 export interface PeriodoInfo {
   periodo_mes: string;
@@ -29,6 +29,7 @@ export interface DateFilterChangeEvent {
   mode: FilterMode;
   periodo_mes?: string; // "YYYY-MM"
   anio?: number;
+  semestre?: 1 | 2;
   fecha_desde?: string; // "YYYY-MM-DD"
   fecha_hasta?: string; // "YYYY-MM-DD"
   label: string;
@@ -81,6 +82,7 @@ export default function DatePeriodFilter({
   const [mode, setMode] = useState<FilterMode>("mes");
   const [selectedYear, setSelectedYear] = useState<number>(initialYear);
   const [selectedMonth, setSelectedMonth] = useState<string>(initialMonth);
+  const [selectedSemester, setSelectedSemester] = useState<1 | 2>(parseInt(initialMonth, 10) <= 6 ? 1 : 2);
   const [customFrom, setCustomFrom] = useState<string>("");
   const [customTo, setCustomTo] = useState<string>("");
   const [isExpanded, setIsExpanded] = useState<boolean>(!compact);
@@ -104,7 +106,10 @@ export default function DatePeriodFilter({
       const [y, m] = currentPeriodoMes.split("-");
       const yNum = parseInt(y, 10);
       if (!isNaN(yNum)) setSelectedYear(yNum);
-      if (m) setSelectedMonth(m);
+      if (m) {
+        setSelectedMonth(m);
+        setSelectedSemester(parseInt(m, 10) <= 6 ? 1 : 2);
+      }
     }
   }, [currentPeriodoMes]);
 
@@ -123,6 +128,23 @@ export default function DatePeriodFilter({
     });
   };
 
+  // Manejar selección semestral
+  const handleSelectSemestral = (sem: 1 | 2, yr: number = selectedYear) => {
+    setSelectedSemester(sem);
+    setMode("semestral");
+    const fDesde = sem === 1 ? `${yr}-01-01` : `${yr}-07-01`;
+    const fHasta = sem === 1 ? `${yr}-06-30` : `${yr}-12-31`;
+    const label = `${sem === 1 ? "1er" : "2do"} Semestre ${yr} (${sem === 1 ? "Ene - Jun" : "Jul - Dic"})`;
+    onChange({
+      mode: "semestral",
+      anio: yr,
+      semestre: sem,
+      fecha_desde: fDesde,
+      fecha_hasta: fHasta,
+      label
+    });
+  };
+
   // Manejar navegación de año
   const handlePrevYear = () => {
     const newYear = selectedYear - 1;
@@ -136,10 +158,14 @@ export default function DatePeriodFilter({
         anio: newYear,
         label: `${mesObj?.largo || selectedMonth} ${newYear}`
       });
+    } else if (mode === "semestral") {
+      handleSelectSemestral(selectedSemester, newYear);
     } else if (mode === "anual") {
       onChange({
         mode: "anual",
         anio: newYear,
+        fecha_desde: `${newYear}-01-01`,
+        fecha_hasta: `${newYear}-12-31`,
         label: `Año ${newYear} Completo`
       });
     }
@@ -157,22 +183,28 @@ export default function DatePeriodFilter({
         anio: newYear,
         label: `${mesObj?.largo || selectedMonth} ${newYear}`
       });
+    } else if (mode === "semestral") {
+      handleSelectSemestral(selectedSemester, newYear);
     } else if (mode === "anual") {
       onChange({
         mode: "anual",
         anio: newYear,
+        fecha_desde: `${newYear}-01-01`,
+        fecha_hasta: `${newYear}-12-31`,
         label: `Año ${newYear} Completo`
       });
     }
   };
 
   // Cambiar a modo Anual
-  const handleSelectAnual = () => {
+  const handleSelectAnual = (yr: number = selectedYear) => {
     setMode("anual");
     onChange({
       mode: "anual",
-      anio: selectedYear,
-      label: `Año ${selectedYear} Completo`
+      anio: yr,
+      fecha_desde: `${yr}-01-01`,
+      fecha_hasta: `${yr}-12-31`,
+      label: `Año ${yr} Completo`
     });
   };
 
@@ -249,11 +281,12 @@ export default function DatePeriodFilter({
       const m = MESES_NOMBRES.find(item => item.num === selectedMonth);
       return `${m?.largo || selectedMonth} ${selectedYear}`;
     }
+    if (mode === "semestral") return `${selectedSemester === 1 ? "1er" : "2do"} Semestre ${selectedYear}`;
     if (mode === "anual") return `Gestión Anual ${selectedYear}`;
     if (mode === "personalizado") return customFrom && customTo ? `${customFrom} al ${customTo}` : "Rango Personalizado";
     if (mode === "historico") return "Histórico General";
     return "";
-  }, [mode, selectedMonth, selectedYear, customFrom, customTo]);
+  }, [mode, selectedMonth, selectedYear, selectedSemester, customFrom, customTo]);
 
   // Contar cuántos meses del año tienen datos
   const activeMonthsInYear = useMemo(() => {
@@ -286,7 +319,20 @@ export default function DatePeriodFilter({
 
           <button
             type="button"
-            onClick={handleSelectAnual}
+            onClick={() => handleSelectSemestral(selectedSemester)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition text-xs ${
+              mode === "semestral"
+                ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            }`}
+          >
+            <CalendarRange className="w-3.5 h-3.5" />
+            <span>Semestral</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelectAnual()}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition text-xs ${
               mode === "anual"
                 ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
@@ -490,7 +536,106 @@ export default function DatePeriodFilter({
         )}
 
         {/* ======================================================== */}
-        {/* MODO 2: ANUAL (RESUMEN POR AÑO COMPLETO)                  */}
+        {/* MODO SEMESTRAL (1er y 2do SEMESTRE DEL AÑO)              */}
+        {/* ======================================================== */}
+        {mode === "semestral" && (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+              <div>
+                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <CalendarRange className="w-4 h-4 text-amber-500" />
+                  <span>Consolidado Semestral: Gestión {selectedYear}</span>
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Filtro oficial de auditoría por semestres para la gestión {selectedYear}.
+                </p>
+              </div>
+
+              {/* Selector de Año */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePrevYear}
+                  className="p-1.5 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+                  title="Año anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                <div className="px-3.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-sm font-black text-slate-900 dark:text-white">
+                  {selectedYear}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleNextYear}
+                  className="p-1.5 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+                  title="Año siguiente"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Tarjetas de Semestres */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* 1er Semestre */}
+              <button
+                type="button"
+                onClick={() => handleSelectSemestral(1)}
+                className={`p-4 rounded-2xl border text-left transition-all ${
+                  selectedSemester === 1
+                    ? "bg-amber-500/15 border-amber-500 shadow-lg shadow-amber-500/10 ring-2 ring-amber-500/40"
+                    : "bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-amber-500/50"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-3 h-3 rounded-full ${selectedSemester === 1 ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-600"}`} />
+                    <h5 className="font-black text-sm text-slate-900 dark:text-white">
+                      1er Semestre ({selectedYear})
+                    </h5>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                    01/01/{selectedYear} al 30/06/{selectedYear}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Comprende todas las operaciones de Enero, Febrero, Marzo, Abril, Mayo y Junio.
+                </p>
+              </button>
+
+              {/* 2do Semestre */}
+              <button
+                type="button"
+                onClick={() => handleSelectSemestral(2)}
+                className={`p-4 rounded-2xl border text-left transition-all ${
+                  selectedSemester === 2
+                    ? "bg-amber-500/15 border-amber-500 shadow-lg shadow-amber-500/10 ring-2 ring-amber-500/40"
+                    : "bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-amber-500/50"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-3 h-3 rounded-full ${selectedSemester === 2 ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-600"}`} />
+                    <h5 className="font-black text-sm text-slate-900 dark:text-white">
+                      2do Semestre ({selectedYear})
+                    </h5>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                    01/07/{selectedYear} al 31/12/{selectedYear}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Comprende todas las operaciones de Julio, Agosto, Septiembre, Octubre, Noviembre y Diciembre.
+                </p>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* MODO 3: ANUAL (RESUMEN POR AÑO COMPLETO)                  */}
         {/* ======================================================== */}
         {mode === "anual" && (
           <div className="space-y-4">
@@ -516,6 +661,8 @@ export default function DatePeriodFilter({
                       onChange({
                         mode: "anual",
                         anio: yr,
+                        fecha_desde: `${yr}-01-01`,
+                        fecha_hasta: `${yr}-12-31`,
                         label: `Año ${yr} Completo`
                       });
                     }}

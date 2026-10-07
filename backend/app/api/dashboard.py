@@ -38,7 +38,12 @@ def get_dashboard_metrics(
 
         if fecha_desde and fecha_hasta:
             query_viajes = query_viajes.filter(Viaje.fecha_carga.between(fecha_desde, fecha_hasta))
-            query_liq = query_liq.filter(Liquidacion.fecha_emision.between(fecha_desde, fecha_hasta))
+            desde_str = fecha_desde.strftime("%Y-%m")
+            hasta_str = fecha_hasta.strftime("%Y-%m")
+            query_liq = query_liq.filter(
+                (Liquidacion.fecha_emision.between(fecha_desde, fecha_hasta)) |
+                (Liquidacion.periodo_mes.between(desde_str, hasta_str))
+            )
             label_periodo = f"{fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}"
         elif anio:
             query_viajes = query_viajes.filter(Viaje.periodo_mes.startswith(f"{anio}-"))
@@ -76,8 +81,8 @@ def get_dashboard_metrics(
         total_unidades = session.query(UnidadTransporte).count()
         unidades_activas = session.query(UnidadTransporte).filter(UnidadTransporte.estado == "Activo").count()
 
-        # Liquidaciones del mes
-        liquidaciones = session.query(Liquidacion).filter(Liquidacion.periodo_mes == periodo_mes).all()
+        # Liquidaciones del período filtrado
+        liquidaciones = query_liq.all()
         total_liquidaciones = len(liquidaciones)
         total_liquido_pagable = sum(l.liquido_pagable_bs for l in liquidaciones)
 

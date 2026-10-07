@@ -22,12 +22,15 @@ import {
   FileCheck,
   Info,
   Scale,
-  Handshake
+  Handshake,
+  Save
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch, getApiUrl } from "@/lib/api";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
 import DatePeriodFilter, { DateFilterChangeEvent } from "@/components/DatePeriodFilter";
+import SaveNewCatalogModal from "@/components/SaveNewCatalogModal";
+import ModalPortal from "@/components/ModalPortal";
 
 interface Viaje {
   id: number;
@@ -86,6 +89,7 @@ function ViajesContent() {
 
   // Filtros
   const [periodo, setPeriodo] = useState("");
+  const [activeFilterLabel, setActiveFilterLabel] = useState("");
   const [dateFilterQuery, setDateFilterQuery] = useState("");
   const [periodosDisponibles, setPeriodosDisponibles] = useState<any[]>([]);
   const [placaFiltro, setPlacaFiltro] = useState("");
@@ -95,7 +99,16 @@ function ViajesContent() {
   // Modales
   const [showModal, setShowModal] = useState(false);
   const [editingViaje, setEditingViaje] = useState<Viaje | null>(null);
-  const [manualPlaca, setManualPlaca] = useState(false);
+
+  // Confirmación de guardado en catálogo para nuevas placas o clientes
+  const [showSaveNewModal, setShowSaveNewModal] = useState(false);
+  const [pendingSaveData, setPendingSaveData] = useState<{
+    isNewPlaca: boolean;
+    isNewCliente: boolean;
+    placa: string;
+    cliente: string;
+  } | null>(null);
+  const [savingCatalog, setSavingCatalog] = useState(false);
 
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -115,11 +128,11 @@ function ViajesContent() {
     fecha_carga: new Date().toISOString().split("T")[0],
     fecha_descarga: new Date().toISOString().split("T")[0],
     periodo_mes: new Date().toISOString().slice(0, 7),
-    volumen_origen_litros: 34000,
-    volumen_recepcionado_litros: 33900,
-    tarifa_flete: 392.00,
+    volumen_origen_litros: 34000 as number | string,
+    volumen_recepcionado_litros: 33900 as number | string,
+    tarifa_flete: 392.00 as number | string,
     tipo_tarifa: "BS_POR_M3",
-    precio_merma_litro_bs: 7.45,
+    precio_merma_litro_bs: 7.45 as number | string,
     observaciones: ""
   });
 
@@ -202,16 +215,16 @@ function ViajesContent() {
   const loadInitialData = async () => {
     try {
       const [uData, uApoyoData, pData, cData] = await Promise.all([
-        apiFetch(`/tenants/${schema}/unidades/`),
+        apiFetch(`/tenants/${schema}/unidades/`).catch(() => []),
         apiFetch(`/tenants/${schema}/apoyo/unidades/todas`).catch(() => []),
         apiFetch(`/tenants/${schema}/viajes/periodos`).catch(() => []),
         apiFetch(`/tenants/${schema}/clientes/`).catch(() => [])
       ]);
-      setUnidades(uData || []);
-      setUnidadesApoyo(uApoyoData || []);
-      setPeriodosDisponibles(pData || []);
-      setClientes(cData || []);
-      if (pData && pData.length > 0 && !periodo) {
+      setUnidades(Array.isArray(uData) ? uData : []);
+      setUnidadesApoyo(Array.isArray(uApoyoData) ? uApoyoData : []);
+      setPeriodosDisponibles(Array.isArray(pData) ? pData : []);
+      setClientes(Array.isArray(cData) ? cData : []);
+      if (Array.isArray(pData) && pData.length > 0 && !periodo) {
         setPeriodo(pData[0].periodo_mes);
       }
     } catch (err) {
@@ -221,8 +234,8 @@ function ViajesContent() {
 
   const loadPeriodos = async () => {
     try {
-      const pData = await apiFetch(`/tenants/${schema}/viajes/periodos`);
-      setPeriodosDisponibles(pData || []);
+      const pData = await apiFetch(`/tenants/${schema}/viajes/periodos`).catch(() => []);
+      setPeriodosDisponibles(Array.isArray(pData) ? pData : []);
     } catch (e) {
       console.error(e);
     }
@@ -241,20 +254,25 @@ function ViajesContent() {
       if (placaFiltro) params.push(`placa=${placaFiltro}`);
       if (params.length > 0) query = `?${params.join("&")}`;
 
-      const data = await apiFetch(`/tenants/${schema}/viajes/${query}`);
-      setViajes(data);
+      const data = await apiFetch(`/tenants/${schema}/viajes/${query}`).catch(() => []);
+      setViajes(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+      setViajes([]);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDateFilterChange = (filter: DateFilterChangeEvent) => {
+    setActiveFilterLabel(filter.label);
     let q = "";
     if (filter.mode === "mes" && filter.periodo_mes) {
       q = `periodo_mes=${filter.periodo_mes}`;
       setPeriodo(filter.periodo_mes);
+    } else if (filter.mode === "semestral" && filter.fecha_desde && filter.fecha_hasta) {
+      q = `fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`;
+      setPeriodo("");
     } else if (filter.mode === "anual" && filter.anio) {
       q = `anio=${filter.anio}`;
       setPeriodo("");
@@ -268,29 +286,68 @@ function ViajesContent() {
     setDateFilterQuery(q);
   };
 
+  const handlePlacaChange = (val: string) => {
+    const upperVal = val.toUpperCase().trim();
+    const matchApoyo = unidadesApoyo.find(u => u.placa?.toUpperCase() === upperVal);
+    if (matchApoyo) {
+      setFormData(prev => ({
+        ...prev,
+        placa: upperVal,
+        es_apoyo: true,
+        empresa_apoyo_id: matchApoyo.empresa_apoyo_id,
+        empresa_apoyo_nombre: matchApoyo.empresa_apoyo_nombre || "Empresa de Apoyo",
+        volumen_origen_litros: matchApoyo.capacidad_litros || prev.volumen_origen_litros || 34000,
+        volumen_recepcionado_litros: (matchApoyo.capacidad_litros || prev.volumen_origen_litros || 34000) - 100
+      }));
+      return;
+    }
+
+    const matchPropia = unidades.find(u => u.placa?.toUpperCase() === upperVal);
+    if (matchPropia) {
+      setFormData(prev => ({
+        ...prev,
+        placa: upperVal,
+        es_apoyo: false,
+        empresa_apoyo_id: null,
+        empresa_apoyo_nombre: "",
+        volumen_origen_litros: matchPropia.capacidad_litros || prev.volumen_origen_litros || 34000,
+        volumen_recepcionado_litros: (matchPropia.capacidad_litros || prev.volumen_origen_litros || 34000) - 100
+      }));
+      return;
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      placa: upperVal,
+      es_apoyo: false,
+      empresa_apoyo_id: null,
+      empresa_apoyo_nombre: ""
+    }));
+  };
+
   const openCreateModal = () => {
     setEditingViaje(null);
-    setManualPlaca(false);
     const today = new Date().toISOString().split("T")[0];
     const defMes = periodo || today.slice(0, 7);
     const defPlaca = placaFiltro || (unidades.length > 0 ? unidades[0].placa : (unidadesApoyo.length > 0 ? unidadesApoyo[0].placa : ""));
     const defCliente = clientes.length > 0 ? clientes[0].nombre : "Y.P.F.B.";
+    const matchApoyo = unidadesApoyo.find(u => u.placa === defPlaca);
 
     setFormData({
       mic_dta: "",
       lote_codigo: "1",
       placa: defPlaca,
-      es_apoyo: false,
-      empresa_apoyo_id: null,
-      empresa_apoyo_nombre: "",
+      es_apoyo: Boolean(matchApoyo),
+      empresa_apoyo_id: matchApoyo ? matchApoyo.empresa_apoyo_id : null,
+      empresa_apoyo_nombre: matchApoyo ? (matchApoyo.empresa_apoyo_nombre || "") : "",
       tramo: "ARICA - TAMBO QUEMADO - LA PAZ",
       cliente: defCliente,
       producto: "GASOLINA",
       fecha_carga: today,
       fecha_descarga: today,
       periodo_mes: defMes,
-      volumen_origen_litros: 34000,
-      volumen_recepcionado_litros: 33900,
+      volumen_origen_litros: matchApoyo ? (matchApoyo.capacidad_litros || 34000) : 34000,
+      volumen_recepcionado_litros: (matchApoyo ? (matchApoyo.capacidad_litros || 34000) : 34000) - 100,
       tarifa_flete: 392.00,
       tipo_tarifa: "BS_POR_M3",
       precio_merma_litro_bs: 7.45,
@@ -301,7 +358,6 @@ function ViajesContent() {
 
   const openEditModal = (v: Viaje) => {
     setEditingViaje(v);
-    setManualPlaca(false);
     setFormData({
       mic_dta: v.mic_dta || "",
       lote_codigo: v.lote_codigo || "1",
@@ -383,8 +439,7 @@ function ViajesContent() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeSaveViaje = async () => {
     try {
       const payload = {
         mic_dta: formData.mic_dta.trim() || null,
@@ -399,11 +454,11 @@ function ViajesContent() {
         fecha_carga: formData.fecha_carga,
         fecha_descarga: formData.fecha_descarga,
         periodo_mes: formData.periodo_mes,
-        volumen_origen_litros: Number(formData.volumen_origen_litros),
-        volumen_recepcionado_litros: Number(formData.volumen_recepcionado_litros),
-        tarifa_flete: Number(formData.tarifa_flete),
+        volumen_origen_litros: Number(formData.volumen_origen_litros) || 0,
+        volumen_recepcionado_litros: Number(formData.volumen_recepcionado_litros) || 0,
+        tarifa_flete: Number(formData.tarifa_flete) || 0,
         tipo_tarifa: formData.tipo_tarifa,
-        precio_merma_litro_bs: Number(formData.precio_merma_litro_bs),
+        precio_merma_litro_bs: Number(formData.precio_merma_litro_bs) || 7.45,
         observaciones: formData.observaciones.trim() || null
       };
 
@@ -435,10 +490,141 @@ function ViajesContent() {
         });
       }
       setShowModal(false);
+      setShowSaveNewModal(false);
+      setPendingSaveData(null);
       loadViajes();
+      loadPeriodos();
     } catch (err: any) {
-      Swal.fire({ icon: "error", title: "Error al guardar", text: err.message, background: "#0f172a", color: "#f8fafc", confirmButtonColor: "#f59e0b" });
+      Swal.fire({ 
+        icon: "error", 
+        title: "Error al guardar", 
+        text: err.message, 
+        background: "#0f172a", 
+        color: "#f8fafc", 
+        confirmButtonColor: "#f59e0b" 
+      });
     }
+  };
+
+  const handleConfirmSaveCatalog = async () => {
+    setSavingCatalog(true);
+    try {
+      const cleanPlaca = formData.placa.trim().toUpperCase();
+      const cleanCliente = formData.cliente.trim().toUpperCase();
+
+      // Guardar placa si es nueva
+      if (pendingSaveData?.isNewPlaca && cleanPlaca) {
+        try {
+          const nuevaUnidad = await apiFetch(`/tenants/${schema}/unidades/`, {
+            method: "POST",
+            body: JSON.stringify({
+              placa: cleanPlaca,
+              tipo_unidad: "Cisterna Combustible",
+              capacidad_litros: Number(formData.volumen_origen_litros) || 34000,
+              capacidad_m3: (Number(formData.volumen_origen_litros) || 34000) / 1000,
+              num_compartimentos: 4,
+              estado: "Activo"
+            })
+          });
+          if (nuevaUnidad) {
+            setUnidades(prev => [...prev, nuevaUnidad]);
+          }
+        } catch (e) {
+          console.warn("No se pudo registrar la placa automáticamente en el catálogo:", e);
+        }
+      }
+
+      // Guardar cliente si es nuevo
+      if (pendingSaveData?.isNewCliente && cleanCliente) {
+        try {
+          const nuevoCli = await apiFetch(`/tenants/${schema}/clientes/`, {
+            method: "POST",
+            body: JSON.stringify({
+              nombre: cleanCliente
+            })
+          });
+          if (nuevoCli) {
+            setClientes(prev => [...prev, nuevoCli]);
+          }
+        } catch (e) {
+          console.warn("No se pudo registrar el cliente automáticamente en el catálogo:", e);
+        }
+      }
+
+      // Proceder con el registro del despacho
+      await executeSaveViaje();
+    } finally {
+      setSavingCatalog(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanPlaca = formData.placa.trim().toUpperCase();
+    const cleanCliente = formData.cliente.trim().toUpperCase();
+
+    if (!cleanPlaca) {
+      Swal.fire({
+        icon: "warning",
+        title: "Placa requerida",
+        text: "Por favor escribe o selecciona la placa de la cisterna.",
+        background: "#0f172a",
+        color: "#f8fafc",
+        confirmButtonColor: "#f59e0b"
+      });
+      return;
+    }
+
+    if (!cleanCliente) {
+      Swal.fire({
+        icon: "warning",
+        title: "Cliente requerido",
+        text: "Por favor escribe o selecciona el cliente o consignatario.",
+        background: "#0f172a",
+        color: "#f8fafc",
+        confirmButtonColor: "#f59e0b"
+      });
+      return;
+    }
+
+    const vOriNum = Number(formData.volumen_origen_litros) || 0;
+    const vRecNum = Number(formData.volumen_recepcionado_litros) || 0;
+
+    // Si ambos volúmenes están vacíos o en 0, alertar y confirmar si desea guardar con 0
+    if (vOriNum === 0 && vRecNum === 0) {
+      const confirmZero = await Swal.fire({
+        title: "¿Guardar con volúmenes en 0?",
+        text: "Tanto el volumen origen como el recepcionado están en 0. ¿Deseas registrar este despacho con 0 litros o prefieres completar los datos?",
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonText: "Sí, guardar con 0",
+        cancelButtonText: "Completar litros",
+        confirmButtonColor: "#f59e0b",
+        cancelButtonColor: "#334155",
+        background: "#0f172a",
+        color: "#f8fafc"
+      });
+      if (!confirmZero.isConfirmed) return;
+    }
+
+    const isPlacaRegistered = unidades.some(u => u.placa?.toUpperCase() === cleanPlaca) ||
+                              unidadesApoyo.some(u => u.placa?.toUpperCase() === cleanPlaca);
+    const isClienteRegistered = clientes.some(c => c.nombre?.toUpperCase() === cleanCliente);
+
+    // Si la placa o el cliente son nuevos, preguntar si se guardan en el catálogo
+    if (!isPlacaRegistered || !isClienteRegistered) {
+      setPendingSaveData({
+        isNewPlaca: !isPlacaRegistered,
+        isNewCliente: !isClienteRegistered,
+        placa: cleanPlaca,
+        cliente: cleanCliente
+      });
+      setShowSaveNewModal(true);
+      return;
+    }
+
+    // Ambos ya están registrados: guardar viaje directamente
+    await executeSaveViaje();
   };
 
   // Descarga de Plantilla Excel
@@ -512,7 +698,7 @@ function ViajesContent() {
   };
 
   // Filtrado de viajes
-  const filtered = viajes.filter((v) => {
+  const filtered = (Array.isArray(viajes) ? viajes : []).filter((v) => {
     if (productoFiltro !== "TODOS" && v.producto !== productoFiltro) {
       return false;
     }
@@ -704,7 +890,7 @@ function ViajesContent() {
             <Calendar className="w-4 h-4 text-amber-500" />
             <span className="text-slate-500 dark:text-slate-400 font-medium">Control:</span>
             <span className="font-bold text-slate-900 dark:text-white">
-              {periodo || (dateFilterQuery ? "Personalizado" : "Todos")}
+              {activeFilterLabel || periodo || "Todos"}
             </span>
           </div>
 
@@ -970,7 +1156,8 @@ function ViajesContent() {
 
       {/* Modal Importar Masivamente desde Excel (Responsivo sin cortes) */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden animate-in fade-in">
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-hidden animate-in fade-in">
           <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
             
             {/* Header Fijo */}
@@ -1065,11 +1252,13 @@ function ViajesContent() {
 
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* Modal Registrar / Editar Despacho (Responsivo sin cortes y con cálculo automático) */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden animate-in fade-in">
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-hidden animate-in fade-in">
           <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
             
             {/* Header Fijo */}
@@ -1145,104 +1334,83 @@ function ViajesContent() {
                   />
                 </div>
 
+                {/* Placa del Camión */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
                       Placa del Camión *
                     </label>
-                    {formData.es_apoyo && (
-                      <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/25 inline-flex items-center gap-1">
-                        <Handshake className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
-                        Apoyo: {formData.empresa_apoyo_nombre || "Aliado"}
-                      </span>
+                    {formData.placa && (
+                      (() => {
+                        const isPropia = unidades.some(u => u.placa?.toUpperCase() === formData.placa.toUpperCase());
+                        const isApoyo = unidadesApoyo.some(u => u.placa?.toUpperCase() === formData.placa.toUpperCase());
+                        if (isPropia) {
+                          return (
+                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/25 inline-flex items-center gap-1">
+                              <Truck className="w-2.5 h-2.5" />
+                              Propia
+                            </span>
+                          );
+                        }
+                        if (isApoyo) {
+                          return (
+                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/25 inline-flex items-center gap-1">
+                              <Handshake className="w-2.5 h-2.5" />
+                              Apoyo {formData.empresa_apoyo_nombre ? `(${formData.empresa_apoyo_nombre})` : ""}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/25">
+                            ✨ Nueva Placa
+                          </span>
+                        );
+                      })()
                     )}
                   </div>
 
-                  {!manualPlaca && (unidades.length > 0 || unidadesApoyo.length > 0) ? (
-                    <select
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      list="lista-placas-disponibles"
                       value={formData.placa}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === "__MANUAL__") {
-                          setManualPlaca(true);
-                          return;
-                        }
-                        if (!val) {
-                          setFormData({ ...formData, placa: "", es_apoyo: false, empresa_apoyo_id: null, empresa_apoyo_nombre: "" });
-                          return;
-                        }
-                        const matchApoyo = unidadesApoyo.find(u => u.placa === val);
-                        if (matchApoyo) {
-                          setFormData({
-                            ...formData,
-                            placa: matchApoyo.placa,
-                            es_apoyo: true,
-                            empresa_apoyo_id: matchApoyo.empresa_apoyo_id,
-                            empresa_apoyo_nombre: matchApoyo.empresa_apoyo_nombre || "Empresa de Apoyo",
-                            volumen_origen_litros: matchApoyo.capacidad_litros || 34000,
-                            volumen_recepcionado_litros: (matchApoyo.capacidad_litros || 34000) - 100
-                          });
-                          return;
-                        }
-                        const matchPropia = unidades.find(u => u.placa === val);
-                        if (matchPropia) {
-                          setFormData({
-                            ...formData,
-                            placa: matchPropia.placa,
-                            es_apoyo: false,
-                            empresa_apoyo_id: null,
-                            empresa_apoyo_nombre: "",
-                            volumen_origen_litros: matchPropia.capacidad_litros || 34000,
-                            volumen_recepcionado_litros: (matchPropia.capacidad_litros || 34000) - 100
-                          });
-                          return;
-                        }
-                        setFormData({ ...formData, placa: val });
-                      }}
-                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
-                    >
-                      <option value="" className="bg-white dark:bg-slate-900">-- Seleccionar cisterna --</option>
-                      {unidades.length > 0 && (
-                        <optgroup label="🚛 Flota Propia de la Empresa" className="bg-white dark:bg-slate-900">
-                          {unidades.map(u => (
-                            <option key={`propia-${u.id}`} value={u.placa} className="bg-white dark:bg-slate-900">
-                              {u.placa} {u.conductor_nombre ? `(${u.conductor_nombre})` : ""}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {unidadesApoyo.length > 0 && (
-                        <optgroup label="🤝 Flota de Apoyo (Aliados)" className="bg-white dark:bg-slate-900">
-                          {unidadesApoyo.map(u => (
-                            <option key={`apoyo-${u.id}`} value={u.placa} className="bg-white dark:bg-slate-900">
-                              {u.placa} - {u.empresa_apoyo_nombre || "Apoyo"} {u.conductor_nombre ? `(${u.conductor_nombre})` : ""}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      <option value="__MANUAL__" className="bg-white dark:bg-slate-900">✏️ Escribir otra placa manualmente...</option>
-                    </select>
-                  ) : (
-                    <div className="relative">
-                      <input
-                        type="text"
-                        required
-                        value={formData.placa}
-                        onChange={(e) => setFormData({ ...formData, placa: e.target.value.toUpperCase() })}
-                        placeholder="ej. 4412-DPC"
-                        className="w-full pl-3.5 pr-14 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
-                        autoFocus
-                      />
-                      {(unidades.length > 0 || unidadesApoyo.length > 0) && (
+                      onChange={(e) => handlePlacaChange(e.target.value)}
+                      placeholder="ej. 4412-DPC (escribe o elige)"
+                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
+                    />
+                    <datalist id="lista-placas-disponibles">
+                      {unidades.map(u => (
+                        <option key={`p-${u.id}`} value={u.placa}>
+                          {u.placa} (Propia)
+                        </option>
+                      ))}
+                      {unidadesApoyo.map(u => (
+                        <option key={`a-${u.id}`} value={u.placa}>
+                          {u.placa} (Apoyo)
+                        </option>
+                      ))}
+                    </datalist>
+                  </div>
+
+                  {/* Acceso Rápido a Placas Registradas */}
+                  {(unidades.length > 0 || unidadesApoyo.length > 0) && (
+                    <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                      <span className="text-[10px] text-slate-400 font-semibold mr-0.5">Sugerencias:</span>
+                      {[...unidades.slice(0, 3), ...unidadesApoyo.slice(0, 2)].map(u => (
                         <button
+                          key={u.placa}
                           type="button"
-                          onClick={() => setManualPlaca(false)}
-                          className="absolute inset-y-0 right-0 pr-3 text-[10px] text-amber-600 dark:text-amber-400 hover:text-amber-700 font-bold"
-                          title="Volver a la lista de cisternas"
+                          onClick={() => handlePlacaChange(u.placa)}
+                          className={`text-[10px] px-2 py-0.5 rounded-lg font-mono font-bold transition border ${
+                            formData.placa === u.placa
+                              ? "bg-amber-500 text-slate-950 border-amber-600 font-black shadow-xs"
+                              : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-500 hover:text-amber-500"
+                          }`}
                         >
-                          Lista
+                          {u.placa}
                         </button>
-                      )}
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1272,44 +1440,69 @@ function ViajesContent() {
                   </datalist>
                 </div>
 
+                {/* Cliente / Consignatario */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                    Cliente / Consignatario *
-                  </label>
-                  {clientes.length > 0 ? (
-                    <div className="relative">
-                      <select
-                        value={formData.cliente}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === "__OTRO__") {
-                            const custom = prompt("Ingresa el nombre del cliente:");
-                            if (custom && custom.trim()) {
-                              setFormData({ ...formData, cliente: custom.trim().toUpperCase() });
-                            }
-                            return;
-                          }
-                          setFormData({ ...formData, cliente: val });
-                        }}
-                        className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-bold uppercase text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
-                      >
-                        {clientes.map(c => (
-                          <option key={c.id} value={c.nombre} className="bg-white dark:bg-slate-900">
-                            {c.nombre} {c.nit ? `(NIT: ${c.nit})` : ""}
-                          </option>
-                        ))}
-                        <option value="__OTRO__" className="bg-white dark:bg-slate-900">✏️ Ingresar otro cliente...</option>
-                      </select>
-                    </div>
-                  ) : (
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
+                      Cliente / Consignatario *
+                    </label>
+                    {formData.cliente && (
+                      (() => {
+                        const isReg = clientes.some(c => c.nombre?.toUpperCase() === formData.cliente.toUpperCase());
+                        if (isReg) {
+                          return (
+                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/25">
+                              ✓ Registrado
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/25">
+                            ✨ Nuevo Cliente
+                          </span>
+                        );
+                      })()
+                    )}
+                  </div>
+
+                  <div className="relative">
                     <input
                       type="text"
                       required
+                      list="lista-clientes-disponibles"
                       value={formData.cliente}
                       onChange={(e) => setFormData({ ...formData, cliente: e.target.value.toUpperCase() })}
-                      placeholder="ej. Y.P.F.B."
-                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs uppercase text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      placeholder="ej. Y.P.F.B. (escribe o elige)"
+                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-bold uppercase text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
                     />
+                    <datalist id="lista-clientes-disponibles">
+                      {clientes.map(c => (
+                        <option key={c.id} value={c.nombre}>
+                          {c.nombre} {c.nit ? `(NIT: ${c.nit})` : ""}
+                        </option>
+                      ))}
+                    </datalist>
+                  </div>
+
+                  {/* Acceso Rápido a Clientes Registrados */}
+                  {clientes.length > 0 && (
+                    <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                      <span className="text-[10px] text-slate-400 font-semibold mr-0.5">Clientes:</span>
+                      {clientes.slice(0, 4).map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, cliente: c.nombre.toUpperCase() })}
+                          className={`text-[10px] px-2 py-0.5 rounded-lg font-bold transition border ${
+                            formData.cliente.toUpperCase() === c.nombre.toUpperCase()
+                              ? "bg-amber-500 text-slate-950 border-amber-600 font-black shadow-xs"
+                              : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-500 hover:text-amber-500"
+                          }`}
+                        >
+                          {c.nombre}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
@@ -1351,10 +1544,17 @@ function ViajesContent() {
                   <input
                     type="number"
                     step="1"
-                    required
                     value={formData.volumen_origen_litros}
-                    onChange={(e) => setFormData({ ...formData, volumen_origen_litros: parseFloat(e.target.value) || 0 })}
-                    placeholder="ej. 33999"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFormData({ ...formData, volumen_origen_litros: v === "" ? "" : v });
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                        setFormData((prev) => ({ ...prev, volumen_origen_litros: 0 }));
+                      }
+                    }}
+                    placeholder="0"
                     className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
@@ -1366,10 +1566,17 @@ function ViajesContent() {
                   <input
                     type="number"
                     step="1"
-                    required
                     value={formData.volumen_recepcionado_litros}
-                    onChange={(e) => setFormData({ ...formData, volumen_recepcionado_litros: parseFloat(e.target.value) || 0 })}
-                    placeholder="ej. 33900"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFormData({ ...formData, volumen_recepcionado_litros: v === "" ? "" : v });
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                        setFormData((prev) => ({ ...prev, volumen_recepcionado_litros: 0 }));
+                      }
+                    }}
+                    placeholder="0"
                     className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
@@ -1381,10 +1588,17 @@ function ViajesContent() {
                   <input
                     type="number"
                     step="0.01"
-                    required
                     value={formData.tarifa_flete}
-                    onChange={(e) => setFormData({ ...formData, tarifa_flete: parseFloat(e.target.value) || 0 })}
-                    placeholder="ej. 392.00"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFormData({ ...formData, tarifa_flete: v === "" ? "" : v });
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                        setFormData((prev) => ({ ...prev, tarifa_flete: 0 }));
+                      }
+                    }}
+                    placeholder="0.00"
                     className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
@@ -1447,10 +1661,23 @@ function ViajesContent() {
                 <span>{editingViaje ? "Actualizar Despacho" : "Guardar Despacho"}</span>
               </button>
             </div>
-
           </div>
         </div>
+        </ModalPortal>
       )}
+
+      {/* Modal de Confirmación para Guardar Datos Nuevos en Catálogo */}
+      <SaveNewCatalogModal
+        isOpen={showSaveNewModal}
+        placa={pendingSaveData?.placa}
+        isNewPlaca={Boolean(pendingSaveData?.isNewPlaca)}
+        cliente={pendingSaveData?.cliente}
+        isNewCliente={Boolean(pendingSaveData?.isNewCliente)}
+        onConfirmSaveCatalog={handleConfirmSaveCatalog}
+        onContinueWithoutSaving={executeSaveViaje}
+        onCancel={() => setShowSaveNewModal(false)}
+        loading={savingCatalog}
+      />
 
     </div>
   );

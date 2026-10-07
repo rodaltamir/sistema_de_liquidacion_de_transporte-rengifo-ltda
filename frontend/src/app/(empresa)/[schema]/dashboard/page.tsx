@@ -63,6 +63,8 @@ export default function EmpresaDashboardPage() {
     let q = "";
     if (filter.mode === "mes" && filter.periodo_mes) {
       q = `periodo_mes=${filter.periodo_mes}`;
+    } else if (filter.mode === "semestral" && filter.fecha_desde && filter.fecha_hasta) {
+      q = `fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`;
     } else if (filter.mode === "anual" && filter.anio) {
       q = `anio=${filter.anio}`;
     } else if (filter.mode === "personalizado" && filter.fecha_desde && filter.fecha_hasta) {

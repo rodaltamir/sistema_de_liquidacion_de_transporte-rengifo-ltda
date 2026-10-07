@@ -66,15 +66,21 @@ export default function EmpresaLayout({
     fetchEmpresa();
 
     apiFetch("/empresas/")
-      .then((data) => setTodasEmpresas(data))
-      .catch((err) => console.error(err));
+      .then((data) => setTodasEmpresas(Array.isArray(data) ? data : []))
+      .catch((err) => {
+        console.error(err);
+        setTodasEmpresas([]);
+      });
 
     // Escuchar eventos de actualización de empresa desde ConfiguracionPage
     const handleEmpresaUpdate = () => {
       fetchEmpresa();
       apiFetch("/empresas/")
-        .then((data) => setTodasEmpresas(data))
-        .catch((err) => console.error(err));
+        .then((data) => setTodasEmpresas(Array.isArray(data) ? data : []))
+        .catch((err) => {
+          console.error(err);
+          setTodasEmpresas([]);
+        });
     };
 
     window.addEventListener("empresa-perfil-actualizado", handleEmpresaUpdate);
@@ -93,53 +99,54 @@ export default function EmpresaLayout({
       name: "Dashboard",
       href: `/${schema}/dashboard`,
       icon: LayoutDashboard,
-      description: "Resumen y métricas ejecutivas"
+      description: "Resumen y métricas ejecutivas",
+      isActive: (path: string) => path === `/${schema}/dashboard`
     },
     {
-      name: "Flota Propia",
-      href: `/${schema}/flota`,
-      icon: Truck,
-      description: "Cisternas titulares y tanques"
-    },
-    {
-      name: "Flota de Apoyo",
-      href: `/${schema}/apoyo`,
-      icon: Handshake,
-      description: "Empresas aliadas y auxilio"
-    },
-    {
-      name: "Clientes",
-      href: `/${schema}/clientes`,
-      icon: Users,
-      description: "Directorio de clientes y remitentes"
-    },
-    {
-      name: "Registro de Viajes",
+      name: "Viajes",
       href: `/${schema}/viajes`,
       icon: Navigation,
-      description: "Carga, fletes y mermas contractuales"
+      description: "Despachos, fletes y mermas",
+      isActive: (path: string) => path.startsWith(`/${schema}/viajes`)
     },
     {
       name: "Liquidaciones",
       href: `/${schema}/liquidaciones`,
       icon: FileSpreadsheet,
-      description: "Planillas oficiales y exportación"
+      description: "Planillas oficiales y exportación",
+      isActive: (path: string) => path.startsWith(`/${schema}/liquidaciones`)
     },
     {
-      name: "Configuración y Datos",
+      name: "Flota y Clientes",
+      href: `/${schema}/flota`,
+      icon: Truck,
+      description: "Cisternas, aliados y clientes",
+      isActive: (path: string) => 
+        path.startsWith(`/${schema}/flota`) || 
+        path.startsWith(`/${schema}/apoyo`) || 
+        path.startsWith(`/${schema}/clientes`)
+    },
+    {
+      name: "Configuración",
       href: `/${schema}/configuracion`,
       icon: Settings,
-      description: "Perfil de empresa, tema y tarifas"
+      description: "Perfil de empresa, tema y tarifas",
+      isActive: (path: string) => path.startsWith(`/${schema}/configuracion`)
     },
   ];
 
-  const currentSection = navLinks.find(l => pathname === l.href) || { 
-    name: "Operaciones", 
-    description: "Panel de control general" 
-  };
+  const sectionTitle = 
+    pathname.startsWith(`/${schema}/apoyo`) ? "Flota de Apoyo" :
+    pathname.startsWith(`/${schema}/clientes`) ? "Clientes" :
+    pathname.startsWith(`/${schema}/flota`) ? "Flota Propia" :
+    pathname.startsWith(`/${schema}/viajes`) ? "Viajes" :
+    pathname.startsWith(`/${schema}/liquidaciones`) ? "Liquidaciones" :
+    pathname.startsWith(`/${schema}/configuracion`) ? "Configuración" :
+    pathname.startsWith(`/${schema}/dashboard`) ? "Dashboard" : "Operaciones";
 
   // Filtrar empresas para el buscador rápido del dropdown
-  const filteredEmpresas = todasEmpresas.filter(e => 
+  const safeTodasEmpresas = Array.isArray(todasEmpresas) ? todasEmpresas : [];
+  const filteredEmpresas = safeTodasEmpresas.filter(e => 
     e.name?.toLowerCase().includes(empresaSearch.toLowerCase()) ||
     e.schema_name?.toLowerCase().includes(empresaSearch.toLowerCase()) ||
     e.nit?.includes(empresaSearch)
@@ -219,7 +226,7 @@ export default function EmpresaLayout({
 
             {navLinks.map((link) => {
               const Icon = link.icon;
-              const isActive = pathname === link.href;
+              const isActive = link.isActive(pathname);
 
               return (
                 <Link
@@ -361,7 +368,7 @@ export default function EmpresaLayout({
               <nav className="space-y-1">
                 {navLinks.map((link) => {
                   const Icon = link.icon;
-                  const isActive = pathname === link.href;
+                  const isActive = link.isActive(pathname);
                   return (
                     <Link
                       key={link.name}
@@ -452,7 +459,7 @@ export default function EmpresaLayout({
             <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-600 flex-shrink-0" />
             
             <span className="text-amber-600 dark:text-amber-400 font-bold px-2.5 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
-              {currentSection.name}
+              {sectionTitle}
             </span>
           </div>
 

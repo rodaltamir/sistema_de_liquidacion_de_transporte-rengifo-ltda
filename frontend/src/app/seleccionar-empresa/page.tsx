@@ -32,6 +32,7 @@ import { apiFetch } from "@/lib/api";
 import { getCurrentUser, clearAuth, User } from "@/lib/auth";
 import { formatNumber } from "@/lib/format";
 import ThemeToggle from "@/components/ThemeToggle";
+import ModalPortal from "@/components/ModalPortal";
 
 interface Empresa {
   id: number;
@@ -111,23 +112,17 @@ function SeleccionarEmpresaContent() {
     setLoading(true);
     try {
       const [empData, asocData, statsData] = await Promise.all([
-        apiFetch("/empresas/"),
-        apiFetch("/asociaciones/"),
+        apiFetch("/empresas/").catch(() => []),
+        apiFetch("/asociaciones/").catch(() => []),
         apiFetch("/empresas/resumen-global").catch(() => null)
       ]);
-      setEmpresas(empData);
-      setAsociaciones(asocData);
+      setEmpresas(Array.isArray(empData) ? empData : []);
+      setAsociaciones(Array.isArray(asocData) ? asocData : []);
       setGlobalStats(statsData);
     } catch (err: any) {
       console.error(err);
-      Swal.fire({
-        icon: "error",
-        title: "Error al cargar datos",
-        text: err.message,
-        background: "#0f172a",
-        color: "#f8fafc",
-        confirmButtonColor: "#f59e0b"
-      });
+      setEmpresas([]);
+      setAsociaciones([]);
     } finally {
       setLoading(false);
     }
@@ -313,8 +308,9 @@ function SeleccionarEmpresaContent() {
     router.push("/");
   };
 
-  const filteredEmpresas = empresas.filter(e => {
-    const matchesSearch = e.name.toLowerCase().includes(search.toLowerCase()) ||
+  const safeEmpresas = Array.isArray(empresas) ? empresas : [];
+  const filteredEmpresas = safeEmpresas.filter(e => {
+    const matchesSearch = e.name?.toLowerCase().includes(search.toLowerCase()) ||
       (e.nit && e.nit.includes(search)) ||
       (e.representante_legal && e.representante_legal.toLowerCase().includes(search.toLowerCase()));
 
@@ -698,7 +694,8 @@ function SeleccionarEmpresaContent() {
       {/* MODAL CREAR / EDITAR EMPRESA */}
       {/* ============================================================== */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 dark:bg-slate-950/80 backdrop-blur-md overflow-hidden animate-in fade-in">
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-hidden animate-in fade-in">
           <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
@@ -855,6 +852,7 @@ function SeleccionarEmpresaContent() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
     </div>

@@ -21,6 +21,8 @@ import {
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
 import { useTheme } from "@/context/ThemeContext";
+import DirectoryNav from "@/components/DirectoryNav";
+import ModalPortal from "@/components/ModalPortal";
 
 interface Cliente {
   id: number;
@@ -62,10 +64,11 @@ export default function ClientesPage() {
   const loadClientes = async () => {
     setLoading(true);
     try {
-      const data = await apiFetch(`/tenants/${schema}/clientes/`);
-      setClientes(data || []);
+      const data = await apiFetch(`/tenants/${schema}/clientes/`).catch(() => []);
+      setClientes(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Error al cargar clientes:", err);
+      setClientes([]);
     } finally {
       setLoading(false);
     }
@@ -192,7 +195,8 @@ export default function ClientesPage() {
     }
   };
 
-  const filtered = clientes.filter((c) => {
+  const safeClientes = Array.isArray(clientes) ? clientes : [];
+  const filtered = safeClientes.filter((c) => {
     const s = search.toLowerCase();
     return (
       c.nombre?.toLowerCase().includes(s) ||
@@ -205,6 +209,9 @@ export default function ClientesPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto font-sans selection:bg-amber-500 selection:text-slate-950">
       
+      {/* Navegación Consolidada de Directorio */}
+      <DirectoryNav schema={schema} counts={{ clientes: safeClientes.length }} />
+
       {/* Banner de Encabezado Ejecutivo */}
       <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-md shadow-lg dark:shadow-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-colors duration-200">
         <div className="flex items-center gap-4">
@@ -341,7 +348,8 @@ export default function ClientesPage() {
       {/* MODAL RESPONSIVO: REGISTRAR / EDITAR CLIENTE (NO CUTOFFS) */}
       {/* ========================================================= */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden animate-in fade-in">
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-hidden animate-in fade-in">
           <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
             
             {/* Header Fijo */}
@@ -462,6 +470,7 @@ export default function ClientesPage() {
 
           </div>
         </div>
+        </ModalPortal>
       )}
 
     </div>

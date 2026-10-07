@@ -19,21 +19,34 @@ import {
   Edit,
   DollarSign,
   ShieldCheck,
-  TrendingDown
+  TrendingDown,
+  ArrowLeft,
+  Eye,
+  BarChart3
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
-import DatePeriodFilter, { DateFilterChangeEvent } from "@/components/DatePeriodFilter";
+import DatePeriodFilter, { DateFilterChangeEvent, FilterMode } from "@/components/DatePeriodFilter";
+import ModalPortal from "@/components/ModalPortal";
 
 export default function LiquidacionesPage() {
   const routeParams = useParams();
   const schema = (routeParams?.schema as string) || "";
 
   const [unidades, setUnidades] = useState<any[]>([]);
+  const [unidadesApoyo, setUnidadesApoyo] = useState<any[]>([]);
+  const [placasViajes, setPlacasViajes] = useState<string[]>([]);
+  const [manualPlaca, setManualPlaca] = useState(false);
   const [selectedPlaca, setSelectedPlaca] = useState("");
-  const [periodo, setPeriodo] = useState("2023-03");
+  const [periodo, setPeriodo] = useState("");
   const [periodosDisponibles, setPeriodosDisponibles] = useState<any[]>([]);
+
+  // Filtros unificados de fecha y rango
+  const [filterMode, setFilterMode] = useState<FilterMode>("mes");
+  const [activeFilterLabel, setActiveFilterLabel] = useState("");
+  const [dateFilterQuery, setDateFilterQuery] = useState("");
+  const [rangeLiquidaciones, setRangeLiquidaciones] = useState<any[]>([]);
 
   const [liquidaciones, setLiquidaciones] = useState<any[]>([]);
   const [activeLiq, setActiveLiq] = useState<any>(null);
@@ -48,30 +61,65 @@ export default function LiquidacionesPage() {
   }, [schema]);
 
   useEffect(() => {
-    if (periodo && selectedPlaca) {
-      loadLiquidacionActual();
+    if (schema) {
+      loadLiquidacionesData();
     }
-  }, [schema, periodo, selectedPlaca]);
+  }, [schema, filterMode, dateFilterQuery, selectedPlaca, periodo]);
 
   const loadInitialData = async () => {
     try {
-      const [uData, lData, pData] = await Promise.all([
-        apiFetch(`/tenants/${schema}/unidades/`),
-        apiFetch(`/tenants/${schema}/liquidaciones/`),
+      const [uData, uApoyoData, vData, lData, pData] = await Promise.all([
+        apiFetch(`/tenants/${schema}/unidades/`).catch(() => []),
+        apiFetch(`/tenants/${schema}/apoyo/unidades/todas`).catch(() => []),
+        apiFetch(`/tenants/${schema}/viajes/`).catch(() => []),
+        apiFetch(`/tenants/${schema}/liquidaciones/`).catch(() => []),
         apiFetch(`/tenants/${schema}/viajes/periodos`).catch(() => [])
       ]);
-      setUnidades(uData || []);
-      setLiquidaciones(lData || []);
-      setPeriodosDisponibles(pData || []);
 
-      if (lData && lData.length > 0) {
-        setPeriodo(lData[0].periodo_mes);
-        setSelectedPlaca(lData[0].placa);
-      } else if (pData && pData.length > 0) {
-        setPeriodo(pData[0].periodo_mes);
-        if (uData && uData.length > 0) setSelectedPlaca(uData[0].placa);
-      } else if (uData && uData.length > 0) {
-        setSelectedPlaca(uData[0].placa);
+      const validUnidades = Array.isArray(uData) ? uData : [];
+      const validApoyo = Array.isArray(uApoyoData) ? uApoyoData : [];
+      const validViajes = Array.isArray(vData) ? vData : [];
+      const validLiqs = Array.isArray(lData) ? lData : [];
+      const validPeriodos = Array.isArray(pData) ? pData : [];
+
+      setUnidades(validUnidades);
+      setUnidadesApoyo(validApoyo);
+      setLiquidaciones(validLiqs);
+      setPeriodosDisponibles(validPeriodos);
+
+      // Extraer todas las placas presentes en viajes
+      const distinctTripPlacas: string[] = Array.from(
+        new Set(validViajes.map((v: any) => v.placa).filter(Boolean))
+      );
+      setPlacasViajes(distinctTripPlacas);
+
+      // Periodo preferido inicial
+      let initPeriodo = "";
+      if (validLiqs.length > 0 && validLiqs[0].periodo_mes) {
+        initPeriodo = validLiqs[0].periodo_mes;
+      } else if (validPeriodos.length > 0 && validPeriodos[0].periodo_mes) {
+        initPeriodo = validPeriodos[0].periodo_mes;
+      } else if (validViajes.length > 0 && validViajes[0].periodo_mes) {
+        initPeriodo = validViajes[0].periodo_mes;
+      } else {
+        initPeriodo = new Date().toISOString().slice(0, 7);
+      }
+      setPeriodo(initPeriodo);
+      setDateFilterQuery(`periodo_mes=${initPeriodo}`);
+
+      // Placa preferida inicial
+      let initPlaca = "";
+      if (validLiqs.length > 0 && validLiqs[0].placa) {
+        initPlaca = validLiqs[0].placa;
+      } else if (validUnidades.length > 0 && validUnidades[0].placa) {
+        initPlaca = validUnidades[0].placa;
+      } else if (validApoyo.length > 0 && validApoyo[0].placa) {
+        initPlaca = validApoyo[0].placa;
+      } else if (distinctTripPlacas.length > 0) {
+        initPlaca = distinctTripPlacas[0];
+      }
+      if (initPlaca) {
+        setSelectedPlaca(initPlaca);
       }
     } catch (err) {
       console.error(err);
@@ -81,36 +129,122 @@ export default function LiquidacionesPage() {
   };
 
   const handleDateFilterChange = (filter: DateFilterChangeEvent) => {
-    if (filter.periodo_mes) {
+    setFilterMode(filter.mode);
+    setActiveFilterLabel(filter.label);
+
+    if (filter.mode === "mes" && filter.periodo_mes) {
       setPeriodo(filter.periodo_mes);
+      setDateFilterQuery(`periodo_mes=${filter.periodo_mes}`);
+    } else if (filter.mode === "semestral" && filter.fecha_desde && filter.fecha_hasta) {
+      setDateFilterQuery(`fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`);
+      setActiveLiq(null);
+    } else if (filter.mode === "anual" && filter.anio) {
+      setDateFilterQuery(`anio=${filter.anio}`);
+      setActiveLiq(null);
+    } else if (filter.mode === "personalizado" && filter.fecha_desde && filter.fecha_hasta) {
+      setDateFilterQuery(`fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`);
+      setActiveLiq(null);
+    } else if (filter.mode === "historico") {
+      setDateFilterQuery("");
+      setActiveLiq(null);
     }
   };
 
-  const loadLiquidacionActual = async () => {
+  const loadLiquidacionesData = async () => {
     setLoading(true);
     try {
-      // Buscar si existe para esta placa y periodo
-      const list = await apiFetch(`/tenants/${schema}/liquidaciones/?periodo_mes=${periodo}&placa=${selectedPlaca}`);
-      if (list && list.length > 0) {
-        const detalle = await apiFetch(`/tenants/${schema}/liquidaciones/${list[0].id}`);
-        setActiveLiq(detalle);
-      } else {
-        setActiveLiq(null);
+      const params: string[] = [];
+      if (dateFilterQuery) {
+        params.push(dateFilterQuery);
+      } else if (filterMode === "mes" && periodo) {
+        params.push(`periodo_mes=${periodo}`);
+      }
+      if (selectedPlaca && selectedPlaca !== "__TODAS__") {
+        params.push(`placa=${selectedPlaca}`);
+      }
+      const q = params.length > 0 ? `?${params.join("&")}` : "";
+
+      const list = await apiFetch(`/tenants/${schema}/liquidaciones/${q}`).catch(() => []);
+      const validList = Array.isArray(list) ? list : [];
+      setRangeLiquidaciones(validList);
+
+      if (filterMode === "mes") {
+        const targetPlaca = selectedPlaca || (validList.length > 0 ? validList[0].placa : "");
+        const matched = validList.find((l: any) => l.placa === targetPlaca && l.periodo_mes === periodo);
+        if (matched) {
+          const detalle = await apiFetch(`/tenants/${schema}/liquidaciones/${matched.id}`);
+          setActiveLiq(detalle);
+          if (!selectedPlaca) setSelectedPlaca(matched.placa);
+        } else {
+          setActiveLiq(null);
+        }
       }
     } catch (err) {
       console.error(err);
-      setActiveLiq(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewPlanilla = async (liqId: number) => {
+    setLoading(true);
+    try {
+      const detalle = await apiFetch(`/tenants/${schema}/liquidaciones/${liqId}`);
+      setActiveLiq(detalle);
+      if (detalle?.placa) setSelectedPlaca(detalle.placa);
+      if (detalle?.periodo_mes) setPeriodo(detalle.periodo_mes);
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Error al cargar planilla",
+        text: err.message || "No se pudo obtener el detalle de la liquidación.",
+        background: "#0f172a",
+        color: "#f8fafc"
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const handleGenerate = async () => {
-    if (!selectedPlaca || !periodo) {
+    let targetPeriodo = periodo;
+    let targetPlaca = selectedPlaca;
+
+    if (filterMode !== "mes") {
+      const inputOpts: Record<string, string> = {};
+      periodosDisponibles.forEach((p: any) => {
+        if (p.periodo_mes) {
+          inputOpts[p.periodo_mes] = `${p.periodo_mes} (${p.total_viajes} viajes)`;
+        }
+      });
+      if (targetPeriodo && !inputOpts[targetPeriodo]) {
+        inputOpts[targetPeriodo] = targetPeriodo;
+      }
+
+      const { value: selectedMonth } = await Swal.fire({
+        title: "Generar Planilla Oficial",
+        text: "Selecciona el mes específico a liquidar:",
+        input: "select",
+        inputOptions: inputOpts,
+        inputValue: targetPeriodo,
+        showCancelButton: true,
+        confirmButtonText: "Continuar",
+        cancelButtonText: "Cancelar",
+        confirmButtonColor: "#f59e0b",
+        background: "#0f172a",
+        color: "#f8fafc"
+      });
+
+      if (!selectedMonth) return;
+      targetPeriodo = selectedMonth;
+      setPeriodo(selectedMonth);
+    }
+
+    if (!targetPlaca || targetPlaca === "__TODAS__") {
       Swal.fire({
         icon: "warning",
         title: "Atención",
-        text: "Selecciona placa y mes.",
+        text: "Por favor selecciona una placa para generar su liquidación.",
         background: "#0f172a",
         color: "#f8fafc",
         confirmButtonColor: "#f59e0b"
@@ -123,15 +257,15 @@ export default function LiquidacionesPage() {
       const res = await apiFetch(`/tenants/${schema}/liquidaciones/`, {
         method: "POST",
         body: JSON.stringify({
-          periodo_mes: periodo,
-          placa: selectedPlaca
+          periodo_mes: targetPeriodo,
+          placa: targetPlaca
         })
       });
 
       Swal.fire({
         icon: "success",
         title: "¡Liquidación Generada!",
-        text: `Planilla para ${selectedPlaca} (${periodo}) procesada con éxito.`,
+        text: `Planilla para ${targetPlaca} (${targetPeriodo}) procesada con éxito.`,
         timer: 1500,
         showConfirmButton: false,
         background: "#0f172a",
@@ -140,10 +274,7 @@ export default function LiquidacionesPage() {
 
       const detalle = await apiFetch(`/tenants/${schema}/liquidaciones/${res.id}`);
       setActiveLiq(detalle);
-
-      // Recargar lista
-      const lData = await apiFetch(`/tenants/${schema}/liquidaciones/`);
-      setLiquidaciones(lData);
+      loadLiquidacionesData();
     } catch (err: any) {
       Swal.fire({
         icon: "error",
@@ -210,13 +341,25 @@ export default function LiquidacionesPage() {
 
   const handleSaveAdjustments = async (e: React.FormEvent) => {
     e.preventDefault();
+    const sanitizedAdjust = {
+      desc_merma_bs: Number(adjustData.desc_merma_bs) || 0,
+      desc_comision_usd_m3_bs: Number(adjustData.desc_comision_usd_m3_bs) || 0,
+      desc_comision_7pct_bs: Number(adjustData.desc_comision_7pct_bs) || 0,
+      desc_comision_ypfb_bolgart_7pct_bs: Number(adjustData.desc_comision_ypfb_bolgart_7pct_bs) || 0,
+      desc_comision_3pct_bs: Number(adjustData.desc_comision_3pct_bs) || 0,
+      desc_hojas_ruta_bs: Number(adjustData.desc_hojas_ruta_bs) || 0,
+      desc_gps_bs: Number(adjustData.desc_gps_bs) || 0,
+      desc_anticipos_otros_bs: Number(adjustData.desc_anticipos_otros_bs) || 0,
+      desc_otros_ajustes_bs: Number(adjustData.desc_otros_ajustes_bs) || 0
+    };
+
     try {
       const res = await apiFetch(`/tenants/${schema}/liquidaciones/`, {
         method: "POST",
         body: JSON.stringify({
           periodo_mes: activeLiq.periodo_mes,
           placa: activeLiq.placa,
-          ...adjustData
+          ...sanitizedAdjust
         })
       });
 
@@ -278,6 +421,11 @@ export default function LiquidacionesPage() {
     cancelado_por: "TOMASA TIÑINI MITA / APOYO"
   };
 
+  // KPIs consolidados para el rango seleccionado
+  const totalFleteConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.flete_total_bs || 0), 0);
+  const totalLiquidoConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.liquido_pagable_bs || 0), 0);
+  const totalDeduccionesConsolidado = Math.max(0, totalFleteConsolidado - totalLiquidoConsolidado);
+
   return (
     <div className="space-y-6 sm:space-y-7 font-sans selection:bg-amber-500 selection:text-slate-950">
       
@@ -322,34 +470,89 @@ export default function LiquidacionesPage() {
       {/* Barra de Controles y Generación */}
       <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col lg:flex-row items-center justify-between gap-4 no-print transition-colors duration-200">
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-          {/* Mes */}
+          {/* Indicador de Período Activo Unificado (Sin pedir fecha dos veces) */}
           <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
             <Calendar className="w-4 h-4 text-amber-500" />
-            <span className="text-slate-500 dark:text-slate-400 font-medium">Mes Activo:</span>
-            <input
-              type="month"
-              value={periodo}
-              onChange={(e) => setPeriodo(e.target.value)}
-              className="bg-transparent text-slate-900 dark:text-white font-bold focus:outline-none cursor-pointer text-xs"
-            />
+            <span className="text-slate-500 dark:text-slate-400 font-medium">Período:</span>
+            <span className="text-slate-900 dark:text-white font-bold">
+              {activeFilterLabel || periodo}
+            </span>
           </div>
 
           {/* Placa */}
           <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
             <Truck className="w-4 h-4 text-amber-500" />
             <span className="text-slate-500 dark:text-slate-400 font-medium">Placa:</span>
-            <select
-              value={selectedPlaca}
-              onChange={(e) => setSelectedPlaca(e.target.value)}
-              className="bg-transparent text-slate-900 dark:text-white font-bold focus:outline-none cursor-pointer text-xs"
-            >
-              <option value="" className="bg-white dark:bg-slate-900">-- Seleccionar Placa --</option>
-              {unidades.map((u) => (
-                <option key={u.id} value={u.placa} className="bg-white dark:bg-slate-900">
-                  {u.placa}
-                </option>
-              ))}
-            </select>
+            {!manualPlaca && (unidades.length > 0 || unidadesApoyo.length > 0 || placasViajes.length > 0) ? (
+              <select
+                value={selectedPlaca}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "__MANUAL__") {
+                    setManualPlaca(true);
+                    return;
+                  }
+                  setSelectedPlaca(val);
+                }}
+                className="bg-transparent text-slate-900 dark:text-white font-bold focus:outline-none cursor-pointer text-xs"
+              >
+                {filterMode !== "mes" ? (
+                  <option value="__TODAS__" className="bg-white dark:bg-slate-900">Todas las Placas</option>
+                ) : (
+                  <option value="" className="bg-white dark:bg-slate-900">-- Seleccionar Placa --</option>
+                )}
+                {unidades.length > 0 && (
+                  <optgroup label="Flota Propia" className="bg-white dark:bg-slate-900">
+                    {unidades.map((u) => (
+                      <option key={`propia-${u.id || u.placa}`} value={u.placa} className="bg-white dark:bg-slate-900">
+                        {u.placa} (Propia)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {unidadesApoyo.length > 0 && (
+                  <optgroup label="Flota de Apoyo" className="bg-white dark:bg-slate-900">
+                    {unidadesApoyo.map((u) => (
+                      <option key={`apoyo-${u.id || u.placa}`} value={u.placa} className="bg-white dark:bg-slate-900">
+                        {u.placa} (Apoyo)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {placasViajes.filter(p => !unidades.some(u => u.placa === p) && !unidadesApoyo.some(u => u.placa === p)).length > 0 && (
+                  <optgroup label="Otras Placas" className="bg-white dark:bg-slate-900">
+                    {placasViajes
+                      .filter(p => !unidades.some(u => u.placa === p) && !unidadesApoyo.some(u => u.placa === p))
+                      .map((p) => (
+                        <option key={`viaje-${p}`} value={p} className="bg-white dark:bg-slate-900">
+                          {p}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
+                <option value="__MANUAL__" className="bg-white dark:bg-slate-900">✏️ Escribir otra placa...</option>
+              </select>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={selectedPlaca}
+                  onChange={(e) => setSelectedPlaca(e.target.value.toUpperCase())}
+                  placeholder="ej. 4412-DPC"
+                  className="bg-white dark:bg-slate-900 px-2 py-0.5 rounded text-xs font-mono font-bold uppercase border border-amber-500 focus:outline-none text-slate-900 dark:text-white"
+                  autoFocus
+                />
+                {(unidades.length > 0 || unidadesApoyo.length > 0 || placasViajes.length > 0) && (
+                  <button
+                    type="button"
+                    onClick={() => setManualPlaca(false)}
+                    className="text-[10px] text-amber-600 dark:text-amber-400 font-bold hover:underline"
+                  >
+                    Lista
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           <button
@@ -413,37 +616,50 @@ export default function LiquidacionesPage() {
       {/* Selector de Pestañas de Visualización */}
       {activeLiq && (
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 no-print">
-          <div className="flex items-center bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-bold">
-            <button
-              onClick={() => setActiveTab("ambas")}
-              className={`px-3.5 py-1.5 rounded-xl transition ${
-                activeTab === "ambas" 
-                  ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20" 
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              Planilla Completa (Hojas 2 y 3)
-            </button>
-            <button
-              onClick={() => setActiveTab("hoja1")}
-              className={`px-3.5 py-1.5 rounded-xl transition ${
-                activeTab === "hoja1" 
-                  ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20" 
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              Hoja 1: Detalle de Fletes (Pág. 2)
-            </button>
-            <button
-              onClick={() => setActiveTab("hoja2")}
-              className={`px-3.5 py-1.5 rounded-xl transition ${
-                activeTab === "hoja2" 
-                  ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20" 
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              Hoja 2: Deducciones y Líquido (Pág. 3)
-            </button>
+          <div className="flex flex-wrap items-center gap-3">
+            {filterMode !== "mes" && (
+              <button
+                type="button"
+                onClick={() => setActiveLiq(null)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-200 text-xs font-bold transition border border-slate-200 dark:border-slate-700 shadow-sm"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Volver al Consolidado</span>
+              </button>
+            )}
+
+            <div className="flex items-center bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-bold">
+              <button
+                onClick={() => setActiveTab("ambas")}
+                className={`px-3.5 py-1.5 rounded-xl transition ${
+                  activeTab === "ambas" 
+                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20" 
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Planilla Completa (Hojas 2 y 3)
+              </button>
+              <button
+                onClick={() => setActiveTab("hoja1")}
+                className={`px-3.5 py-1.5 rounded-xl transition ${
+                  activeTab === "hoja1" 
+                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20" 
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Hoja 1: Detalle de Fletes (Pág. 2)
+              </button>
+              <button
+                onClick={() => setActiveTab("hoja2")}
+                className={`px-3.5 py-1.5 rounded-xl transition ${
+                  activeTab === "hoja2" 
+                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20" 
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Hoja 2: Deducciones y Líquido (Pág. 3)
+              </button>
+            </div>
           </div>
 
           <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">
@@ -452,11 +668,191 @@ export default function LiquidacionesPage() {
         </div>
       )}
 
+      {/* Selector rápido de otras cisternas liquidadas en el mes */}
+      {activeLiq && filterMode === "mes" && rangeLiquidaciones.filter(l => l.periodo_mes === periodo && l.placa !== activeLiq.placa).length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs no-print">
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Otras cisternas liquidadas en {periodo}:</span>
+          {rangeLiquidaciones.filter(l => l.periodo_mes === periodo && l.placa !== activeLiq.placa).map(otherLiq => (
+            <button
+              key={otherLiq.id}
+              type="button"
+              onClick={() => handleViewPlanilla(otherLiq.id)}
+              className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:border-amber-500 border border-slate-200 dark:border-slate-700 font-mono font-bold text-slate-900 dark:text-white text-xs transition hover:scale-105 active:scale-95 shadow-sm"
+            >
+              {otherLiq.placa}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Contenedor del Documento */}
       {loading ? (
         <div className="flex flex-col justify-center items-center py-28 gap-3">
           <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
           <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider">Procesando liquidación...</span>
+        </div>
+      ) : filterMode !== "mes" && !activeLiq ? (
+        /* ============================================================== */
+        /* VISTA CONSOLIDADA DEL PERÍODO (ANUAL, SEMESTRAL, RANGO, TODO) */
+        /* ============================================================== */
+        <div className="space-y-6">
+          {/* Tarjeta Banner de Rango */}
+          <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm dark:shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/25 flex items-center justify-center flex-shrink-0">
+                <BarChart3 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                  Consolidado de Liquidaciones: {activeFilterLabel || "Período Seleccionado"}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Muestra todas las planillas generadas en el rango, acumulando fletes, mermas y líquido pagable.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                {rangeLiquidaciones.length} {rangeLiquidaciones.length === 1 ? "planilla generada" : "planillas generadas"}
+              </span>
+            </div>
+          </div>
+
+          {/* KPIs del Rango */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
+                Flete Bruto Acumulado
+              </span>
+              <div className="text-2xl font-black text-amber-600 dark:text-amber-400 font-mono">
+                {formatCurrency(totalFleteConsolidado)}
+              </div>
+              <span className="text-[11px] text-slate-400 mt-1 block">Base de facturación</span>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
+                Deducciones Totales
+              </span>
+              <div className="text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
+                {formatCurrency(totalDeduccionesConsolidado)}
+              </div>
+              <span className="text-[11px] text-slate-400 mt-1 block">Mermas y comisiones</span>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
+                Líquido Pagable Final
+              </span>
+              <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                {formatCurrency(totalLiquidoConsolidado)}
+              </div>
+              <span className="text-[11px] text-slate-400 mt-1 block">Neto a percibir</span>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
+                Planillas Emitidas
+              </span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">
+                {rangeLiquidaciones.length}
+              </div>
+              <span className="text-[11px] text-slate-400 mt-1 block">Cisternas conciliadas</span>
+            </div>
+          </div>
+
+          {/* Tabla Consolidada de Liquidaciones */}
+          {rangeLiquidaciones.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 mx-auto mb-3">
+                <FileSpreadsheet className="w-8 h-8" />
+              </div>
+              <h4 className="text-base font-bold text-slate-900 dark:text-white mb-1">
+                No se encontraron liquidaciones para este período
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-5">
+                No hay planillas de liquidación registradas en {activeFilterLabel || "este rango"}. Puedes seleccionar el modo Mensual en el filtro superior para generar una planilla o revisar otros periodos.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterMode("mes");
+                  setDateFilterQuery(`periodo_mes=${periodo}`);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-md"
+              >
+                <span>Cambiar a Vista Mensual ({periodo})</span>
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+              <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h4 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-amber-500" />
+                  <span>Detalle de Planillas Oficiales en el Período</span>
+                </h4>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  Haz clic en &ldquo;Ver Planilla&rdquo; para inspeccionar las Hojas 2 y 3 completas
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-slate-950/70 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                      <th className="py-3 px-4">Código</th>
+                      <th className="py-3 px-4">Mes</th>
+                      <th className="py-3 px-4">Placa</th>
+                      <th className="py-3 px-4 text-right">Flete Total</th>
+                      <th className="py-3 px-4 text-right">Deducciones</th>
+                      <th className="py-3 px-4 text-right">Líquido Pagable</th>
+                      <th className="py-3 px-4 text-center">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                    {rangeLiquidaciones.map((liq) => {
+                      const totalDed = Math.max(0, (liq.flete_total_bs || 0) - (liq.liquido_pagable_bs || 0));
+                      return (
+                        <tr key={liq.id} className="hover:bg-amber-500/5 transition">
+                          <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
+                            {liq.codigo}
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-600 dark:text-slate-300">
+                            {liq.periodo_mes}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="font-mono font-black px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700">
+                              {liq.placa}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-amber-600 dark:text-amber-400">
+                            {formatCurrency(liq.flete_total_bs)}
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
+                            {formatCurrency(totalDed)}
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                            {formatCurrency(liq.liquido_pagable_bs)}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <button
+                              onClick={() => handleViewPlanilla(liq.id)}
+                              className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-sm inline-flex items-center gap-1 transition active:scale-95"
+                              title="Ver planilla oficial de 17 columnas"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Ver Planilla</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       ) : !activeLiq ? (
         <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-10 sm:p-14 text-center max-w-2xl mx-auto shadow-sm dark:shadow-2xl">
@@ -788,135 +1184,209 @@ export default function LiquidacionesPage() {
 
       {/* Modal para Ajustar Deducciones Manualmente */}
       {showAdjustModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden animate-in fade-in">
-          <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
-              <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
-                  <SlidersHorizontal className="w-4 h-4" />
-                </div>
-                <span>Ajustar Montos de Deducción</span>
-              </h3>
-              <button
-                onClick={() => setShowAdjustModal(false)}
-                className="text-slate-400 hover:text-slate-900 dark:hover:text-white p-1 rounded-lg transition"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form id="adjust-form" onSubmit={handleSaveAdjustments} className="p-6 space-y-3.5 flex-1 overflow-y-auto text-xs">
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Descuento Merma (Bs)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={adjustData.desc_merma_bs}
-                    onChange={(e) => setAdjustData({ ...adjustData, desc_merma_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Comisión 1 $us p/m3 (Bs)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={adjustData.desc_comision_usd_m3_bs}
-                    onChange={(e) => setAdjustData({ ...adjustData, desc_comision_usd_m3_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
-                  />
-                </div>
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-hidden animate-in fade-in">
+            <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
+                <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
+                    <SlidersHorizontal className="w-4 h-4" />
+                  </div>
+                  <span>Ajustar Montos de Deducción</span>
+                </h3>
+                <button
+                  onClick={() => setShowAdjustModal(false)}
+                  className="text-slate-400 hover:text-slate-900 dark:hover:text-white p-1 rounded-lg transition"
+                >
+                  ✕
+                </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Comisión 7% (Bs)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={adjustData.desc_comision_7pct_bs}
-                    onChange={(e) => setAdjustData({ ...adjustData, desc_comision_7pct_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
-                  />
+              <form id="adjust-form" onSubmit={handleSaveAdjustments} className="p-6 space-y-3.5 flex-1 overflow-y-auto text-xs">
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Descuento Merma (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustData.desc_merma_bs}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setAdjustData({ ...adjustData, desc_merma_bs: v === "" ? "" : v });
+                      }}
+                      onBlur={(e) => {
+                        if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                          setAdjustData((prev) => ({ ...prev, desc_merma_bs: 0 }));
+                        }
+                      }}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Comisión 1 $us p/m3 (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustData.desc_comision_usd_m3_bs}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setAdjustData({ ...adjustData, desc_comision_usd_m3_bs: v === "" ? "" : v });
+                      }}
+                      onBlur={(e) => {
+                        if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                          setAdjustData((prev) => ({ ...prev, desc_comision_usd_m3_bs: 0 }));
+                        }
+                      }}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">YPFB BOL-GART 7% (Bs)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={adjustData.desc_comision_ypfb_bolgart_7pct_bs}
-                    onChange={(e) => setAdjustData({ ...adjustData, desc_comision_ypfb_bolgart_7pct_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Comisión 3% (Bs)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={adjustData.desc_comision_3pct_bs}
-                    onChange={(e) => setAdjustData({ ...adjustData, desc_comision_3pct_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
-                  />
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Comisión 7% (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustData.desc_comision_7pct_bs}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setAdjustData({ ...adjustData, desc_comision_7pct_bs: v === "" ? "" : v });
+                      }}
+                      onBlur={(e) => {
+                        if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                          setAdjustData((prev) => ({ ...prev, desc_comision_7pct_bs: 0 }));
+                        }
+                      }}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">YPFB BOL-GART 7% (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustData.desc_comision_ypfb_bolgart_7pct_bs}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setAdjustData({ ...adjustData, desc_comision_ypfb_bolgart_7pct_bs: v === "" ? "" : v });
+                      }}
+                      onBlur={(e) => {
+                        if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                          setAdjustData((prev) => ({ ...prev, desc_comision_ypfb_bolgart_7pct_bs: 0 }));
+                        }
+                      }}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Hojas de Ruta (Bs)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={adjustData.desc_hojas_ruta_bs}
-                    onChange={(e) => setAdjustData({ ...adjustData, desc_hojas_ruta_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">GPS (Bs)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={adjustData.desc_gps_bs}
-                    onChange={(e) => setAdjustData({ ...adjustData, desc_gps_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
-                  />
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Comisión 3% (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustData.desc_comision_3pct_bs}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setAdjustData({ ...adjustData, desc_comision_3pct_bs: v === "" ? "" : v });
+                      }}
+                      onBlur={(e) => {
+                        if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                          setAdjustData((prev) => ({ ...prev, desc_comision_3pct_bs: 0 }));
+                        }
+                      }}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Hojas de Ruta (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustData.desc_hojas_ruta_bs}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setAdjustData({ ...adjustData, desc_hojas_ruta_bs: v === "" ? "" : v });
+                      }}
+                      onBlur={(e) => {
+                        if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                          setAdjustData((prev) => ({ ...prev, desc_hojas_ruta_bs: 0 }));
+                        }
+                      }}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Anticipos y Otros (Bs)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={adjustData.desc_anticipos_otros_bs}
-                    onChange={(e) => setAdjustData({ ...adjustData, desc_anticipos_otros_bs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
-            </form>
 
-            <div className="px-6 py-3.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 flex justify-end gap-3 flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowAdjustModal(false)}
-                className="px-4 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-xs font-bold transition"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                form="adjust-form"
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold shadow-lg shadow-amber-500/20 transition active:scale-95"
-              >
-                Guardar y Recalcular
-              </button>
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">GPS (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustData.desc_gps_bs}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setAdjustData({ ...adjustData, desc_gps_bs: v === "" ? "" : v });
+                      }}
+                      onBlur={(e) => {
+                        if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                          setAdjustData((prev) => ({ ...prev, desc_gps_bs: 0 }));
+                        }
+                      }}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Anticipos y Otros (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustData.desc_anticipos_otros_bs}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setAdjustData({ ...adjustData, desc_anticipos_otros_bs: v === "" ? "" : v });
+                      }}
+                      onBlur={(e) => {
+                        if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                          setAdjustData((prev) => ({ ...prev, desc_anticipos_otros_bs: 0 }));
+                        }
+                      }}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              </form>
+
+              <div className="px-6 py-3.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 flex justify-end gap-3 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowAdjustModal(false)}
+                  className="px-4 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-xs font-bold transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  form="adjust-form"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold shadow-lg shadow-amber-500/20 transition active:scale-95"
+                >
+                  Guardar y Recalcular
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
 
     </div>
