@@ -10,7 +10,7 @@ from app.api.deps import verify_tenant_exists
 from app.models.public import Empresa
 from app.models.tenant import Viaje, ParametroLiquidacion, UnidadTransporte
 from app.schemas.viaje import ViajeCreate, ViajeUpdate, ViajeResponse, ViajeCalculoPreview
-from app.services.calculation_engine import calculate_viaje_values
+from app.services.calculation_engine import calculate_viaje_values, determine_trip_period
 from app.services.excel_export import generate_viajes_template_excel
 
 from sqlalchemy import func
@@ -119,6 +119,34 @@ def create_viaje(
         if not params:
             params = ParametroLiquidacion()
 
+        # Validar duplicados
+        placa_clean = viaje_in.placa.upper().strip()
+        mic_clean = viaje_in.mic_dta.strip().upper() if viaje_in.mic_dta and viaje_in.mic_dta.strip() else None
+
+        if mic_clean:
+            dup_mic = session.query(Viaje).filter(Viaje.mic_dta == mic_clean).first()
+            if dup_mic:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Ya existe un viaje registrado con el MIC/DTA '{mic_clean}' (Placa: {dup_mic.placa}, Fecha de carga: {dup_mic.fecha_carga})"
+                )
+
+        # Validar duplicado exacto por placa y fechas de carga y descarga
+        dup_viaje = session.query(Viaje).filter(
+            Viaje.placa == placa_clean,
+            Viaje.fecha_carga == viaje_in.fecha_carga,
+            Viaje.fecha_descarga == viaje_in.fecha_descarga,
+            Viaje.volumen_recepcionado_litros == viaje_in.volumen_recepcionado_litros
+        ).first()
+        if dup_viaje:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ya existe un viaje idéntico registrado para la placa {placa_clean} en las fechas {viaje_in.fecha_carga} a {viaje_in.fecha_descarga} (MIC: {dup_viaje.mic_dta or 'S/N'})"
+            )
+
+        # Determinar periodo mensual aplicando la regla de holgura de 1-2 días
+        periodo_determinado = determine_trip_period(viaje_in.fecha_carga, viaje_in.fecha_descarga)
+
         # Calcular mermas y flete automáticamente
         calc = calculate_viaje_values(
             volumen_origen_litros=viaje_in.volumen_origen_litros,
@@ -131,14 +159,14 @@ def create_viaje(
         )
 
         # Buscar unidad_id si existe por la placa
-        unidad = session.query(UnidadTransporte).filter(UnidadTransporte.placa == viaje_in.placa.upper().strip()).first()
+        unidad = session.query(UnidadTransporte).filter(UnidadTransporte.placa == placa_clean).first()
         unidad_id = unidad.id if unidad else viaje_in.unidad_id
 
         viaje = Viaje(
-            mic_dta=viaje_in.mic_dta,
+            mic_dta=mic_clean,
             lote_codigo=viaje_in.lote_codigo,
             unidad_id=unidad_id,
-            placa=viaje_in.placa.upper().strip(),
+            placa=placa_clean,
             es_apoyo=viaje_in.es_apoyo or False,
             empresa_apoyo_id=viaje_in.empresa_apoyo_id,
             empresa_apoyo_nombre=viaje_in.empresa_apoyo_nombre,
@@ -147,7 +175,7 @@ def create_viaje(
             producto=viaje_in.producto.upper(),
             fecha_carga=viaje_in.fecha_carga,
             fecha_descarga=viaje_in.fecha_descarga,
-            periodo_mes=viaje_in.periodo_mes,
+            periodo_mes=periodo_determinado,
             volumen_origen_litros=viaje_in.volumen_origen_litros,
             volumen_recepcionado_litros=viaje_in.volumen_recepcionado_litros,
             merma_real_litros=calc["merma_real_litros"],
@@ -278,6 +306,9 @@ async def importar_viajes_excel(
                 }
                 header_row_idx = 4
 
+        seen_mics_in_batch = set()
+        seen_trips_in_batch = set()
+
         start_row = header_row_idx + 1
         for r in range(start_row, ws.max_row + 1):
             def get_val(key):
@@ -342,8 +373,37 @@ async def importar_viajes_excel(
 
                 pm = float(str(precio_merma).replace(",", ".")) if precio_merma else None
 
-                periodo = f"{date_carga.year}-{str(date_carga.month).zfill(2)}"
+                # Determinar periodo con holgura de 1-2 días
+                periodo = determine_trip_period(date_carga, date_descarga)
                 periodos_detectados.add(periodo)
+
+                # Control anti-duplicados por MIC/DTA
+                mic_str = str(mic_dta).strip().upper() if mic_dta else None
+                if mic_str:
+                    if mic_str in seen_mics_in_batch:
+                        errores.append(f"Fila {r}: Viaje omitido por MIC/DTA duplicado en el archivo ({mic_str})")
+                        continue
+                    exist_mic = session.query(Viaje).filter(Viaje.mic_dta == mic_str).first()
+                    if exist_mic:
+                        errores.append(f"Fila {r}: Omitido por MIC/DTA '{mic_str}' ya registrado en el sistema (Placa {exist_mic.placa})")
+                        continue
+                    seen_mics_in_batch.add(mic_str)
+
+                # Control anti-duplicados por placa, fechas y volumen
+                trip_key = (placa_str, date_carga, date_descarga, vol_r)
+                if trip_key in seen_trips_in_batch:
+                    errores.append(f"Fila {r}: Viaje omitido por registro idéntico duplicado en el archivo ({placa_str}, {date_carga})")
+                    continue
+                exist_trip = session.query(Viaje).filter(
+                    Viaje.placa == placa_str,
+                    Viaje.fecha_carga == date_carga,
+                    Viaje.fecha_descarga == date_descarga,
+                    Viaje.volumen_recepcionado_litros == vol_r
+                ).first()
+                if exist_trip:
+                    errores.append(f"Fila {r}: Omitido por existir ya en sistema ({placa_str}, {date_carga} a {date_descarga})")
+                    continue
+                seen_trips_in_batch.add(trip_key)
 
                 # Asegurar que exista la unidad
                 u = session.query(UnidadTransporte).filter(UnidadTransporte.placa == placa_str).first()
@@ -370,7 +430,7 @@ async def importar_viajes_excel(
                 )
 
                 viaje = Viaje(
-                    mic_dta=str(mic_dta).strip() if mic_dta else None,
+                    mic_dta=mic_str,
                     lote_codigo=str(lote).strip() if lote else "1",
                     unidad_id=u.id,
                     placa=placa_str,
@@ -461,6 +521,7 @@ def update_viaje(
         viaje.precio_merma_litro_bs = calc["precio_merma_litro_bs"]
         viaje.merma_descontar_bs = calc["merma_descontar_bs"]
         viaje.flete_total_bs = calc["flete_total_bs"]
+        viaje.periodo_mes = determine_trip_period(viaje.fecha_carga, viaje.fecha_descarga)
 
         session.commit()
         session.refresh(viaje)

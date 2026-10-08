@@ -13,4 +13,4 @@ reportlab==4.2.5
 python-dateutil==2.9.0.post0
 requests==2.32.3
 email-validator==2.2.0
-
+Pillow>=10.0.0

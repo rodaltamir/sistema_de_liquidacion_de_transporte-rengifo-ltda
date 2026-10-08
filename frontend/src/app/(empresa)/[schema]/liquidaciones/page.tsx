@@ -135,18 +135,26 @@ export default function LiquidacionesPage() {
     if (filter.mode === "mes" && filter.periodo_mes) {
       setPeriodo(filter.periodo_mes);
       setDateFilterQuery(`periodo_mes=${filter.periodo_mes}`);
-    } else if (filter.mode === "semestral" && filter.fecha_desde && filter.fecha_hasta) {
-      setDateFilterQuery(`fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`);
-      setActiveLiq(null);
+    } else if (filter.mode === "semestral") {
+      const q = [
+        filter.anio ? `anio=${filter.anio}` : "",
+        filter.semestre ? `semestre=${filter.semestre}` : "",
+        filter.fecha_desde ? `fecha_desde=${filter.fecha_desde}` : "",
+        filter.fecha_hasta ? `fecha_hasta=${filter.fecha_hasta}` : ""
+      ].filter(Boolean).join("&");
+      setDateFilterQuery(q);
+      if (filter.anio && filter.semestre) {
+        setPeriodo(`${filter.anio}-S${filter.semestre}`);
+      }
     } else if (filter.mode === "anual" && filter.anio) {
       setDateFilterQuery(`anio=${filter.anio}`);
-      setActiveLiq(null);
+      setPeriodo(`ANUAL-${filter.anio}`);
     } else if (filter.mode === "personalizado" && filter.fecha_desde && filter.fecha_hasta) {
       setDateFilterQuery(`fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`);
-      setActiveLiq(null);
+      setPeriodo(`${filter.fecha_desde}_${filter.fecha_hasta}`);
     } else if (filter.mode === "historico") {
       setDateFilterQuery("");
-      setActiveLiq(null);
+      setPeriodo("");
     }
   };
 
@@ -168,16 +176,31 @@ export default function LiquidacionesPage() {
       const validList = Array.isArray(list) ? list : [];
       setRangeLiquidaciones(validList);
 
-      if (filterMode === "mes") {
-        const targetPlaca = selectedPlaca || (validList.length > 0 ? validList[0].placa : "");
-        const matched = validList.find((l: any) => l.placa === targetPlaca && l.periodo_mes === periodo);
-        if (matched) {
-          const detalle = await apiFetch(`/tenants/${schema}/liquidaciones/${matched.id}`);
-          setActiveLiq(detalle);
-          if (!selectedPlaca) setSelectedPlaca(matched.placa);
+      // Si no es vista "TODAS", obtener la planilla oficial consolidada de la cisterna para el periodo
+      if (selectedPlaca !== "__TODAS__") {
+        const targetPlaca = selectedPlaca || 
+          (validList.length > 0 ? validList[0].placa : 
+          (unidades.length > 0 ? unidades[0].placa : 
+          (unidadesApoyo.length > 0 ? unidadesApoyo[0].placa : (placasViajes[0] || ""))));
+
+        if (targetPlaca) {
+          try {
+            const consolidadaUrl = `/tenants/${schema}/liquidaciones/consolidada?placa=${targetPlaca}&tipo_periodo=${filterMode}${dateFilterQuery ? `&${dateFilterQuery}` : (periodo ? `&periodo_mes=${periodo}` : "")}`;
+            const detalle = await apiFetch(consolidadaUrl);
+            if (detalle && detalle.placa) {
+              setActiveLiq(detalle);
+              if (!selectedPlaca) setSelectedPlaca(detalle.placa);
+            } else {
+              setActiveLiq(null);
+            }
+          } catch (e) {
+            setActiveLiq(null);
+          }
         } else {
           setActiveLiq(null);
         }
+      } else {
+        setActiveLiq(null);
       }
     } catch (err) {
       console.error(err);
@@ -207,44 +230,13 @@ export default function LiquidacionesPage() {
   };
 
   const handleGenerate = async () => {
-    let targetPeriodo = periodo;
     let targetPlaca = selectedPlaca;
-
-    if (filterMode !== "mes") {
-      const inputOpts: Record<string, string> = {};
-      periodosDisponibles.forEach((p: any) => {
-        if (p.periodo_mes) {
-          inputOpts[p.periodo_mes] = `${p.periodo_mes} (${p.total_viajes} viajes)`;
-        }
-      });
-      if (targetPeriodo && !inputOpts[targetPeriodo]) {
-        inputOpts[targetPeriodo] = targetPeriodo;
-      }
-
-      const { value: selectedMonth } = await Swal.fire({
-        title: "Generar Planilla Oficial",
-        text: "Selecciona el mes específico a liquidar:",
-        input: "select",
-        inputOptions: inputOpts,
-        inputValue: targetPeriodo,
-        showCancelButton: true,
-        confirmButtonText: "Continuar",
-        cancelButtonText: "Cancelar",
-        confirmButtonColor: "#f59e0b",
-        background: "#0f172a",
-        color: "#f8fafc"
-      });
-
-      if (!selectedMonth) return;
-      targetPeriodo = selectedMonth;
-      setPeriodo(selectedMonth);
-    }
 
     if (!targetPlaca || targetPlaca === "__TODAS__") {
       Swal.fire({
         icon: "warning",
-        title: "Atención",
-        text: "Por favor selecciona una placa para generar su liquidación.",
+        title: "Selecciona una cisterna",
+        text: "Por favor selecciona una placa para generar o actualizar su liquidación oficial.",
         background: "#0f172a",
         color: "#f8fafc",
         confirmButtonColor: "#f59e0b"
@@ -254,19 +246,41 @@ export default function LiquidacionesPage() {
 
     setLoading(true);
     try {
+      const payload: any = {
+        placa: targetPlaca,
+        tipo_periodo: filterMode,
+        periodo_mes: activeLiq?.periodo_mes || periodo || "ANUAL"
+      };
+
+      if (filterMode === "anual") {
+        const urlParams = new URLSearchParams(dateFilterQuery);
+        const yr = urlParams.get("anio") || activeFilterLabel?.replace(/\D/g, "") || new Date().getFullYear();
+        payload.anio = Number(yr);
+        payload.periodo_mes = `ANUAL-${yr}`;
+      } else if (filterMode === "semestral") {
+        const urlParams = new URLSearchParams(dateFilterQuery);
+        payload.fecha_desde = urlParams.get("fecha_desde");
+        payload.fecha_hasta = urlParams.get("fecha_hasta");
+        if (urlParams.get("anio")) payload.anio = Number(urlParams.get("anio"));
+        if (urlParams.get("semestre")) payload.semestre = Number(urlParams.get("semestre"));
+        payload.periodo_mes = `${payload.anio || new Date().getFullYear()}-S${payload.semestre || 1}`;
+      } else if (filterMode === "personalizado") {
+        const urlParams = new URLSearchParams(dateFilterQuery);
+        payload.fecha_desde = urlParams.get("fecha_desde");
+        payload.fecha_hasta = urlParams.get("fecha_hasta");
+        payload.periodo_mes = `${payload.fecha_desde}_${payload.fecha_hasta}`;
+      }
+
       const res = await apiFetch(`/tenants/${schema}/liquidaciones/`, {
         method: "POST",
-        body: JSON.stringify({
-          periodo_mes: targetPeriodo,
-          placa: targetPlaca
-        })
+        body: JSON.stringify(payload)
       });
 
       Swal.fire({
         icon: "success",
         title: "¡Liquidación Generada!",
-        text: `Planilla para ${targetPlaca} (${targetPeriodo}) procesada con éxito.`,
-        timer: 1500,
+        text: `Planilla para ${targetPlaca} (${res.codigo}) procesada con éxito.`,
+        timer: 1600,
         showConfirmButton: false,
         background: "#0f172a",
         color: "#f8fafc"
@@ -422,9 +436,9 @@ export default function LiquidacionesPage() {
   };
 
   // KPIs consolidados para el rango seleccionado
-  const totalFleteConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.flete_total_bs || 0), 0);
+  const totalFleteConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.flete_total_bruto_bs || l.flete_total_bs || 0), 0);
   const totalLiquidoConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.liquido_pagable_bs || 0), 0);
-  const totalDeduccionesConsolidado = Math.max(0, totalFleteConsolidado - totalLiquidoConsolidado);
+  const totalDeduccionesConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.total_descuentos_bs ?? Math.max(0, (l.flete_total_bruto_bs || 0) - (l.liquido_pagable_bs || 0))), 0);
 
   return (
     <div className="space-y-6 sm:space-y-7 font-sans selection:bg-amber-500 selection:text-slate-950">
@@ -668,20 +682,31 @@ export default function LiquidacionesPage() {
         </div>
       )}
 
-      {/* Selector rápido de otras cisternas liquidadas en el mes */}
-      {activeLiq && filterMode === "mes" && rangeLiquidaciones.filter(l => l.periodo_mes === periodo && l.placa !== activeLiq.placa).length > 0 && (
+      {/* Selector rápido de otras cisternas en el período */}
+      {activeLiq && (
         <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs no-print">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Otras cisternas liquidadas en {periodo}:</span>
-          {rangeLiquidaciones.filter(l => l.periodo_mes === periodo && l.placa !== activeLiq.placa).map(otherLiq => (
-            <button
-              key={otherLiq.id}
-              type="button"
-              onClick={() => handleViewPlanilla(otherLiq.id)}
-              className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:border-amber-500 border border-slate-200 dark:border-slate-700 font-mono font-bold text-slate-900 dark:text-white text-xs transition hover:scale-105 active:scale-95 shadow-sm"
-            >
-              {otherLiq.placa}
-            </button>
-          ))}
+          <span className="text-slate-500 dark:text-slate-400 font-medium">
+            Planilla activa ({activeFilterLabel || periodo}):
+          </span>
+          <span className="font-mono font-black text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/25">
+            {activeLiq.placa}
+          </span>
+          {placasViajes.filter(p => p !== activeLiq.placa).length > 0 && (
+            <>
+              <span className="text-slate-400 mx-1">|</span>
+              <span className="text-slate-500 dark:text-slate-400">Ver otra cisterna:</span>
+              {placasViajes.filter(p => p !== activeLiq.placa).slice(0, 8).map(otherPlaca => (
+                <button
+                  key={otherPlaca}
+                  type="button"
+                  onClick={() => setSelectedPlaca(otherPlaca)}
+                  className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:border-amber-500 border border-slate-200 dark:border-slate-700 font-mono font-bold text-slate-700 dark:text-slate-200 text-xs transition hover:scale-105 active:scale-95 shadow-sm"
+                >
+                  {otherPlaca}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
 
@@ -691,7 +716,7 @@ export default function LiquidacionesPage() {
           <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
           <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider">Procesando liquidación...</span>
         </div>
-      ) : filterMode !== "mes" && !activeLiq ? (
+      ) : (selectedPlaca === "__TODAS__" || (!selectedPlaca && filterMode !== "mes")) && !activeLiq ? (
         /* ============================================================== */
         /* VISTA CONSOLIDADA DEL PERÍODO (ANUAL, SEMESTRAL, RANGO, TODO) */
         /* ============================================================== */
@@ -812,7 +837,8 @@ export default function LiquidacionesPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                     {rangeLiquidaciones.map((liq) => {
-                      const totalDed = Math.max(0, (liq.flete_total_bs || 0) - (liq.liquido_pagable_bs || 0));
+                      const fleteBruto = liq.flete_total_bruto_bs || liq.flete_total_bs || 0;
+                      const totalDed = liq.total_descuentos_bs ?? Math.max(0, fleteBruto - (liq.liquido_pagable_bs || 0));
                       return (
                         <tr key={liq.id} className="hover:bg-amber-500/5 transition">
                           <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
@@ -827,7 +853,7 @@ export default function LiquidacionesPage() {
                             </span>
                           </td>
                           <td className="py-3 px-4 text-right font-mono font-bold text-amber-600 dark:text-amber-400">
-                            {formatCurrency(liq.flete_total_bs)}
+                            {formatCurrency(fleteBruto)}
                           </td>
                           <td className="py-3 px-4 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
                             {formatCurrency(totalDed)}
@@ -860,21 +886,23 @@ export default function LiquidacionesPage() {
             <FileSpreadsheet className="w-10 h-10" />
           </div>
           <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-            Generación de Planillas Oficiales por Cisterna
+            Planilla Oficial por Cisterna
           </h3>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto mb-6 leading-relaxed">
             {selectedPlaca 
-              ? `No se ha generado aún la liquidación para la placa ${selectedPlaca} en el periodo ${periodo}. Haz clic para calcular fletes y deducciones.`
-              : `Selecciona una placa de la flota y el periodo mensual en los controles superiores para emitir las Hojas 2 y 3 oficiales conforme al formato de auditoría.`
+              ? `No se encontraron despachos registrados para la cisterna ${selectedPlaca} en el período ${activeFilterLabel || periodo}. Selecciona otra cisterna con viajes o ajusta el rango de fechas en los controles superiores.`
+              : `Selecciona una placa de la flota y el período en los controles superiores para emitir las Hojas 2 y 3 oficiales conforme al formato de auditoría.`
             }
           </p>
-          <button
-            onClick={handleGenerate}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs sm:text-sm font-black rounded-xl shadow-xl shadow-amber-500/25 transition transform hover:scale-105 active:scale-95 mb-8"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Generar Planilla Oficial Ahora</span>
-          </button>
+          {selectedPlaca && (
+            <button
+              onClick={handleGenerate}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs sm:text-sm font-black rounded-xl shadow-xl shadow-amber-500/25 transition transform hover:scale-105 active:scale-95 mb-8"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>Consolidar Liquidación ({activeFilterLabel || periodo})</span>
+            </button>
+          )}
 
           {/* Tarjetas de Guía */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-left">
@@ -925,7 +953,7 @@ export default function LiquidacionesPage() {
                     LIQUIDACION DE FLETES
                   </h2>
                   <div className="text-xs font-bold text-slate-600 dark:text-slate-300 print:text-slate-700 mt-1">
-                    MES: <span className="font-black text-amber-600 dark:text-amber-400 print:text-blue-800 uppercase">{activeLiq.periodo_mes}</span>
+                    PERIODO: <span className="font-black text-amber-600 dark:text-amber-400 print:text-blue-800 uppercase">{activeLiq.periodo_mes}</span>
                   </div>
                   <div className="text-xs font-bold text-slate-600 dark:text-slate-300 print:text-slate-700">
                     PLACA: <span className="font-mono font-black text-slate-900 dark:text-white print:text-slate-950 text-sm">{activeLiq.placa}</span>

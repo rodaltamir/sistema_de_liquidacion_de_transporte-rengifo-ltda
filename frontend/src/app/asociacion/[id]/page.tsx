@@ -29,6 +29,7 @@ import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
 import ThemeToggle from "@/components/ThemeToggle";
+import DatePeriodFilter, { DateFilterChangeEvent, FilterMode } from "@/components/DatePeriodFilter";
 
 export default function AsociacionDetallePage() {
   return (
@@ -56,21 +57,25 @@ function AsociacionDetalleContent() {
   const [resumenStats, setResumenStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Estado para la liquidación general
-  const [periodoMes, setPeriodoMes] = useState("2025-10");
+  // Filtros unificados de periodo de tiempo (Mensual, Semestral, Anual, Personalizado, Todo)
+  const currentYear = new Date().getFullYear();
+  const [filterMode, setFilterMode] = useState<FilterMode>("anual");
+  const [activeFilterLabel, setActiveFilterLabel] = useState(`Gestión ${currentYear} (Anual)`);
+  const [dateFilterQuery, setDateFilterQuery] = useState(`anio=${currentYear}`);
+  const [periodoMes, setPeriodoMes] = useState(`ANUAL-${currentYear}`);
   const [liqData, setLiqData] = useState<any>(null);
   const [loadingLiq, setLoadingLiq] = useState(false);
 
   useEffect(() => {
     loadAsociacion();
-    loadResumen();
   }, [asocId]);
 
   useEffect(() => {
+    loadResumen();
     if (activeTab === "liquidacion") {
       loadLiquidacionGeneral();
     }
-  }, [activeTab, periodoMes]);
+  }, [asocId, activeTab, filterMode, dateFilterQuery, periodoMes]);
 
   const loadAsociacion = async () => {
     try {
@@ -90,9 +95,45 @@ function AsociacionDetalleContent() {
     }
   };
 
+  const handleDateFilterChange = (filter: DateFilterChangeEvent) => {
+    setFilterMode(filter.mode);
+    setActiveFilterLabel(filter.label);
+
+    if (filter.mode === "mes" && filter.periodo_mes) {
+      setPeriodoMes(filter.periodo_mes);
+      setDateFilterQuery(`periodo_mes=${filter.periodo_mes}`);
+    } else if (filter.mode === "semestral") {
+      const q = [
+        filter.anio ? `anio=${filter.anio}` : "",
+        filter.semestre ? `semestre=${filter.semestre}` : "",
+        filter.fecha_desde ? `fecha_desde=${filter.fecha_desde}` : "",
+        filter.fecha_hasta ? `fecha_hasta=${filter.fecha_hasta}` : ""
+      ].filter(Boolean).join("&");
+      setDateFilterQuery(q);
+      if (filter.anio && filter.semestre) {
+        setPeriodoMes(`${filter.anio}-S${filter.semestre}`);
+      }
+    } else if (filter.mode === "anual" && filter.anio) {
+      setDateFilterQuery(`anio=${filter.anio}`);
+      setPeriodoMes(`ANUAL-${filter.anio}`);
+    } else if (filter.mode === "personalizado" && filter.fecha_desde && filter.fecha_hasta) {
+      setDateFilterQuery(`fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`);
+      setPeriodoMes(`${filter.fecha_desde}_${filter.fecha_hasta}`);
+    } else if (filter.mode === "historico") {
+      setDateFilterQuery("");
+      setPeriodoMes("");
+    }
+  };
+
   const loadResumen = async () => {
     try {
-      const stats = await apiFetch(`/asociaciones/${asocId}/resumen`);
+      const qParams: string[] = [`tipo_periodo=${filterMode}`];
+      if (dateFilterQuery) {
+        qParams.push(dateFilterQuery);
+      } else if (periodoMes) {
+        qParams.push(`periodo_mes=${periodoMes}`);
+      }
+      const stats = await apiFetch(`/asociaciones/${asocId}/resumen?${qParams.join("&")}`);
       setResumenStats(stats);
     } catch (err) {
       console.warn("No se pudieron cargar estadísticas resumidas de la asociación", err);
@@ -102,7 +143,13 @@ function AsociacionDetalleContent() {
   const loadLiquidacionGeneral = async () => {
     setLoadingLiq(true);
     try {
-      const data = await apiFetch(`/asociaciones/${asocId}/liquidacion-general?periodo_mes=${periodoMes}`);
+      const qParams: string[] = [`tipo_periodo=${filterMode}`];
+      if (dateFilterQuery) {
+        qParams.push(dateFilterQuery);
+      } else if (periodoMes) {
+        qParams.push(`periodo_mes=${periodoMes}`);
+      }
+      const data = await apiFetch(`/asociaciones/${asocId}/liquidacion-general?${qParams.join("&")}`);
       setLiqData(data);
     } catch (err: any) {
       console.error(err);
@@ -113,11 +160,18 @@ function AsociacionDetalleContent() {
 
   const downloadExcel = async () => {
     try {
-      const blob = await apiFetch(`/asociaciones/${asocId}/export/excel?periodo_mes=${periodoMes}`);
+      const qParams: string[] = [`tipo_periodo=${filterMode}`];
+      if (dateFilterQuery) {
+        qParams.push(dateFilterQuery);
+      } else if (periodoMes) {
+        qParams.push(`periodo_mes=${periodoMes}`);
+      }
+      const blob = await apiFetch(`/asociaciones/${asocId}/export/excel?${qParams.join("&")}`);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Liquidacion_Asociacion_${periodoMes}.xlsx`;
+      const safeLabel = (liqData?.periodo_mes || activeFilterLabel || periodoMes || "General").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "");
+      a.download = `Liquidacion_Asociacion_${(asociacion?.name || asocId).replace(/\s+/g, "_")}_${safeLabel}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -136,11 +190,18 @@ function AsociacionDetalleContent() {
 
   const downloadPDF = async () => {
     try {
-      const blob = await apiFetch(`/asociaciones/${asocId}/export/pdf?periodo_mes=${periodoMes}`);
+      const qParams: string[] = [`tipo_periodo=${filterMode}`];
+      if (dateFilterQuery) {
+        qParams.push(dateFilterQuery);
+      } else if (periodoMes) {
+        qParams.push(`periodo_mes=${periodoMes}`);
+      }
+      const blob = await apiFetch(`/asociaciones/${asocId}/export/pdf?${qParams.join("&")}`);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Liquidacion_Asociacion_${periodoMes}.pdf`;
+      const safeLabel = (liqData?.periodo_mes || activeFilterLabel || periodoMes || "General").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "");
+      a.download = `Liquidacion_Asociacion_${(asociacion?.name || asocId).replace(/\s+/g, "_")}_${safeLabel}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -205,19 +266,33 @@ function AsociacionDetalleContent() {
               <Building2 className="w-6 h-6 text-amber-500" />
             </div>
 
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white line-clamp-1">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white break-words" title={asociacion.name}>
                   {asociacion.name}
                 </h1>
                 {asociacion.sigla && (
-                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex-shrink-0">
                     {asociacion.sigla}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                NIT: <span className="font-mono text-slate-700 dark:text-slate-300 font-semibold">{asociacion.nit || "S/N"}</span> &bull; Rep. Legal: <span className="text-slate-700 dark:text-slate-300 font-medium">{asociacion.representante_legal || "No asignado"}</span>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  {asociacion.empresas?.length || 0} empresas afiliadas
+                </span>
+                {asociacion.representante_legal && (
+                  <>
+                    <span>&bull;</span>
+                    <span>Rep. Legal: <strong className="text-slate-700 dark:text-slate-300">{asociacion.representante_legal}</strong></span>
+                  </>
+                )}
+                {asociacion.direccion && (
+                  <>
+                    <span>&bull;</span>
+                    <span className="text-slate-400">{asociacion.direccion}</span>
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -423,7 +498,7 @@ function AsociacionDetalleContent() {
                         </span>
                       </div>
 
-                      <h3 className="text-lg font-black text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition line-clamp-2">
+                      <h3 className="text-lg font-black text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition break-words leading-snug">
                         {emp.name}
                       </h3>
 
@@ -465,18 +540,24 @@ function AsociacionDetalleContent() {
         {activeTab === "liquidacion" && (
           <section className="space-y-6">
             
-            {/* Barra superior de controles */}
+            {/* Filtro Unificado de Fechas y Períodos (Mensual, Semestral, Anual, Personalizado, Histórico) */}
+            <div className="no-print">
+              <DatePeriodFilter
+                initialMode={filterMode}
+                currentPeriodoMes={periodoMes.startsWith("ANUAL-") ? undefined : periodoMes}
+                onChange={handleDateFilterChange}
+              />
+            </div>
+
+            {/* Barra superior de controles y exportación */}
             <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm dark:shadow-xl flex flex-col lg:flex-row items-center justify-between gap-4 no-print">
               <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
                   <Calendar className="w-4 h-4 text-amber-500" />
-                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Periodo Mes:</span>
-                  <input
-                    type="month"
-                    value={periodoMes}
-                    onChange={(e) => setPeriodoMes(e.target.value)}
-                    className="bg-transparent text-slate-800 dark:text-white text-xs font-bold focus:outline-none cursor-pointer"
-                  />
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">Período Activo:</span>
+                  <span className="text-slate-900 dark:text-white font-bold">
+                    {activeFilterLabel || liqData?.periodo_mes || periodoMes || "Todo"}
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs font-medium">
@@ -537,7 +618,7 @@ function AsociacionDetalleContent() {
 
                   <div className="text-right">
                     <div className="text-xs font-bold text-slate-600 dark:text-slate-300 print:text-slate-700">
-                      Periodo de Descarga: <span className="text-amber-600 dark:text-amber-400 print:text-blue-700 uppercase font-black">{periodoMes}</span>
+                      Periodo de Descarga: <span className="text-amber-600 dark:text-amber-400 print:text-blue-700 uppercase font-black">{liqData?.periodo_mes || activeFilterLabel || periodoMes || "GENERAL"}</span>
                     </div>
                     <div className="text-[11px] text-slate-500 dark:text-slate-400 print:text-slate-500">
                       Unidad de Pagos, Conciliaciones y Aduanas - UPCA
@@ -550,7 +631,7 @@ function AsociacionDetalleContent() {
                     LIQUIDACIÓN OFICIAL
                   </h2>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 print:text-slate-600 font-semibold italic">
-                    (A LA FINALIZACIÓN DE LA PRESTACIÓN DEL SERVICIO DEL PERIODO {periodoMes.toUpperCase()} Y DESPUÉS DE REALIZADA LA CONCILIACIÓN)
+                    (A LA FINALIZACIÓN DE LA PRESTACIÓN DEL SERVICIO DEL PERIODO {(liqData?.periodo_mes || activeFilterLabel || periodoMes || "GENERAL").toUpperCase()} Y DESPUÉS DE REALIZADA LA CONCILIACIÓN)
                   </p>
                 </div>
               </div>

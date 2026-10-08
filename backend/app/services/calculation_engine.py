@@ -1,5 +1,32 @@
-from typing import Dict, Any, List
+import calendar
+from datetime import date
+from typing import Dict, Any, List, Optional
 from app.models.tenant import ParametroLiquidacion
+
+def determine_trip_period(date_carga: date, date_descarga: Optional[date] = None) -> str:
+    """
+    Determina el periodo mensual único (YYYY-MM) al que pertenece un viaje.
+    Regla de holgura de 1-2 días:
+    Si la fecha de carga ocurre al final del mes (con holgura de 1 a 2 días respecto al fin de mes,
+    ej. días 27-28 en febrero de 28 días, o 29-30/30-31 en otros meses)
+    y la descarga ocurre en el mes posterior (ej. 3 de marzo), el viaje se consolida en el mes de descarga.
+    Garantiza que ningún viaje quede dividido entre dos meses ni duplicado.
+    """
+    if not date_carga:
+        return date.today().strftime("%Y-%m")
+    if not date_descarga:
+        return f"{date_carga.year}-{str(date_carga.month).zfill(2)}"
+    
+    if date_carga.year == date_descarga.year and date_carga.month == date_descarga.month:
+        return f"{date_carga.year}-{str(date_carga.month).zfill(2)}"
+    
+    last_day_carga = calendar.monthrange(date_carga.year, date_carga.month)[1]
+    dias_restantes_carga = last_day_carga - date_carga.day
+    
+    if dias_restantes_carga <= 2:
+        return f"{date_descarga.year}-{str(date_descarga.month).zfill(2)}"
+    
+    return f"{date_descarga.year}-{str(date_descarga.month).zfill(2)}"
 
 def get_tolerancia_pct(producto: str, params: ParametroLiquidacion) -> float:
     """

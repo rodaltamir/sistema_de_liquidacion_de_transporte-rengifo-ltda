@@ -792,7 +792,7 @@ export default function SeleccionarAsociacionPage() {
                           <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400/90 bg-blue-500/10 px-2.5 py-0.5 rounded-full border border-blue-500/20 inline-block">
                             Asociación Gremial
                           </span>
-                          <h4 className="text-base font-extrabold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors leading-snug line-clamp-1 mt-0.5">
+                          <h4 className="text-base font-extrabold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors leading-snug break-words mt-0.5">
                             {asoc.name}
                           </h4>
                         </div>
@@ -906,7 +906,7 @@ export default function SeleccionarAsociacionPage() {
                               </span>
                             )}
                           </div>
-                          <h4 className="text-base font-extrabold text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors leading-snug line-clamp-1 mt-0.5">
+                          <h4 className="text-base font-extrabold text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors leading-snug break-words mt-0.5">
                             {emp.name}
                           </h4>
                         </div>

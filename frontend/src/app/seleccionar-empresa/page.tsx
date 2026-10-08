@@ -617,7 +617,7 @@ function SeleccionarEmpresaContent() {
                               </span>
                             )}
                           </div>
-                          <h4 className="text-base font-extrabold text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors leading-snug line-clamp-1 mt-0.5">
+                          <h4 className="text-base font-extrabold text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors leading-snug break-words mt-0.5">
                             {emp.name}
                           </h4>
                         </div>

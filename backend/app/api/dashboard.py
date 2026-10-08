@@ -54,13 +54,17 @@ def get_dashboard_metrics(
             query_liq = query_liq.filter(Liquidacion.periodo_mes == periodo_mes)
             label_periodo = periodo_mes
         else:
+            # Por defecto mostrar consolidado anual (de los periodos con datos o el año actual)
             if periodos_disponibles:
-                periodo_mes = periodos_disponibles[0]["periodo_mes"]
+                try:
+                    target_year = int(periodos_disponibles[0]["periodo_mes"].split("-")[0])
+                except Exception:
+                    target_year = datetime.now().year
             else:
-                periodo_mes = datetime.now().strftime("%Y-%m")
-            query_viajes = query_viajes.filter(Viaje.periodo_mes == periodo_mes)
-            query_liq = query_liq.filter(Liquidacion.periodo_mes == periodo_mes)
-            label_periodo = periodo_mes
+                target_year = datetime.now().year
+            query_viajes = query_viajes.filter(Viaje.periodo_mes.startswith(f"{target_year}-"))
+            query_liq = query_liq.filter(Liquidacion.periodo_mes.startswith(f"{target_year}-"))
+            label_periodo = f"Gestión {target_year} (Anual)"
 
         viajes_mes = query_viajes.all()
         

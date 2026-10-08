@@ -4,11 +4,17 @@ from datetime import date, datetime
 from app.schemas.viaje import ViajeResponse
 
 class LiquidacionCreate(BaseModel):
-    periodo_mes: str  # YYYY-MM ej "2023-03"
+    periodo_mes: str  # YYYY-MM ej "2023-03", o "ANUAL-2023", "2023-S1", etc.
     placa: str        # ej "4412-DPC"
+    tipo_periodo: Optional[str] = "mes" # "mes", "semestral", "anual", "personalizado"
+    anio: Optional[int] = None
+    semestre: Optional[int] = None
+    fecha_desde: Optional[date] = None
+    fecha_hasta: Optional[date] = None
     fecha_emision: Optional[date] = None
     notas: Optional[str] = None
     # Deducciones opcionales personalizadas (si se desea modificar los valores estándar)
+    desc_merma_bs: Optional[float] = None
     desc_comision_usd_m3_bs: Optional[float] = None
     desc_comision_7pct_bs: Optional[float] = None
     desc_comision_ypfb_bolgart_7pct_bs: Optional[float] = None

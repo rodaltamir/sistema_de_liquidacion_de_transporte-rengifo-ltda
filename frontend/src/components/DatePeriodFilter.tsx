@@ -37,6 +37,7 @@ export interface DateFilterChangeEvent {
 
 interface DatePeriodFilterProps {
   currentPeriodoMes?: string;
+  initialMode?: FilterMode;
   periodosDisponibles?: (string | PeriodoInfo)[];
   onChange: (filter: DateFilterChangeEvent) => void;
   className?: string;
@@ -60,6 +61,7 @@ const MESES_NOMBRES = [
 
 export default function DatePeriodFilter({
   currentPeriodoMes,
+  initialMode = "mes",
   periodosDisponibles = [],
   onChange,
   className = "",
@@ -79,7 +81,7 @@ export default function DatePeriodFilter({
     ? currentPeriodoMes.split("-")[1] 
     : currentRealMonth;
 
-  const [mode, setMode] = useState<FilterMode>("mes");
+  const [mode, setMode] = useState<FilterMode>(initialMode);
   const [selectedYear, setSelectedYear] = useState<number>(initialYear);
   const [selectedMonth, setSelectedMonth] = useState<string>(initialMonth);
   const [selectedSemester, setSelectedSemester] = useState<1 | 2>(parseInt(initialMonth, 10) <= 6 ? 1 : 2);

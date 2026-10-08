@@ -31,10 +31,11 @@ export default function EmpresaDashboardPage() {
   const routeParams = useParams();
   const schema = (routeParams?.schema as string) || "";
 
+  const currentYear = new Date().getFullYear();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [currentFilterQuery, setCurrentFilterQuery] = useState("");
-  const [activeLabel, setActiveLabel] = useState("");
+  const [currentFilterQuery, setCurrentFilterQuery] = useState(`anio=${currentYear}`);
+  const [activeLabel, setActiveLabel] = useState(`Gestión ${currentYear}`);
 
   const loadDashboard = async (query = "") => {
     setLoading(true);
@@ -129,6 +130,7 @@ export default function EmpresaDashboardPage() {
       {/* FILTROS DE FECHA Y VISUALIZADOR DE MESES INTERACTIVO     */}
       {/* ======================================================== */}
       <DatePeriodFilter
+        initialMode="anual"
         currentPeriodoMes={data?.periodo_activo}
         periodosDisponibles={data?.periodos_disponibles || []}
         onChange={handleFilterChange}
