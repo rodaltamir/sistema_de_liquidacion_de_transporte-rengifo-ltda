@@ -22,7 +22,8 @@ import {
   TrendingDown,
   ArrowLeft,
   Eye,
-  BarChart3
+  BarChart3,
+  Scale
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
@@ -441,33 +442,76 @@ export default function LiquidacionesPage() {
   const totalDeduccionesConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.total_descuentos_bs ?? Math.max(0, (l.flete_total_bruto_bs || 0) - (l.liquido_pagable_bs || 0))), 0);
 
   return (
-    <div className="space-y-6 sm:space-y-7 font-sans selection:bg-amber-500 selection:text-slate-950">
+    <div className="space-y-4 font-sans selection:bg-amber-500 selection:text-slate-950">
       
-      {/* Encabezado y Acción Principal (Tarjeta Banner Ejecutiva) */}
-      <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-md shadow-lg dark:shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-5 no-print transition-colors duration-200">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/30 flex items-center justify-center flex-shrink-0 shadow-md shadow-amber-500/10">
-            <FileSpreadsheet className="w-6 h-6" />
+      {/* Encabezado Sleek & Intuitivo */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-4 shadow-sm no-print">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center justify-center flex-shrink-0">
+            <FileSpreadsheet className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                Planillas Oficiales de Liquidación por Camión
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+                Planillas de Liquidación
               </h1>
-              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25">
-                Hojas 2 y 3 Oficiales
-              </span>
+              {activeLiq && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  {activeLiq.codigo}
+                </span>
+              )}
             </div>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-              Generación oficial fiel al formato Excel con detalle de 17 columnas de fletes, deducciones normativas y firmas
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Detalle de fletes, cálculo de mermas y liquidación oficial neta por cisterna.
             </p>
           </div>
         </div>
 
+        {/* Acciones de exportación directas si hay liquidación activa */}
         {activeLiq && (
-          <div className="flex items-center gap-2 text-xs font-mono bg-slate-50 dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 self-start md:self-auto">
-            <span className="text-slate-500 dark:text-slate-400">Liquidación:</span>
-            <span className="text-amber-600 dark:text-amber-400 font-bold">{activeLiq.codigo}</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={downloadExcel}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition active:scale-95"
+              title="Descargar Excel oficial (.xlsx)"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Excel</span>
+            </button>
+
+            <button
+              onClick={downloadPDF}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-sm transition active:scale-95"
+              title="Descargar PDF"
+            >
+              <Download className="w-4 h-4" />
+              <span>PDF</span>
+            </button>
+
+            <button
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition active:scale-95"
+              title="Imprimir"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Imprimir</span>
+            </button>
+
+            <button
+              onClick={openAdjustModal}
+              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-amber-600 dark:text-amber-400 border border-slate-200 dark:border-slate-700 transition"
+              title="Ajustar deducciones"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={handleDeleteLiquidacion}
+              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700 transition"
+              title="Eliminar liquidación"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
           </div>
         )}
       </div>
@@ -481,21 +525,23 @@ export default function LiquidacionesPage() {
         />
       </div>
 
-      {/* Barra de Controles y Generación */}
-      <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col lg:flex-row items-center justify-between gap-4 no-print transition-colors duration-200">
-        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-          {/* Indicador de Período Activo Unificado (Sin pedir fecha dos veces) */}
-          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-            <Calendar className="w-4 h-4 text-amber-500" />
-            <span className="text-slate-500 dark:text-slate-400 font-medium">Período:</span>
-            <span className="text-slate-900 dark:text-white font-bold">
-              {activeFilterLabel || periodo}
-            </span>
-          </div>
+      {/* Barra de Controles y Selección de Cisterna */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 sm:p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shadow-sm no-print">
+        <div className="flex items-center gap-2 flex-wrap">
+          {filterMode !== "mes" && activeLiq && (
+            <button
+              type="button"
+              onClick={() => setActiveLiq(null)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-200 text-xs font-bold transition border border-slate-200 dark:border-slate-700"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Consolidado</span>
+            </button>
+          )}
 
           {/* Placa */}
-          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-            <Truck className="w-4 h-4 text-amber-500" />
+          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs">
+            <Truck className="w-3.5 h-3.5 text-amber-500" />
             <span className="text-slate-500 dark:text-slate-400 font-medium">Placa:</span>
             {!manualPlaca && (unidades.length > 0 || unidadesApoyo.length > 0 || placasViajes.length > 0) ? (
               <select
@@ -571,142 +617,91 @@ export default function LiquidacionesPage() {
 
           <button
             onClick={handleGenerate}
-            className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs sm:text-sm font-black rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-2 transition transform active:scale-95"
+            className="px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-lg shadow-sm flex items-center gap-1.5 transition active:scale-95"
           >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Generar / Actualizar Liquidación</span>
+            <Plus className="w-3.5 h-3.5 stroke-[3]" />
+            <span>Generar Liquidación</span>
           </button>
         </div>
 
-        {/* Acciones de Exportación si hay liquidación activa */}
+        {/* Pestañas de Visualización */}
         {activeLiq && (
-          <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto justify-end">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold">
             <button
-              onClick={downloadExcel}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-900/30 flex items-center gap-1.5 transition active:scale-95"
-              title="Descargar archivo Excel con ambas pestañas"
+              onClick={() => setActiveTab("ambas")}
+              className={`px-2.5 py-1 rounded-md transition text-[11px] ${
+                activeTab === "ambas" 
+                  ? "bg-amber-500 text-slate-950 font-bold shadow-xs" 
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
             >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Excel (.xlsx)</span>
+              Completa (Hojas 1 y 2)
             </button>
-
             <button
-              onClick={downloadPDF}
-              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-900/30 flex items-center gap-1.5 transition active:scale-95"
-              title="Descargar reporte en formato PDF"
+              onClick={() => setActiveTab("hoja1")}
+              className={`px-2.5 py-1 rounded-md transition text-[11px] ${
+                activeTab === "hoja1" 
+                  ? "bg-amber-500 text-slate-950 font-bold shadow-xs" 
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
             >
-              <Download className="w-4 h-4" />
-              <span>PDF</span>
+              Hoja 1 (Fletes)
             </button>
-
             <button
-              onClick={() => window.print()}
-              className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition active:scale-95"
-              title="Imprimir formato oficial"
+              onClick={() => setActiveTab("hoja2")}
+              className={`px-2.5 py-1 rounded-md transition text-[11px] ${
+                activeTab === "hoja2" 
+                  ? "bg-amber-500 text-slate-950 font-bold shadow-xs" 
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
             >
-              <Printer className="w-4 h-4" />
-              <span>Imprimir</span>
-            </button>
-
-            <button
-              onClick={openAdjustModal}
-              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-amber-600 dark:text-amber-400 border border-slate-200 dark:border-slate-700 transition"
-              title="Ajustar deducciones manualmente"
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={handleDeleteLiquidacion}
-              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-500/20 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700 transition"
-              title="Eliminar liquidación"
-            >
-              <Trash2 className="w-4 h-4" />
+              Hoja 2 (Descuentos)
             </button>
           </div>
         )}
       </div>
 
-      {/* Selector de Pestañas de Visualización */}
+      {/* Resumen Ejecutivo de la Liquidación Activa (3 Tarjetas Claras) */}
       {activeLiq && (
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 no-print">
-          <div className="flex flex-wrap items-center gap-3">
-            {filterMode !== "mes" && (
-              <button
-                type="button"
-                onClick={() => setActiveLiq(null)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-200 text-xs font-bold transition border border-slate-200 dark:border-slate-700 shadow-sm"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Volver al Consolidado</span>
-              </button>
-            )}
-
-            <div className="flex items-center bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-bold">
-              <button
-                onClick={() => setActiveTab("ambas")}
-                className={`px-3.5 py-1.5 rounded-xl transition ${
-                  activeTab === "ambas" 
-                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20" 
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
-                Planilla Completa (Hojas 2 y 3)
-              </button>
-              <button
-                onClick={() => setActiveTab("hoja1")}
-                className={`px-3.5 py-1.5 rounded-xl transition ${
-                  activeTab === "hoja1" 
-                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20" 
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
-                Hoja 1: Detalle de Fletes (Pág. 2)
-              </button>
-              <button
-                onClick={() => setActiveTab("hoja2")}
-                className={`px-3.5 py-1.5 rounded-xl transition ${
-                  activeTab === "hoja2" 
-                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20" 
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
-                Hoja 2: Deducciones y Líquido (Pág. 3)
-              </button>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 no-print">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Flete Bruto</span>
+              <div className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 font-mono mt-0.5">
+                {formatCurrency(activeLiq.flete_total_bruto_bs)}
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">{activeLiq.total_viajes || 0} viajes en {activeLiq.periodo_mes}</span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 flex-shrink-0">
+              <DollarSign className="w-4.5 h-4.5" />
             </div>
           </div>
 
-          <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-            Código: <span className="text-amber-600 dark:text-amber-400 font-bold">{activeLiq.codigo}</span>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Deducciones</span>
+              <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 font-mono mt-0.5">
+                {formatCurrency(activeLiq.total_descuentos_bs)}
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">Mermas y comisiones</span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 flex-shrink-0">
+              <Scale className="w-4.5 h-4.5" />
+            </div>
           </div>
-        </div>
-      )}
 
-      {/* Selector rápido de otras cisternas en el período */}
-      {activeLiq && (
-        <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs no-print">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">
-            Planilla activa ({activeFilterLabel || periodo}):
-          </span>
-          <span className="font-mono font-black text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/25">
-            {activeLiq.placa}
-          </span>
-          {placasViajes.filter(p => p !== activeLiq.placa).length > 0 && (
-            <>
-              <span className="text-slate-400 mx-1">|</span>
-              <span className="text-slate-500 dark:text-slate-400">Ver otra cisterna:</span>
-              {placasViajes.filter(p => p !== activeLiq.placa).slice(0, 8).map(otherPlaca => (
-                <button
-                  key={otherPlaca}
-                  type="button"
-                  onClick={() => setSelectedPlaca(otherPlaca)}
-                  className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:border-amber-500 border border-slate-200 dark:border-slate-700 font-mono font-bold text-slate-700 dark:text-slate-200 text-xs transition hover:scale-105 active:scale-95 shadow-sm"
-                >
-                  {otherPlaca}
-                </button>
-              ))}
-            </>
-          )}
+          <div className="bg-white dark:bg-slate-900 border border-emerald-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-emerald-50/10">
+            <div>
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Líquido Pagable</span>
+              <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
+                {formatCurrency(activeLiq.liquido_pagable_bs)}
+              </div>
+              <span className="text-[10px] text-emerald-600/80 font-medium">Monto neto oficial</span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-500 flex-shrink-0">
+              <CheckCircle2 className="w-4.5 h-4.5" />
+            </div>
+          </div>
         </div>
       )}
 

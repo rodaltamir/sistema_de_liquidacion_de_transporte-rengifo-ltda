@@ -352,6 +352,14 @@ def export_liquidacion_asociacion_pdf(asociacion_name: str, periodo_mes: str, gr
         sub_imp = 0.0
 
         for v in viajes:
+            p_raw = str(v.get("producto", "")).strip().upper()
+            if any(k in p_raw for k in ["DIESEL", "GASOLINA", "DO", "GE", "COMBUSTIBLE"]):
+                p_code = "DO"
+            elif any(k in p_raw for k in ["INSUMO", "ADITIV", "IYA"]):
+                p_code = "IYA"
+            else:
+                p_code = p_raw or "DO"
+
             desp = float(v.get("volumen_origen_litros", 0))
             rec = float(v.get("volumen_recepcionado_litros", 0))
             mreal = float(v.get("merma_real_litros", 0))
@@ -373,7 +381,7 @@ def export_liquidacion_asociacion_pdf(asociacion_name: str, periodo_mes: str, gr
                 Paragraph(v.get("lote_codigo", "-"), cell_style),
                 Paragraph(emp_name, cell_style),
                 Paragraph(v.get("tramo", ""), cell_style),
-                Paragraph(v.get("producto", ""), cell_style),
+                Paragraph(p_code, cell_style),
                 Paragraph(v.get("placa", ""), cell_style),
                 Paragraph(str(v.get("fecha_carga", "")), cell_style),
                 Paragraph(str(v.get("fecha_descarga", "")), cell_style),
@@ -436,7 +444,18 @@ def export_liquidacion_asociacion_pdf(asociacion_name: str, periodo_mes: str, gr
         ('BOTTOMPADDING', (0,0), (-1,-1), 2),
     ]))
     story.append(table)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 8))
+
+    legend_style = ParagraphStyle(
+        'LegendStyle',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=10,
+        fontName='Helvetica-Bold',
+        textColor=colors.HexColor('#0F172A')
+    )
+    story.append(Paragraph("<b>DO = Diesel</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>IYA = Insumos y Aditivos</b>", legend_style))
+    story.append(Spacer(1, 6))
 
     legal_style = ParagraphStyle(
         'LegalFoot',

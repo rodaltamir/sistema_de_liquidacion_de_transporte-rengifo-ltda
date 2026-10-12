@@ -788,52 +788,52 @@ function ViajesContent() {
   const totalFleteBs = filtered.reduce((acc, v) => acc + (v.flete_total_bs || 0), 0);
 
   return (
-    <div className="space-y-6 sm:space-y-7 font-sans selection:bg-amber-500 selection:text-slate-950">
+    <div className="space-y-4 font-sans selection:bg-amber-500 selection:text-slate-950">
       
-      {/* Encabezado y Acciones Principales (Tarjeta Banner Ejecutiva) */}
-      <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-md shadow-sm dark:shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-5">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center justify-center flex-shrink-0 shadow-md shadow-amber-500/10">
-            <Navigation className="w-6 h-6" />
+      {/* Encabezado y Acciones Principales (Sleek & Intuitivo) */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center flex-shrink-0">
+            <Navigation className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                Registro y Control de Viajes
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+                Control de Viajes y Fletes
               </h1>
-              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25">
-                {filtered.length} {filtered.length === 1 ? "Viaje" : "Viajes"}
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                {filtered.length} {filtered.length === 1 ? "viaje" : "viajes"}
               </span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-              Fletes en Bs, control de volúmenes en destino y cálculo automático de mermas contractuales YPFB (0.35%)
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Despachos, volúmenes de combustible, fletes en Bs y mermas contractuales YPFB.
             </p>
           </div>
         </div>
 
         {/* Acciones: Plantilla, Importar y Nuevo Viaje */}
-        <div className="flex flex-wrap items-center gap-2.5 self-start md:self-auto">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={downloadTemplate}
-            className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-950 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white text-xs font-bold border border-slate-200 dark:border-slate-800 transition active:scale-95"
-            title="Descargar plantilla oficial de Excel para carga masiva de viajes"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition"
+            title="Descargar plantilla oficial de Excel"
           >
-            <Download className="w-4 h-4 text-amber-500" />
-            <span>Plantilla Excel</span>
+            <Download className="w-3.5 h-3.5 text-amber-500" />
+            <span>Plantilla</span>
           </button>
 
           <button
             onClick={() => setShowImportModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-900/30 transition active:scale-95"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm transition active:scale-95"
             title="Subir archivo Excel con lista de despachos"
           >
-            <Upload className="w-4 h-4" />
-            <span>Importar Excel</span>
+            <Upload className="w-3.5 h-3.5" />
+            <span>Importar</span>
           </button>
 
           <button
             onClick={openCreateModal}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs sm:text-sm font-black shadow-lg shadow-amber-500/20 transition transform active:scale-95"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-bold shadow-md shadow-amber-500/20 transition active:scale-95"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
             <span>Nuevo Viaje</span>
@@ -848,123 +848,71 @@ function ViajesContent() {
         onChange={handleDateFilterChange}
       />
 
-      {/* Barra de Métricas Sumatorias (KPIs Simétricos) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        
-        {/* Card 1: Viajes Visibles */}
-        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Viajes Visibles</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 group-hover:scale-105 transition-transform">
-              <Navigation className="w-4.5 h-4.5" />
-            </div>
-          </div>
-          <div className="my-2.5">
-            <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-              {filtered.length}
-            </div>
-          </div>
-          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Despachos</span>
-            <span className="font-semibold text-slate-700 dark:text-slate-300">Periodo actual</span>
-          </div>
-        </div>
-
-        {/* Card 2: Vol. Despachado */}
-        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-sky-500/40 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Vol. Despachado</span>
-            <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-500 group-hover:scale-105 transition-transform">
-              <Fuel className="w-4.5 h-4.5" />
-            </div>
-          </div>
-          <div className="my-2.5">
-            <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight font-mono">
-              {formatNumber(totalDespachado, 0)} <span className="text-xs font-bold text-slate-400">L</span>
-            </div>
-          </div>
-          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Volumen origen</span>
-            <span className="font-bold text-sky-600 dark:text-sky-400">{(totalDespachado / 1000).toFixed(2)} m³</span>
-          </div>
-        </div>
-
-        {/* Card 3: Vol. Recepcionado */}
-        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/40 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Vol. Recepcionado</span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 group-hover:scale-105 transition-transform">
-              <CheckCircle2 className="w-4.5 h-4.5" />
-            </div>
-          </div>
-          <div className="my-2.5">
-            <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight font-mono">
-              {formatNumber(totalRecepcionado, 0)} <span className="text-xs font-bold text-slate-400">L</span>
-            </div>
-          </div>
-          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Volumen destino</span>
-            <span className="font-bold text-emerald-600 dark:text-emerald-400">{(totalRecepcionado / 1000).toFixed(2)} m³</span>
-          </div>
-        </div>
-
-        {/* Card 4: Desc. Merma Total */}
-        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-rose-500/40 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Desc. Mermas</span>
-            <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 group-hover:scale-105 transition-transform">
-              <Scale className="w-4.5 h-4.5" />
-            </div>
-          </div>
-          <div className="my-2.5">
-            <div className="text-3xl font-black text-rose-600 dark:text-rose-400 tracking-tight font-mono">
-              {formatCurrency(totalDescMermaBs)}
-            </div>
-          </div>
-          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Merma real</span>
-            <span className="font-bold text-rose-600 dark:text-rose-400">{formatNumber(totalMermaReal, 1)} L</span>
-          </div>
-        </div>
-
-        {/* Card 5: Flete Bruto Total */}
-        <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 rounded-2xl p-5 shadow-lg shadow-slate-200/40 dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group sm:col-span-2 lg:col-span-1">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Flete Bruto</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 group-hover:scale-105 transition-transform">
-              <DollarSign className="w-4.5 h-4.5" />
-            </div>
-          </div>
-          <div className="my-2.5">
-            <div className="text-3xl font-black text-amber-600 dark:text-amber-400 tracking-tight font-mono">
+      {/* Métricas Clave (4 Tarjetas Compactas y Claras en 1 Fila) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Card 1: Flete Bruto Total */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Flete Bruto</span>
+            <div className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 font-mono mt-0.5">
               {formatCurrency(totalFleteBs)}
             </div>
+            <span className="text-[10px] text-slate-400 font-medium">Base de liquidación</span>
           </div>
-          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Base imponible</span>
-            <span className="font-semibold text-amber-600 dark:text-amber-400">Antes de ded.</span>
+          <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 flex-shrink-0">
+            <DollarSign className="w-4.5 h-4.5" />
           </div>
         </div>
 
+        {/* Card 2: Vol. Recepcionado */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Vol. Recepcionado</span>
+            <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
+              {formatNumber(totalRecepcionado, 0)} <span className="text-xs font-bold text-slate-400">L</span>
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium">{(totalRecepcionado / 1000).toFixed(1)} m³ entregados</span>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 flex-shrink-0">
+            <Fuel className="w-4.5 h-4.5" />
+          </div>
+        </div>
+
+        {/* Card 3: Desc. Merma Total */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Desc. Mermas</span>
+            <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 font-mono mt-0.5">
+              {formatCurrency(totalDescMermaBs)}
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium">Merma real: {formatNumber(totalMermaReal, 1)} L</span>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 flex-shrink-0">
+            <Scale className="w-4.5 h-4.5" />
+          </div>
+        </div>
+
+        {/* Card 4: Total Despachos */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Despachos</span>
+            <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono mt-0.5">
+              {filtered.length}
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium">{activeFilterLabel || periodo}</span>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center flex-shrink-0">
+            <Navigation className="w-4.5 h-4.5" />
+          </div>
+        </div>
       </div>
 
-      {/* Barra de Filtros y Búsqueda */}
-      <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 shadow-xl transition-colors duration-200">
-        
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Indicador de Filtro de Fecha */}
-          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-            <Calendar className="w-4 h-4 text-amber-500" />
-            <span className="text-slate-500 dark:text-slate-400 font-medium">Control:</span>
-            <span className="font-bold text-slate-900 dark:text-white">
-              {activeFilterLabel || periodo || "Todos"}
-            </span>
-          </div>
-
+      {/* Barra de Filtros y Búsqueda (Unificada y Limpia) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 sm:p-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Placa */}
-          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-            <Truck className="w-4 h-4 text-amber-500" />
-            <span className="text-slate-500 dark:text-slate-400 font-medium">Placa:</span>
+          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs">
+            <Truck className="w-3.5 h-3.5 text-amber-500" />
             <select
               value={placaFiltro}
               onChange={(e) => setPlacaFiltro(e.target.value)}
@@ -980,14 +928,14 @@ function ViajesContent() {
           </div>
 
           {/* Filtro de Producto */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-bold">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold">
             {["TODOS", "GASOLINA", "DIESEL", "IYA"].map((p) => (
               <button
                 key={p}
                 onClick={() => setProductoFiltro(p)}
-                className={`px-3 py-1.5 rounded-lg transition text-[11px] ${
+                className={`px-2.5 py-1 rounded-md transition text-[11px] ${
                   productoFiltro === p
-                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20 font-black"
+                    ? "bg-amber-500 text-slate-950 font-bold shadow-xs"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
@@ -997,18 +945,17 @@ function ViajesContent() {
           </div>
         </div>
 
-        {/* Buscador Equilibrado */}
-        <div className="relative w-full lg:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+        {/* Buscador Rápido */}
+        <div className="relative w-full md:w-72">
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por MIC, tramo o cliente..."
-            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
+            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500 transition"
           />
         </div>
-
       </div>
 
       {/* Tabla de Viajes o Estado Vacío Intuitivo */}

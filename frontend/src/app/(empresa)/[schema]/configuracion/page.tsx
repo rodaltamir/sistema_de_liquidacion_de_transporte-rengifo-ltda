@@ -84,10 +84,10 @@ export default function ConfiguracionPage() {
     costo_hojas_de_ruta_bs: 240.00,
     costo_gps_bs: 135.00,
     anticipos_otros_pct: 0.0,
-    firma_realizado_por: "JAQUELINE LOVERA TIÑINI",
-    firma_revisado_por: "JOSE LOVERA TIÑINI / GERENTE GENERAL",
-    firma_autorizado_por: "DIRECTORIO",
-    firma_cancelado_por: "TOMASA TIÑINI MITA / APOYO",
+    firma_realizado_por: "",
+    firma_revisado_por: "",
+    firma_autorizado_por: "",
+    firma_cancelado_por: "",
     leyenda_legal: "Conforme lo establece la Ley 843 en su Art. 4 y de acuerdo a la cláusula contractual de Facturación y Pago, el momento en que finalizará la ejecución o la prestación del Servicio se origina después de realizada la Conciliación (Acta de Conformidad por la Comisión de Recepción) y emitida la planilla de Liquidación."
   });
 
@@ -117,10 +117,10 @@ export default function ConfiguracionPage() {
           costo_hojas_de_ruta_bs: paramData.costo_hojas_de_ruta_bs ?? 240.00,
           costo_gps_bs: paramData.costo_gps_bs ?? 135.00,
           anticipos_otros_pct: paramData.anticipos_otros_pct ?? 0.0,
-          firma_realizado_por: paramData.firma_realizado_por || "JAQUELINE LOVERA TIÑINI",
-          firma_revisado_por: paramData.firma_revisado_por || "JOSE LOVERA TIÑINI / GERENTE GENERAL",
-          firma_autorizado_por: paramData.firma_autorizado_por || "DIRECTORIO",
-          firma_cancelado_por: paramData.firma_cancelado_por || "TOMASA TIÑINI MITA / APOYO",
+          firma_realizado_por: paramData.firma_realizado_por || "",
+          firma_revisado_por: paramData.firma_revisado_por || "",
+          firma_autorizado_por: paramData.firma_autorizado_por || "",
+          firma_cancelado_por: paramData.firma_cancelado_por || "",
           leyenda_legal: paramData.leyenda_legal || ""
         });
       }
@@ -1209,75 +1209,6 @@ export default function ConfiguracionPage() {
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Monitoreo Satelital: 135.00 Bs</span>
-              </div>
-            </div>
-          </div>
-
-          {/* BLOQUE 4: FIRMAS AUTORIZADAS */}
-          <div className="bg-white dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl space-y-4 transition-colors duration-200">
-            <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center">
-                <Users className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                  4. Personas Autorizadas para Firmas de Planilla
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Nombres y cargos que se imprimen en los 4 bloques de firma</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  1. Realizado Por:
-                </label>
-                <input
-                  type="text"
-                  value={formData.firma_realizado_por}
-                  onChange={(e) => setFormData({ ...formData, firma_realizado_por: e.target.value })}
-                  placeholder="JAQUELINE LOVERA TIÑINI"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  2. Revisado Por (Gerente General):
-                </label>
-                <input
-                  type="text"
-                  value={formData.firma_revisado_por}
-                  onChange={(e) => setFormData({ ...formData, firma_revisado_por: e.target.value })}
-                  placeholder="JOSE LOVERA TIÑINI / GERENTE GENERAL"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  3. Autorizado Por:
-                </label>
-                <input
-                  type="text"
-                  value={formData.firma_autorizado_por}
-                  onChange={(e) => setFormData({ ...formData, firma_autorizado_por: e.target.value })}
-                  placeholder="DIRECTORIO"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  4. Cancelado Por (Apoyo Administrativo):
-                </label>
-                <input
-                  type="text"
-                  value={formData.firma_cancelado_por}
-                  onChange={(e) => setFormData({ ...formData, firma_cancelado_por: e.target.value })}
-                  placeholder="TOMASA TIÑINI MITA / APOYO"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-amber-500"
-                />
               </div>
             </div>
           </div>

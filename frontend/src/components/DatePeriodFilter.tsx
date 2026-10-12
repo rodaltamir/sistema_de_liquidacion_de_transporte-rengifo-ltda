@@ -453,8 +453,8 @@ export default function DatePeriodFilter({
 
             </div>
 
-            {/* VISUALIZADOR DE MESES (12 PÍLDORAS / TARJETAS INTERACTIVAS) */}
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2">
+            {/* VISUALIZADOR DE MESES COMPACTO (12 PÍLDORAS ELEGANTES) */}
+            <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-1.5 sm:gap-2">
               {MESES_NOMBRES.map((mes) => {
                 const periodoKey = `${selectedYear}-${mes.num}`;
                 const isSelected = selectedMonth === mes.num;
@@ -468,72 +468,31 @@ export default function DatePeriodFilter({
                     key={mes.num}
                     type="button"
                     onClick={() => handleSelectMonth(mes.num)}
-                    className={`relative p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-between min-h-[68px] group ${
+                    className={`relative py-1.5 px-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center min-h-[44px] group ${
                       isSelected
-                        ? "bg-amber-500/15 border-amber-500 shadow-md shadow-amber-500/20 font-bold"
+                        ? "bg-amber-500 text-slate-950 border-amber-500 font-black shadow-sm"
                         : hasData
-                          ? "bg-slate-50 dark:bg-slate-800/80 border-slate-300 dark:border-slate-700 hover:border-amber-500/60"
-                          : "bg-white dark:bg-slate-900/40 border-slate-200 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-400"
+                          ? "bg-amber-500/10 dark:bg-amber-500/15 border-amber-500/30 text-slate-800 dark:text-slate-200 font-bold hover:border-amber-500"
+                          : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800/80 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                     }`}
                   >
-                    {/* Badge indicador de mes actual en curso */}
                     {isCurrentRealMonth && (
-                      <span className="absolute -top-1.5 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-white dark:ring-slate-900" title="Mes en curso actual" />
+                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500 ring-2 ring-white dark:ring-slate-900" title="Mes en curso actual" />
                     )}
 
-                    <span className={`text-xs font-bold uppercase tracking-wider ${
-                      isSelected 
-                        ? "text-amber-600 dark:text-amber-400" 
-                        : hasData 
-                          ? "text-slate-900 dark:text-slate-200" 
-                          : "text-slate-400 dark:text-slate-500"
-                    }`}>
+                    <span className="text-xs uppercase tracking-wider block leading-tight">
                       {mes.corto}
                     </span>
 
-                    {/* Indicador de viajes o estado */}
-                    <div className="mt-1 flex flex-col items-center">
-                      {hasData ? (
-                        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
-                          isSelected
-                            ? "bg-amber-500 text-slate-950 font-black"
-                            : "bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold"
-                        }`}>
-                          {viajesCount ? `${viajesCount} op` : "Activo"}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 dark:text-slate-600">
-                          -
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Línea decorativa inferior */}
-                    {isSelected && (
-                      <div className="w-6 h-0.5 bg-amber-500 rounded-full mt-1" />
+                    {hasData && (
+                      <span className={`text-[9px] font-mono leading-tight mt-0.5 ${isSelected ? "text-slate-950 font-bold" : "text-amber-600 dark:text-amber-400"}`}>
+                        {viajesCount ? `${viajesCount} op` : "•"}
+                      </span>
                     )}
                   </button>
                 );
               })}
             </div>
-
-            {/* Sub-barra informativa del mes seleccionado */}
-            {periodosDataMap.get(`${selectedYear}-${selectedMonth}`) && (
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 flex flex-wrap items-center justify-between text-xs text-amber-700 dark:text-amber-300">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-amber-500" />
-                  <span>
-                    <b>{MESES_NOMBRES.find(m => m.num === selectedMonth)?.largo} {selectedYear}:</b> Operaciones registradas y conciliadas en este periodo.
-                  </span>
-                </div>
-                {periodosDataMap.get(`${selectedYear}-${selectedMonth}`)?.total_viajes && (
-                  <span className="font-mono font-bold">
-                    {periodosDataMap.get(`${selectedYear}-${selectedMonth}`)?.total_viajes} Despachos
-                  </span>
-                )}
-              </div>
-            )}
-
           </div>
         )}
 

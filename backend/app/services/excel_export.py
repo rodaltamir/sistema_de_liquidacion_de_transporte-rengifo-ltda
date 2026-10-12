@@ -1,5 +1,6 @@
 import io
 import os
+import json
 import base64
 from datetime import datetime, date
 from typing import Dict, Any, List, Optional
@@ -176,11 +177,17 @@ def adjust_column_widths(ws, min_widths: Dict[str, float]):
             if (cell.row, cell.column) in multi_col_cells:
                 continue
             if cell.value is not None:
-                val_lines = str(cell.value).split("\n")
+                if isinstance(cell.value, (int, float)):
+                    val_str = f"{cell.value:,.2f}"
+                else:
+                    val_str = str(cell.value)
+                val_lines = val_str.split("\n")
                 for line in val_lines:
                     max_len = max(max_len, len(str(line).strip()))
         if max_len > 0:
-            ws.column_dimensions[col_letter].width = max(curr_w, min(max_len + 4, 46))
+            # Margen proporcional para evitar cualquier corte de palabras u oraciones
+            needed_w = max(curr_w, min(int(max_len * 1.15) + 5, 55))
+            ws.column_dimensions[col_letter].width = needed_w
 
 
 # =========================================================================
@@ -202,11 +209,26 @@ def export_liquidacion_placa_excel(
     logo_b64 = empresa.get("logo_base64")
     periodo_fmt = format_periodo_label(str(liquidacion.periodo_mes or ""))
 
-    # Desglose limpio de firmas oficiales (sin duplicar nombres ni cargos)
-    realizado_nom, _ = parse_firma_entry(getattr(params, 'firma_realizado_por', 'JAQUELINE LOVERA TIÑINI'), 'JAQUELINE LOVERA TIÑINI', '')
-    revisado_nom, revisado_carg = parse_firma_entry(getattr(params, 'firma_revisado_por', 'JOSE LOVERA TIÑINI / GERENTE GENERAL'), 'JOSE LOVERA TIÑINI', 'GERENTE GENERAL')
-    autorizado_nom, autorizado_carg = parse_firma_entry(getattr(params, 'firma_autorizado_por', ''), '', '')
-    cancelado_nom, cancelado_carg = parse_firma_entry(getattr(params, 'firma_cancelado_por', 'TOMASA TIÑINI MITA / APOYO'), 'TOMASA TIÑINI MITA', 'APOYO')
+    # Datos de firma: REALIZADO POR se obtiene de liquidacion o parámetros; los demás quedan en blanco
+    realizado_nom = ""
+    if getattr(liquidacion, "firmas_json", None):
+        try:
+            f_data = json.loads(liquidacion.firmas_json)
+            if isinstance(f_data, dict):
+                realizado_nom = f_data.get("realizado_por") or ""
+        except Exception:
+            pass
+    if not realizado_nom:
+        realizado_nom = getattr(params, "firma_realizado_por", None) or "JAQUELINE LOVERA TIÑINI"
+
+    realizado_nom, _ = parse_firma_entry(realizado_nom, "JAQUELINE LOVERA TIÑINI", "")
+
+    revisado_nom = ""
+    revisado_carg = ""
+    autorizado_nom = ""
+    autorizado_carg = ""
+    cancelado_nom = ""
+    cancelado_carg = ""
 
     # ---------------------------------------------------------------------
     # HOJA 1: DETALLE DE FLETES (FOTO 2)
@@ -238,8 +260,8 @@ def export_liquidacion_placa_excel(
     c_factor.number_format = '0.00'
     c_factor.alignment = Alignment(horizontal="right", vertical="center")
 
-    # 3. Logotipo en la Esquina Superior Derecha (Cols N-Q)
-    add_logo_to_worksheet(ws1, logo_base64=logo_b64, empresa_name=empresa_nombre, cell_coord="N1", max_width=165, max_height=55)
+    # 3. Logotipo en la Esquina Superior Derecha (Columna P-Q, totalmente al borde derecho)
+    add_logo_to_worksheet(ws1, logo_base64=logo_b64, empresa_name=empresa_nombre, cell_coord="P1", max_width=140, max_height=48)
 
     # 4. Encabezados de Columnas (Fila 6) - Idénticos a la Foto 2
     headers_sheet1 = [
@@ -263,7 +285,7 @@ def export_liquidacion_placa_excel(
     ]
 
     header_row = 6
-    ws1.row_dimensions[header_row].height = 44
+    ws1.row_dimensions[header_row].height = 52
 
     for col_idx, h_text in enumerate(headers_sheet1, 1):
         cell = ws1.cell(row=header_row, column=col_idx, value=h_text)
@@ -333,10 +355,11 @@ def export_liquidacion_placa_excel(
         c11.number_format = '#,##0'
         c11.alignment = Alignment(horizontal="right", vertical="center")
 
-        # Col 12: Merma T-T (Merma Real)
-        m_real = float(v.merma_real_litros or 0)
+        # Col 12: Merma T-T (Merma Real) - Negativo según formato oficial (ej. -99.0)
+        raw_m_real = float(v.merma_real_litros or 0)
+        m_real = -abs(raw_m_real) if raw_m_real != 0 else 0.0
         c12 = ws1.cell(row=curr_row, column=12, value=m_real)
-        c12.number_format = '+#,##0.0;-#,##0.0;0.0'
+        c12.number_format = '#,##0.0;-#,##0.0;0.0'
         c12.alignment = Alignment(horizontal="right", vertical="center")
 
         # Col 13: Total Merma Litros (Excedente)
@@ -380,13 +403,8 @@ def export_liquidacion_placa_excel(
     # 6. Fila de Totales de la Hoja 1 (Foto 2)
     ws1.row_dimensions[curr_row].height = 22
 
-    # Conteo de viajes en columna 1
-    c_tot_count = ws1.cell(row=curr_row, column=1, value=len(viajes))
-    c_tot_count.font = FONT_DATA_BOLD
-    c_tot_count.alignment = Alignment(horizontal="center", vertical="center")
-
-    # Columnas 2 a 9 en blanco
-    for c_empty in range(2, 10):
+    # Columnas 1 a 9 en blanco en la fila de totales (sin conteo de viajes repetido en columna 1)
+    for c_empty in range(1, 10):
         ws1.cell(row=curr_row, column=c_empty, value="")
 
     # Totales de Volumen Origen y Recepcionado
@@ -422,84 +440,72 @@ def export_liquidacion_placa_excel(
     for col_c in range(1, 18):
         ws1.cell(row=curr_row, column=col_c).border = BORDER_TOTAL_DOUBLE
 
-    # 7. Cuadro de Firmas Oficial (Foto 2 - Organizado simétricamente en columnas J a Q)
-    # 4 Paneles de exactamente 2 columnas cada uno: J-K (1), L-M (2), N-O (3), P-Q (4)
+    # 7. Cuadro de Firmas Oficial (Abarca toda la plantilla horizontalmente de Columna A a Q)
+    # 4 Paneles simétricos: A-E (1), F-I (2), J-M (3), N-Q (4)
     sign_start_row = curr_row + 4
-    ws1.row_dimensions[sign_start_row].height = 20
-    ws1.row_dimensions[sign_start_row + 1].height = 22
-    ws1.row_dimensions[sign_start_row + 2].height = 20
+    ws1.row_dimensions[sign_start_row].height = 17
+    ws1.row_dimensions[sign_start_row + 1].height = 18
+    ws1.row_dimensions[sign_start_row + 2].height = 42
 
-    # Bloque 1: REALIZADO POR
-    ws1.merge_cells("J{}:K{}".format(sign_start_row, sign_start_row))
-    c_s1 = ws1["J{}".format(sign_start_row)]
-    c_s1.value = "REALIZADO POR:"
-    c_s1.font = Font(name=FONT_FAMILY, size=8, bold=True)
-    c_s1.alignment = Alignment(horizontal="left", vertical="center")
+    panels_info = [
+        ("A", "E", "", f" REALIZADO POR:\n\n   {realizado_nom}" if realizado_nom else " REALIZADO POR:"),
+        ("F", "I", "", " REVISADO POR:"),
+        ("J", "M", "", " AUTORIZADO POR:"),
+        ("N", "Q", "", " CANCELADO POR:")
+    ]
 
-    ws1.merge_cells("J{}:K{}".format(sign_start_row + 2, sign_start_row + 2))
-    c_s1_name = ws1["J{}".format(sign_start_row + 2)]
-    c_s1_name.value = realizado_nom
-    c_s1_name.font = Font(name=FONT_FAMILY, size=8, bold=True)
-    c_s1_name.alignment = Alignment(horizontal="center", vertical="center")
+    # Fila 1 de Firmas: Nombres sobre la línea (si existen)
+    for col_start, col_end, nom_val, _ in panels_info:
+        if nom_val and nom_val.strip():
+            ws1.merge_cells(f"{col_start}{sign_start_row}:{col_end}{sign_start_row}")
+            c_nom = ws1[f"{col_start}{sign_start_row}"]
+            c_nom.value = nom_val.strip()
+            c_nom.font = Font(name=FONT_FAMILY, size=8.5, bold=True)
+            c_nom.alignment = Alignment(horizontal="center", vertical="bottom")
 
-    # Bloque 2: REVISADO POR
-    ws1.merge_cells("L{}:M{}".format(sign_start_row, sign_start_row))
-    c_s2_name = ws1["L{}".format(sign_start_row)]
-    c_s2_name.value = revisado_nom
-    c_s2_name.font = Font(name=FONT_FAMILY, size=8, bold=True)
-    c_s2_name.alignment = Alignment(horizontal="center", vertical="center")
+    # Fila 2 de Firmas: Línea horizontal de firma continua que abarca de A a Q
+    border_sign_underline = Border(bottom=Side(style='thin', color='000000'))
+    for col_u in range(1, 18):
+        ws1.cell(row=sign_start_row + 1, column=col_u).border = border_sign_underline
 
-    ws1.merge_cells("L{}:M{}".format(sign_start_row + 1, sign_start_row + 1))
-    c_s2_cargo = ws1["L{}".format(sign_start_row + 1)]
-    c_s2_cargo.value = revisado_carg or "GERENTE GENERAL"
-    c_s2_cargo.font = Font(name=FONT_FAMILY, size=7.5, bold=False)
-    c_s2_cargo.alignment = Alignment(horizontal="center", vertical="center")
+    # Fila 3 de Firmas: Cuadros Oficiales (Títulos en esquina superior izquierda)
+    row_tags = sign_start_row + 2
+    for col_start, col_end, _, text_val in panels_info:
+        ws1.merge_cells(f"{col_start}{row_tags}:{col_end}{row_tags}")
+        cell_p = ws1[f"{col_start}{row_tags}"]
+        cell_p.value = text_val
+        cell_p.font = Font(name=FONT_FAMILY, size=8, bold=True)
+        cell_p.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
 
-    ws1.merge_cells("L{}:M{}".format(sign_start_row + 2, sign_start_row + 2))
-    c_s2_tag = ws1["L{}".format(sign_start_row + 2)]
-    c_s2_tag.value = "REVISADO POR:"
-    c_s2_tag.font = Font(name=FONT_FAMILY, size=8, bold=True)
-    c_s2_tag.alignment = Alignment(horizontal="center", vertical="center")
+        c_s_idx = openpyxl.utils.column_index_from_string(col_start)
+        c_e_idx = openpyxl.utils.column_index_from_string(col_end)
+        for c_idx in range(c_s_idx, c_e_idx + 1):
+            cell_box = ws1.cell(row=row_tags, column=c_idx)
+            cell_box.border = Border(
+                left=Side(style='thin', color='000000') if c_idx == c_s_idx else None,
+                right=Side(style='thin', color='000000') if c_idx == c_e_idx else None,
+                top=Side(style='thin', color='000000'),
+                bottom=Side(style='thin', color='000000')
+            )
 
-    # Bloque 3: AUTORIZADO POR
-    ws1.merge_cells("N{}:O{}".format(sign_start_row + 2, sign_start_row + 2))
-    c_s3 = ws1["N{}".format(sign_start_row + 2)]
-    c_s3.value = "AUTORIZADO POR:"
-    c_s3.font = Font(name=FONT_FAMILY, size=8, bold=True)
-    c_s3.alignment = Alignment(horizontal="center", vertical="center")
 
-    # Bloque 4: CANCELADO POR
-    ws1.merge_cells("P{}:Q{}".format(sign_start_row, sign_start_row))
-    c_s4_name = ws1["P{}".format(sign_start_row)]
-    c_s4_name.value = cancelado_nom
-    c_s4_name.font = Font(name=FONT_FAMILY, size=8, bold=True)
-    c_s4_name.alignment = Alignment(horizontal="center", vertical="center")
-
-    ws1.merge_cells("P{}:Q{}".format(sign_start_row + 1, sign_start_row + 1))
-    c_s4_cargo = ws1["P{}".format(sign_start_row + 1)]
-    c_s4_cargo.value = cancelado_carg or "APOYO"
-    c_s4_cargo.font = Font(name=FONT_FAMILY, size=7.5, bold=False)
-    c_s4_cargo.alignment = Alignment(horizontal="center", vertical="center")
-
-    ws1.merge_cells("P{}:Q{}".format(sign_start_row + 2, sign_start_row + 2))
-    c_s4_tag = ws1["P{}".format(sign_start_row + 2)]
-    c_s4_tag.value = "CANCELADO POR:"
-    c_s4_tag.font = Font(name=FONT_FAMILY, size=8, bold=True)
-    c_s4_tag.alignment = Alignment(horizontal="center", vertical="center")
-
-    # Bordes para cada panel del cuadro de firmas
-    for r_f in range(sign_start_row, sign_start_row + 3):
-        for col_f in range(10, 18):
-            ws1.cell(row=r_f, column=col_f).border = BORDER_THIN_BLACK
+    # Configuración de página horizontal y centrada para impresión
+    ws1.page_setup.orientation = ws1.ORIENTATION_LANDSCAPE
+    ws1.page_setup.paperSize = ws1.PAPERSIZE_LETTER
+    ws1.sheet_properties.pageSetUpPr.fitToPage = True
+    ws1.page_setup.fitToWidth = 1
+    ws1.page_setup.fitToHeight = 0
+    ws1.print_options.horizontalCentered = True
 
     # Anchos base responsivos para Hoja 1
     min_widths_sheet1 = {
-        "A": 6.5, "B": 15, "C": 15, "D": 18, "E": 28,
-        "F": 13, "G": 38, "H": 13, "I": 13, "J": 16,
-        "K": 16, "L": 14, "M": 14, "N": 17, "O": 16,
-        "P": 14, "Q": 18
+        "A": 7.0, "B": 15.0, "C": 15.0, "D": 18.0, "E": 30.0,
+        "F": 13.0, "G": 40.0, "H": 13.0, "I": 13.0, "J": 16.0,
+        "K": 16.0, "L": 15.0, "M": 16.0, "N": 20.0, "O": 17.0,
+        "P": 15.0, "Q": 22.0
     }
     adjust_column_widths(ws1, min_widths_sheet1)
+
 
     # ---------------------------------------------------------------------
     # HOJA 2: RESUMEN DE DESCUENTOS Y LÍQUIDO PAGABLE (FOTO 3)
@@ -586,45 +592,62 @@ def export_liquidacion_placa_excel(
 
     # 4. Cuadro de Firmas Oficial en Hoja 2 (Alineado simétricamente debajo de la tabla en columnas B, C, D, E)
     sign_row2 = r_res + 4
-    ws2.row_dimensions[sign_row2].height = 20
-    ws2.row_dimensions[sign_row2 + 1].height = 22
-    ws2.row_dimensions[sign_row2 + 2].height = 20
+    ws2.row_dimensions[sign_row2].height = 17
+    ws2.row_dimensions[sign_row2 + 1].height = 17
+    ws2.row_dimensions[sign_row2 + 2].height = 42
 
-    # Panel 1: REALIZADO POR (Columna B)
-    ws2.cell(row=sign_row2, column=2, value="REALIZADO POR:").font = Font(name=FONT_FAMILY, size=8, bold=True)
-    ws2.cell(row=sign_row2, column=2).alignment = Alignment(horizontal="left", vertical="center")
-    ws2.cell(row=sign_row2 + 2, column=2, value=realizado_nom).font = Font(name=FONT_FAMILY, size=8, bold=True)
-    ws2.cell(row=sign_row2 + 2, column=2).alignment = Alignment(horizontal="center", vertical="center")
+    # Fila 1 de Firmas: Nombres sobre la línea
+    if revisado_nom:
+        ws2.cell(row=sign_row2, column=3, value=revisado_nom).font = Font(name=FONT_FAMILY, size=8.5, bold=True)
+        ws2.cell(row=sign_row2, column=3).alignment = Alignment(horizontal="center", vertical="bottom")
 
-    # Panel 2: REVISADO POR (Columna C)
-    ws2.cell(row=sign_row2, column=3, value=revisado_nom).font = Font(name=FONT_FAMILY, size=8, bold=True)
-    ws2.cell(row=sign_row2, column=3).alignment = Alignment(horizontal="center", vertical="center")
-    ws2.cell(row=sign_row2 + 1, column=3, value=revisado_carg or "GERENTE GENERAL").font = Font(name=FONT_FAMILY, size=7.5, bold=False)
-    ws2.cell(row=sign_row2 + 1, column=3).alignment = Alignment(horizontal="center", vertical="center")
-    ws2.cell(row=sign_row2 + 2, column=3, value="REVISADO POR:").font = Font(name=FONT_FAMILY, size=8, bold=True)
-    ws2.cell(row=sign_row2 + 2, column=3).alignment = Alignment(horizontal="center", vertical="center")
+    if cancelado_nom:
+        ws2.cell(row=sign_row2, column=5, value=cancelado_nom).font = Font(name=FONT_FAMILY, size=8.5, bold=True)
+        ws2.cell(row=sign_row2, column=5).alignment = Alignment(horizontal="center", vertical="bottom")
 
-    # Panel 3: AUTORIZADO POR (Columna D)
-    ws2.cell(row=sign_row2 + 2, column=4, value="AUTORIZADO POR:").font = Font(name=FONT_FAMILY, size=8, bold=True)
-    ws2.cell(row=sign_row2 + 2, column=4).alignment = Alignment(horizontal="center", vertical="center")
+    # Fila 2 de Firmas: Cargos (si existen) y Línea de firma continua
+    if revisado_carg and revisado_carg.strip():
+        ws2.cell(row=sign_row2 + 1, column=3, value=revisado_carg.strip()).font = Font(name=FONT_FAMILY, size=7.5, bold=False)
+        ws2.cell(row=sign_row2 + 1, column=3).alignment = Alignment(horizontal="center", vertical="top")
 
-    # Panel 4: CANCELADO POR (Columna E)
-    ws2.cell(row=sign_row2, column=5, value=cancelado_nom).font = Font(name=FONT_FAMILY, size=8, bold=True)
-    ws2.cell(row=sign_row2, column=5).alignment = Alignment(horizontal="center", vertical="center")
-    ws2.cell(row=sign_row2 + 1, column=5, value=cancelado_carg or "APOYO").font = Font(name=FONT_FAMILY, size=7.5, bold=False)
-    ws2.cell(row=sign_row2 + 1, column=5).alignment = Alignment(horizontal="center", vertical="center")
-    ws2.cell(row=sign_row2 + 2, column=5, value="CANCELADO POR:").font = Font(name=FONT_FAMILY, size=8, bold=True)
-    ws2.cell(row=sign_row2 + 2, column=5).alignment = Alignment(horizontal="center", vertical="center")
+    if cancelado_carg and cancelado_carg.strip():
+        ws2.cell(row=sign_row2 + 1, column=5, value=cancelado_carg.strip()).font = Font(name=FONT_FAMILY, size=7.5, bold=False)
+        ws2.cell(row=sign_row2 + 1, column=5).alignment = Alignment(horizontal="center", vertical="top")
 
-    for r_f2 in range(sign_row2, sign_row2 + 3):
-        for col_f2 in range(2, 6):
-            ws2.cell(row=r_f2, column=col_f2).border = BORDER_THIN_BLACK
+    # Línea de firma en la base de la fila sign_row2 + 1
+    border_sign_underline = Border(bottom=Side(style='thin', color='000000'))
+    for col_u in range(2, 6):
+        ws2.cell(row=sign_row2 + 1, column=col_u).border = border_sign_underline
+
+    # Fila 3 de Firmas: Cuadros Oficiales en columnas B, C, D, E (Títulos en esquina superior izquierda)
+    row_tags2 = sign_row2 + 2
+    panels_info2 = [
+        (2, f" REALIZADO POR:\n\n   {realizado_nom}" if realizado_nom else " REALIZADO POR:"),
+        (3, " REVISADO POR:"),
+        (4, " AUTORIZADO POR:"),
+        (5, " CANCELADO POR:")
+    ]
+
+    for col_idx, text_val in panels_info2:
+        cell_p = ws2.cell(row=row_tags2, column=col_idx, value=text_val)
+        cell_p.font = Font(name=FONT_FAMILY, size=8, bold=True)
+        cell_p.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+        cell_p.border = BORDER_THIN_BLACK
+
+    # Configuración de página horizontal y centrada para impresión
+    ws2.page_setup.orientation = ws2.ORIENTATION_LANDSCAPE
+    ws2.page_setup.paperSize = ws2.PAPERSIZE_LETTER
+    ws2.sheet_properties.pageSetUpPr.fitToPage = True
+    ws2.page_setup.fitToWidth = 1
+    ws2.page_setup.fitToHeight = 0
+    ws2.print_options.horizontalCentered = True
 
     # Anchos armónicos para Hoja 2
     min_widths_sheet2 = {
-        "A": 4, "B": 26, "C": 26, "D": 22, "E": 24
+        "A": 4.0, "B": 28.0, "C": 28.0, "D": 26.0, "E": 26.0
     }
     adjust_column_widths(ws2, min_widths_sheet2)
+
 
     output = io.BytesIO()
     wb.save(output)
@@ -657,19 +680,28 @@ def export_liquidacion_asociacion_excel(
     ws.views.sheetView[0].showGridLines = True
 
     # 1. Encabezado Institucional (Foto 1: Esquina superior izquierda)
-    add_logo_to_worksheet(ws, logo_base64=None, empresa_name=asociacion_name, cell_coord="A1", max_width=130, max_height=48)
+    ws.row_dimensions[1].height = 45
+    ws.row_dimensions[2].height = 18
+    ws.row_dimensions[3].height = 18
+    ws.row_dimensions[4].height = 18
+    ws.row_dimensions[5].height = 24
+
+    add_logo_to_worksheet(ws, logo_base64=None, empresa_name=asociacion_name, cell_coord="A1", max_width=110, max_height=38)
 
     ws.merge_cells("A2:D2")
     ws["A2"] = "Gerencia de Productos Derivados e Industrializados - GPDI"
     ws["A2"].font = Font(name=FONT_FAMILY, size=7.5, bold=True, color="334155")
+    ws["A2"].alignment = Alignment(horizontal="left", vertical="center")
 
     ws.merge_cells("A3:D3")
     ws["A3"] = "Dirección de Operaciones - DOP"
     ws["A3"].font = Font(name=FONT_FAMILY, size=7.5, bold=True, color="334155")
+    ws["A3"].alignment = Alignment(horizontal="left", vertical="center")
 
     ws.merge_cells("A4:D4")
     ws["A4"] = "Unidad de Pagos, Conciliaciones y Aduanas - UPCA"
     ws["A4"].font = Font(name=FONT_FAMILY, size=7.5, bold=True, color="334155")
+    ws["A4"].alignment = Alignment(horizontal="left", vertical="center")
 
     # 2. Título Central (Foto 1)
     ws.merge_cells("E2:K2")
@@ -696,8 +728,8 @@ def export_liquidacion_asociacion_excel(
     ws["A5"].alignment = Alignment(horizontal="left", vertical="center")
 
     # 5. Encabezados de la Tabla con Super-Encabezado 'Datos' (Filas 6 y 7 de la Foto 1)
-    ws.row_dimensions[6].height = 20
-    ws.row_dimensions[7].height = 28
+    ws.row_dimensions[6].height = 22
+    ws.row_dimensions[7].height = 36
 
     # Columnas 1 a 7 combinadas verticalmente en filas 6-7
     cols_left = [
@@ -759,10 +791,18 @@ def export_liquidacion_asociacion_excel(
         empresa_name = grp.get("empresa_name", "")
         viajes = grp.get("viajes", [])
 
-        # Agrupar viajes por producto
+        # Agrupar viajes por producto unificando Gasolina y Diesel bajo DO
         prod_dict: Dict[str, List[Any]] = {}
         for v in viajes:
-            p_key = (v.get("producto") or "DO").upper()
+            p_raw = str(v.get("producto") or "").strip().upper()
+            if any(k in p_raw for k in ["DIESEL", "GASOLINA", "DO", "GE", "COMBUSTIBLE"]):
+                p_key = "DO"
+            elif any(k in p_raw for k in ["INSUMO", "ADITIV", "IYA"]):
+                p_key = "IYA"
+            elif p_raw:
+                p_key = p_raw
+            else:
+                p_key = "DO"
             prod_dict.setdefault(p_key, []).append(v)
 
         emp_desp = 0.0
@@ -946,19 +986,29 @@ def export_liquidacion_asociacion_excel(
 
     # 8. Cláusulas y Leyendas Inferiores (Foto 1)
     current_row += 2
-    ws.cell(row=current_row, column=1, value="2 = Diesel").font = FONT_DATA_BOLD
+    ws.cell(row=current_row, column=1, value="DO = Diesel").font = FONT_DATA_BOLD
     current_row += 1
-    ws.cell(row=current_row, column=1, value="3 = Insumos y Aditivos").font = FONT_DATA_BOLD
+    ws.cell(row=current_row, column=1, value="IYA = Insumos y Aditivos").font = FONT_DATA_BOLD
 
     current_row += 1
     ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row + 1, end_column=15)
+    ws.row_dimensions[current_row].height = 22
+    ws.row_dimensions[current_row + 1].height = 22
     c_ley = ws.cell(
         row=current_row, 
         column=1, 
-        value="Informe H establece la Ley 843 en su Art. 4 y de acuerdo a la cláusula contractual de Facturación y Pago, el momento en que finalizará la ejecución de la prestación del Servicio se origina después de realizada la Conciliación (Acta de Conformidad por la Comisión de Recepción) y remitida la planilla de Liquidación"
+        value="Conforme lo establece la Ley 843 en su Art. 4 y de acuerdo a la cláusula contractual de Facturación y Pago, el momento en que finalizará la ejecución o la prestación del Servicio se origina después de realizada la Conciliación (Acta de Conformidad por la Comisión de Recepción) y emitida la planilla de Liquidación."
     )
     c_ley.font = FONT_MUTED_LEGAL
     c_ley.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+    # Configuración de página horizontal y centrada para impresión
+    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+    ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.print_options.horizontalCentered = True
 
     # Anchos responsivos base para la planilla de Asociación
     min_widths_asoc = {
@@ -995,8 +1045,8 @@ def generate_viajes_template_excel(empresa_name: str = "") -> io.BytesIO:
     ws["B3"] = empresa_name.upper() if empresa_name else "EMPRESA DE TRANSPORTE"
     ws["B3"].font = FONT_TITLE_BOLD
 
-    # Logotipo en la parte superior derecha
-    add_logo_to_worksheet(ws, logo_base64=None, empresa_name=empresa_name, cell_coord="N1", max_width=165, max_height=55)
+    # Logotipo en la parte superior derecha (Columna P-Q)
+    add_logo_to_worksheet(ws, logo_base64=None, empresa_name=empresa_name, cell_coord="P1", max_width=140, max_height=48)
 
     headers = [
         "Nº", "FECHA DE CARGA", "FECHA DE DESCARGA", "MIC/DTA Nº", "EMPRESA",

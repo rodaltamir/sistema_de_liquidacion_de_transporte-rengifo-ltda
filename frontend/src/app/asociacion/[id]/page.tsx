@@ -249,81 +249,72 @@ function AsociacionDetalleContent() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950 transition-colors duration-200">
       
-      {/* Top Navbar */}
+      {/* Top Navbar Sleek & Compact */}
       <header className="bg-white/90 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30 shadow-xs dark:shadow-lg no-print">
-        <div className="max-w-[1700px] w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 h-20 flex items-center justify-between gap-4">
+        <div className="max-w-[1700px] w-full mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           
-          <div className="flex items-center gap-3.5">
+          <div className="flex items-center gap-3">
             <Link
               href="/seleccionar-asociacion"
-              className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition group shadow-xs"
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition group"
               title="Volver al Directorio de Asociaciones"
             >
-              <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
+              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
             </Link>
 
-            <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/30 p-2 flex items-center justify-center shadow-inner flex-shrink-0">
-              <Building2 className="w-6 h-6 text-amber-500" />
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shadow-inner flex-shrink-0">
+              <Building2 className="w-5 h-5 text-amber-500" />
             </div>
 
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white break-words" title={asociacion.name}>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm sm:text-base font-black tracking-tight text-slate-900 dark:text-white truncate" title={asociacion.name}>
                   {asociacion.name}
                 </h1>
                 {asociacion.sigla && (
-                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex-shrink-0">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex-shrink-0">
                     {asociacion.sigla}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-slate-700 dark:text-slate-300">
-                  {asociacion.empresas?.length || 0} empresas afiliadas
-                </span>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 truncate">
+                <span>{asociacion.empresas?.length || 0} empresas afiliadas</span>
                 {asociacion.representante_legal && (
                   <>
                     <span>&bull;</span>
-                    <span>Rep. Legal: <strong className="text-slate-700 dark:text-slate-300">{asociacion.representante_legal}</strong></span>
-                  </>
-                )}
-                {asociacion.direccion && (
-                  <>
-                    <span>&bull;</span>
-                    <span className="text-slate-400">{asociacion.direccion}</span>
+                    <span>Rep: <strong className="text-slate-700 dark:text-slate-300">{asociacion.representante_legal}</strong></span>
                   </>
                 )}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Alternador Global de Tema */}
+          <div className="flex items-center gap-2 sm:gap-3">
             <ThemeToggle />
 
             {/* Selector de Pestañas Moderno */}
-            <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
               <button
                 onClick={() => setActiveTab("empresas")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   activeTab === "empresas"
-                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20"
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-900"
+                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-sm"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
-                <Truck className="w-4 h-4" />
-                <span>Empresas Afiliadas ({asociacion.empresas?.length || 0})</span>
+                <Truck className="w-3.5 h-3.5" />
+                <span>Empresas ({asociacion.empresas?.length || 0})</span>
               </button>
               <button
                 onClick={() => setActiveTab("liquidacion")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   activeTab === "liquidacion"
-                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20"
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-900"
+                    ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-sm"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
-                <FileSpreadsheet className="w-4 h-4" />
-                <span>Liquidación General (PDF Pág 1)</span>
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Liquidación Oficial</span>
               </button>
             </div>
           </div>
@@ -331,106 +322,81 @@ function AsociacionDetalleContent() {
       </header>
 
       {/* Contenido Principal con ancho completo */}
-      <main className="flex-1 max-w-[1700px] w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-8 space-y-8">
+      <main className="flex-1 max-w-[1700px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-6">
         
         {/* ============================================================== */}
-        {/* MINI DASHBOARD EJECUTIVO DE LA ASOCIACIÓN */}
+        {/* MINI DASHBOARD EJECUTIVO DE LA ASOCIACIÓN (COMPACTO) */}
         {/* ============================================================== */}
         <section className="no-print">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             
             {/* KPI 1: Empresas Afiliadas */}
-            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 rounded-2xl p-5 shadow-sm dark:shadow-lg dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Empresas Afiliadas</span>
-                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400 group-hover:scale-105 transition-transform">
-                  <Building2 className="w-4.5 h-4.5" />
-                </div>
-              </div>
-              <div className="my-2.5">
-                <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Empresas Socias</span>
+                <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono mt-0.5">
                   {asociacion.empresas?.length || 0}
                 </div>
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">Consorcio Activo</span>
               </div>
-              <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span>Consorcio Activo</span>
-                <span className="font-semibold text-amber-600 dark:text-amber-400">{asociacion.empresas?.length || 0} socias</span>
+              <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 flex-shrink-0">
+                <Building2 className="w-4.5 h-4.5" />
               </div>
             </div>
 
             {/* KPI 2: Flota de Cisternas */}
-            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-sky-500/40 rounded-2xl p-5 shadow-sm dark:shadow-lg dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Flota de Cisternas</span>
-                <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-600 dark:text-sky-400 group-hover:scale-105 transition-transform">
-                  <Truck className="w-4.5 h-4.5" />
-                </div>
-              </div>
-              <div className="my-2.5">
-                <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Flota Total</span>
+                <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono mt-0.5">
                   {resumenStats?.total_camiones ?? 0}
                 </div>
+                <span className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold">Cisternas registradas</span>
               </div>
-              <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span>Parque automotor</span>
-                <span className="font-semibold text-sky-600 dark:text-sky-400">{resumenStats?.total_camiones ?? 0} unidades</span>
+              <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-500 flex-shrink-0">
+                <Truck className="w-4.5 h-4.5" />
               </div>
             </div>
 
             {/* KPI 3: Viajes Conciliados */}
-            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/40 rounded-2xl p-5 shadow-sm dark:shadow-lg dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Viajes Conciliados</span>
-                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 group-hover:scale-105 transition-transform">
-                  <Layers className="w-4.5 h-4.5" />
-                </div>
-              </div>
-              <div className="my-2.5">
-                <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Viajes Conciliados</span>
+                <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono mt-0.5">
                   {resumenStats?.total_viajes ?? 0}
                 </div>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold">Despachos {periodoMes}</span>
               </div>
-              <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span>Operaciones registradas</span>
-                <span className="font-semibold text-indigo-600 dark:text-indigo-400">{resumenStats?.total_viajes ?? 0} viajes</span>
+              <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-500 flex-shrink-0">
+                <Layers className="w-4.5 h-4.5" />
               </div>
             </div>
 
             {/* KPI 4: Volumen Total */}
-            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/40 rounded-2xl p-5 shadow-sm dark:shadow-lg dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Volumen Entregado</span>
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 group-hover:scale-105 transition-transform">
-                  <Fuel className="w-4.5 h-4.5" />
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Vol. Recepcionado</span>
+                <div className="text-lg sm:text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
+                  {resumenStats ? formatNumber(resumenStats.total_volumen_litros, 0) : "0"} <span className="text-[10px]">L</span>
                 </div>
+                <span className="text-[10px] text-emerald-600 font-semibold">{resumenStats ? `${formatNumber(resumenStats.total_volumen_m3, 2)} m³` : "0 m³"}</span>
               </div>
-              <div className="my-2.5">
-                <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight font-mono">
-                  {resumenStats ? formatNumber(resumenStats.total_volumen_litros, 0) : "0"} <span className="text-xs font-bold text-slate-500 dark:text-slate-400">L</span>
-                </div>
-              </div>
-              <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span>Volumen facturable</span>
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">{resumenStats ? `${formatNumber(resumenStats.total_volumen_m3, 2)} m³` : "0 m³"}</span>
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 flex-shrink-0">
+                <Fuel className="w-4.5 h-4.5" />
               </div>
             </div>
 
             {/* KPI 5: Flete Total Consolidado */}
-            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 rounded-2xl p-5 shadow-sm dark:shadow-lg dark:shadow-black/20 transition-all flex flex-col justify-between min-h-[125px] group sm:col-span-2 lg:col-span-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Flete Consolidado</span>
-                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400 group-hover:scale-105 transition-transform">
-                  <DollarSign className="w-4.5 h-4.5" />
-                </div>
-              </div>
-              <div className="my-2.5">
-                <div className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 tracking-tight font-mono">
+            <div className="bg-white dark:bg-slate-900 border border-amber-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between col-span-2 sm:col-span-1 bg-amber-50/10">
+              <div>
+                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">Flete Facturable</span>
+                <div className="text-lg sm:text-xl font-black text-amber-600 dark:text-amber-400 font-mono mt-0.5">
                   {resumenStats ? `Bs ${formatNumber(resumenStats.total_fletes_bs, 2)}` : "Bs 0.00"}
                 </div>
+                <span className="text-[10px] text-amber-700 dark:text-amber-400/80 font-semibold">Total a liquidar</span>
               </div>
-              <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span>Consolidado general</span>
-                <span className="font-semibold text-amber-600 dark:text-amber-400">Total a liquidar</span>
+              <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500 flex-shrink-0">
+                <DollarSign className="w-4.5 h-4.5" />
               </div>
             </div>
 
@@ -670,69 +636,107 @@ function AsociacionDetalleContent() {
                       </tr>
                     </thead>
                     <tbody>
-                      {liqData.grupos_empresa.map((grp: any) => (
-                        <Fragment key={grp.empresa_id}>
-                          {/* Fila Encabezado de Empresa */}
-                          <tr className="bg-amber-50 dark:bg-amber-500/15 print:bg-sky-50 font-bold text-amber-900 dark:text-amber-300 print:text-sky-950">
-                            <td colSpan={16} className="py-2 px-3 border border-slate-200 dark:border-slate-800 print:border-slate-300">
-                              EMPRESA: {grp.empresa_name}
-                            </td>
-                          </tr>
+                      {liqData.grupos_empresa.map((grp: any) => {
+                        // Agrupar viajes de la empresa por producto (DO e IYA)
+                        const prodMap: Record<string, any[]> = {};
+                        grp.viajes.forEach((v: any) => {
+                          const pCode = (v.producto || "DO").toUpperCase();
+                          if (!prodMap[pCode]) prodMap[pCode] = [];
+                          prodMap[pCode].push(v);
+                        });
 
-                          {/* Filas de Viajes */}
-                          {grp.viajes.map((v: any, vIdx: number) => (
-                            <tr
-                              key={`viaje-${v.id}`}
-                              className={`hover:bg-amber-50/40 dark:hover:bg-slate-800/50 print:hover:bg-slate-50 border border-slate-200 dark:border-slate-800 print:border-slate-300 ${
-                                vIdx % 2 === 0 ? "bg-white dark:bg-slate-900/50 print:bg-white" : "bg-slate-50/70 dark:bg-slate-950/40 print:bg-slate-50/50"
-                              }`}
-                            >
-                              <td className="py-1.5 px-1.5 text-center border border-slate-200 dark:border-slate-800 print:border-slate-300 font-mono text-slate-600 dark:text-slate-300 print:text-slate-800">{v.lote_codigo}</td>
-                              <td className="py-1.5 px-2 border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-800 dark:text-slate-200 print:text-slate-700 truncate max-w-[160px]">{grp.empresa_name}</td>
-                              <td className="py-1.5 px-2 border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-600 dark:text-slate-300 print:text-slate-700">{v.tramo}</td>
-                              <td className="py-1.5 px-1 text-center font-bold border border-slate-200 dark:border-slate-800 print:border-slate-300 text-amber-700 dark:text-amber-400 print:text-blue-900">{v.producto}</td>
-                              <td className="py-1.5 px-1.5 text-center font-mono font-bold border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-900 dark:text-white print:text-slate-900">{v.placa}</td>
-                              <td className="py-1.5 px-1 text-center border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-500 dark:text-slate-400 print:text-slate-600">{formatDate(v.fecha_carga)}</td>
-                              <td className="py-1.5 px-1 text-center border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-500 dark:text-slate-400 print:text-slate-600">{formatDate(v.fecha_descarga)}</td>
-                              <td className="py-1.5 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-700 dark:text-slate-200 print:text-slate-800">{formatNumber(v.volumen_origen_litros, 0)}</td>
-                              <td className="py-1.5 px-1.5 text-right font-mono font-bold border border-slate-200 dark:border-slate-800 print:border-slate-300 text-emerald-600 dark:text-emerald-400 print:text-slate-900">{formatNumber(v.volumen_recepcionado_litros, 0)}</td>
-                              <td className={`py-1.5 px-1 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 ${v.merma_real_litros > 0 ? "text-amber-700 dark:text-amber-400 print:text-amber-700" : "text-emerald-700 dark:text-emerald-400 print:text-emerald-700"}`}>
-                                {formatNumber(v.merma_real_litros, 1)}
-                              </td>
-                              <td className={`py-1.5 px-1 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 ${v.merma_excedente_litros > 0 ? "text-rose-600 dark:text-rose-400 print:text-red-700 font-bold" : "text-slate-400 dark:text-slate-500 print:text-slate-400"}`}>
-                                {formatNumber(v.merma_excedente_litros, 1)}
-                              </td>
-                              <td className="py-1.5 px-1 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-600 dark:text-slate-300 print:text-slate-700">{formatNumber(v.precio_merma_litro_bs, 2)}</td>
-                              <td className={`py-1.5 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 ${v.merma_descontar_bs > 0 ? "text-rose-600 dark:text-rose-400 print:text-red-600 font-bold" : "text-slate-500 dark:text-slate-400"}`}>
-                                {formatNumber(v.merma_descontar_bs, 2)}
-                              </td>
-                              <td className="py-1.5 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-700 dark:text-slate-300 print:text-slate-800">{formatNumber(v.volumen_facturar_m3, 3)}</td>
-                              <td className="py-1.5 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-700 dark:text-slate-300 print:text-slate-800">{formatNumber(v.tarifa_flete, 2)}</td>
-                              <td className="py-1.5 px-2 text-right font-mono font-bold border border-slate-200 dark:border-slate-800 print:border-slate-300 text-amber-700 dark:text-amber-400 print:text-slate-900">
-                                {formatNumber(v.flete_total_bs, 2)}
+                        return (
+                          <Fragment key={grp.empresa_id}>
+                            {/* Fila Encabezado de Empresa */}
+                            <tr className="bg-amber-500/10 dark:bg-amber-500/15 print:bg-sky-50 font-bold text-amber-900 dark:text-amber-300 print:text-sky-950 border-t border-b border-amber-500/20">
+                              <td colSpan={16} className="py-2 px-3 border border-slate-200 dark:border-slate-800 print:border-slate-300 font-black text-xs uppercase tracking-wide">
+                                EMPRESA: {grp.empresa_name}
                               </td>
                             </tr>
-                          ))}
 
-                          {/* Subtotal de Empresa */}
-                          <tr className="bg-slate-100 dark:bg-slate-800/90 print:bg-slate-100 font-bold text-slate-900 dark:text-white print:text-slate-900 border-t-2 border-b-2 border-slate-300 dark:border-slate-700 print:border-slate-400">
-                            <td colSpan={7} className="py-2 px-3 border border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">
-                              Total {grp.empresa_name}:
-                            </td>
-                            <td className="py-2 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(grp.subtotal_despachado, 0)}</td>
-                            <td className="py-2 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(grp.subtotal_recepcionado, 0)}</td>
-                            <td className="py-2 px-1 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(grp.subtotal_merma_real, 1)}</td>
-                            <td className="py-2 px-1 text-center border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-400 dark:text-slate-500 print:text-slate-400">-</td>
-                            <td className="py-2 px-1 text-center border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-400 dark:text-slate-500 print:text-slate-400">-</td>
-                            <td className="py-2 px-1.5 text-right font-mono text-rose-600 dark:text-rose-400 print:text-red-700 border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(grp.subtotal_merma_descontar_bs, 2)}</td>
-                            <td className="py-2 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(grp.subtotal_volumen_m3, 3)}</td>
-                            <td className="py-2 px-1.5 text-center border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-400 dark:text-slate-500 print:text-slate-400">-</td>
-                            <td className="py-2 px-2 text-right font-mono text-amber-700 dark:text-amber-400 print:text-blue-900 border border-slate-200 dark:border-slate-800 print:border-slate-300">
-                              {formatNumber(grp.subtotal_importe_bs, 2)}
-                            </td>
-                          </tr>
-                        </Fragment>
-                      ))}
+                            {Object.entries(prodMap).map(([prodKey, pViajes]) => {
+                              const subProdDesp = pViajes.reduce((acc, v) => acc + (v.volumen_origen_litros || 0), 0);
+                              const subProdRec = pViajes.reduce((acc, v) => acc + (v.volumen_recepcionado_litros || 0), 0);
+                              const subProdMconf = pViajes.reduce((acc, v) => acc + (v.merma_real_litros || 0), 0);
+                              const subProdMdesc = pViajes.reduce((acc, v) => acc + (v.merma_descontar_bs || 0), 0);
+                              const subProdM3 = pViajes.reduce((acc, v) => acc + (v.volumen_facturar_m3 || (v.volumen_recepcionado_litros / 1000.0) || 0), 0);
+                              const subProdImp = pViajes.reduce((acc, v) => acc + (v.flete_total_bs || 0), 0);
+
+                              return (
+                                <Fragment key={`${grp.empresa_id}-${prodKey}`}>
+                                  {/* Filas de Viajes */}
+                                  {pViajes.map((v: any, vIdx: number) => (
+                                    <tr
+                                      key={`viaje-${v.id}`}
+                                      className={`hover:bg-amber-50/40 dark:hover:bg-slate-800/50 print:hover:bg-slate-50 border border-slate-200 dark:border-slate-800 print:border-slate-300 ${
+                                        vIdx % 2 === 0 ? "bg-white dark:bg-slate-900/50 print:bg-white" : "bg-slate-50/70 dark:bg-slate-950/40 print:bg-slate-50/50"
+                                      }`}
+                                    >
+                                      <td className="py-1.5 px-1.5 text-center border border-slate-200 dark:border-slate-800 print:border-slate-300 font-mono text-slate-600 dark:text-slate-300 print:text-slate-800">{v.lote_codigo}</td>
+                                      <td className="py-1.5 px-2 border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-800 dark:text-slate-200 print:text-slate-700 truncate max-w-[160px]">{grp.empresa_name}</td>
+                                      <td className="py-1.5 px-2 border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-600 dark:text-slate-300 print:text-slate-700">{v.tramo}</td>
+                                      <td className="py-1.5 px-1 text-center font-bold border border-slate-200 dark:border-slate-800 print:border-slate-300 text-amber-700 dark:text-amber-400 print:text-blue-900">{v.producto}</td>
+                                      <td className="py-1.5 px-1.5 text-center font-mono font-bold border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-900 dark:text-white print:text-slate-900">{v.placa}</td>
+                                      <td className="py-1.5 px-1 text-center border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-500 dark:text-slate-400 print:text-slate-600">{formatDate(v.fecha_carga)}</td>
+                                      <td className="py-1.5 px-1 text-center border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-500 dark:text-slate-400 print:text-slate-600">{formatDate(v.fecha_descarga)}</td>
+                                      <td className="py-1.5 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-700 dark:text-slate-200 print:text-slate-800">{formatNumber(v.volumen_origen_litros, 0)}</td>
+                                      <td className="py-1.5 px-1.5 text-right font-mono font-bold border border-slate-200 dark:border-slate-800 print:border-slate-300 text-emerald-600 dark:text-emerald-400 print:text-slate-900">{formatNumber(v.volumen_recepcionado_litros, 0)}</td>
+                                      <td className={`py-1.5 px-1 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 ${v.merma_real_litros > 0 ? "text-amber-700 dark:text-amber-400 print:text-amber-700" : "text-emerald-700 dark:text-emerald-400 print:text-emerald-700"}`}>
+                                        {formatNumber(v.merma_real_litros, 1)}
+                                      </td>
+                                      <td className={`py-1.5 px-1 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 ${v.merma_excedente_litros > 0 ? "text-rose-600 dark:text-rose-400 print:text-red-700 font-bold" : "text-slate-400 dark:text-slate-500 print:text-slate-400"}`}>
+                                        {formatNumber(v.merma_excedente_litros, 1)}
+                                      </td>
+                                      <td className="py-1.5 px-1 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-600 dark:text-slate-300 print:text-slate-700">{formatNumber(v.precio_merma_litro_bs, 2)}</td>
+                                      <td className={`py-1.5 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 ${v.merma_descontar_bs > 0 ? "text-rose-600 dark:text-rose-400 print:text-red-600 font-bold" : "text-slate-500 dark:text-slate-400"}`}>
+                                        {formatNumber(v.merma_descontar_bs, 2)}
+                                      </td>
+                                      <td className="py-1.5 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-700 dark:text-slate-300 print:text-slate-800">{formatNumber(v.volumen_facturar_m3, 3)}</td>
+                                      <td className="py-1.5 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-700 dark:text-slate-300 print:text-slate-800">{formatNumber(v.tarifa_flete, 2)}</td>
+                                      <td className="py-1.5 px-2 text-right font-mono font-bold border border-slate-200 dark:border-slate-800 print:border-slate-300 text-amber-700 dark:text-amber-400 print:text-slate-900">
+                                        {formatNumber(v.flete_total_bs, 2)}
+                                      </td>
+                                    </tr>
+                                  ))}
+
+                                  {/* Subtotal por Producto (ej. Total DO) */}
+                                  <tr className="bg-slate-50 dark:bg-slate-950 font-bold text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-800">
+                                    <td colSpan={3} className="py-1.5 px-2 border border-slate-200 dark:border-slate-800 print:border-slate-300 text-right"></td>
+                                    <td className="py-1.5 px-1 text-center font-black text-amber-600 dark:text-amber-400 border border-slate-200 dark:border-slate-800 print:border-slate-300">Total {prodKey}</td>
+                                    <td colSpan={3} className="border border-slate-200 dark:border-slate-800 print:border-slate-300"></td>
+                                    <td className="py-1.5 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(subProdDesp, 0)}</td>
+                                    <td className="py-1.5 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(subProdRec, 0)}</td>
+                                    <td className="py-1.5 px-1 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(subProdMconf, 1)}</td>
+                                    <td colSpan={2} className="border border-slate-200 dark:border-slate-800 print:border-slate-300"></td>
+                                    <td className="py-1.5 px-1.5 text-right font-mono text-rose-600 dark:text-rose-400 border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(subProdMdesc, 2)}</td>
+                                    <td className="py-1.5 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(subProdM3, 3)}</td>
+                                    <td className="border border-slate-200 dark:border-slate-800 print:border-slate-300"></td>
+                                    <td className="py-1.5 px-2 text-right font-mono font-bold text-amber-600 dark:text-amber-400 border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(subProdImp, 2)}</td>
+                                  </tr>
+                                </Fragment>
+                              );
+                            })}
+
+                            {/* Subtotal de Empresa */}
+                            <tr className="bg-slate-100 dark:bg-slate-800/90 print:bg-slate-100 font-bold text-slate-900 dark:text-white print:text-slate-900 border-t-2 border-b-2 border-slate-300 dark:border-slate-700 print:border-slate-400">
+                              <td colSpan={7} className="py-2 px-3 border border-slate-200 dark:border-slate-800 print:border-slate-300 text-left font-black">
+                                Total {grp.empresa_name}
+                              </td>
+                              <td className="py-2 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(grp.subtotal_despachado, 0)}</td>
+                              <td className="py-2 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(grp.subtotal_recepcionado, 0)}</td>
+                              <td className="py-2 px-1 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(grp.subtotal_merma_real, 1)}</td>
+                              <td className="py-2 px-1 text-center border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-400 dark:text-slate-500 print:text-slate-400">-</td>
+                              <td className="py-2 px-1 text-center border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-400 dark:text-slate-500 print:text-slate-400">-</td>
+                              <td className="py-2 px-1.5 text-right font-mono text-rose-600 dark:text-rose-400 print:text-red-700 border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(grp.subtotal_merma_descontar_bs, 2)}</td>
+                              <td className="py-2 px-1.5 text-right font-mono border border-slate-200 dark:border-slate-800 print:border-slate-300">{formatNumber(grp.subtotal_volumen_m3, 3)}</td>
+                              <td className="py-2 px-1.5 text-center border border-slate-200 dark:border-slate-800 print:border-slate-300 text-slate-400 dark:text-slate-500 print:text-slate-400">-</td>
+                              <td className="py-2 px-2 text-right font-mono text-amber-700 dark:text-amber-400 print:text-blue-900 border border-slate-200 dark:border-slate-800 print:border-slate-300 font-black">
+                                {formatNumber(grp.subtotal_importe_bs, 2)}
+                              </td>
+                            </tr>
+                          </Fragment>
+                        );
+                      })}
 
                       {/* Total General de la Asociación (Idéntico a Pág 1) */}
                       {liqData.totales_generales && (
@@ -768,9 +772,26 @@ function AsociacionDetalleContent() {
                 </div>
               )}
 
-              {/* Cláusula Legal Oficial (Pie de Página del PDF) */}
-              <div className="mt-8 pt-5 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 text-[10px] text-slate-500 dark:text-slate-400 print:text-slate-600 leading-relaxed italic">
-                <b>Nota Legal:</b> Conforme lo establece la Ley 843 en su Art. 4 y de acuerdo a la cláusula contractual de Facturación y Pago, el momento en que finalizará la ejecución o la prestación del Servicio se origina después de realizada la Conciliación (Acta de Conformidad por la Comisión de Recepción) y emitida la planilla de Liquidación.
+              {/* Glosario de Abreviaciones de Producto y Cláusula Legal */}
+              <div className="mt-5 space-y-3">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 bg-slate-50 dark:bg-slate-950/70 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <span className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">Abreviaturas de Producto:</span>
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 font-mono font-bold">
+                      <strong>DO</strong> = Diesel
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-500/20 font-mono font-bold">
+                      <strong>IYA</strong> = Insumos y Aditivos
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-400 italic">
+                    * Combustibles unificados bajo código oficial DO
+                  </span>
+                </div>
+
+                <div className="pt-2 text-[10px] text-slate-500 dark:text-slate-400 print:text-slate-600 leading-relaxed italic border-t border-slate-200 dark:border-slate-800">
+                  <b>Nota Legal:</b> Conforme lo establece la Ley 843 en su Art. 4 y de acuerdo a la cláusula contractual de Facturación y Pago, el momento en que finalizará la ejecución o la prestación del Servicio se origina después de realizada la Conciliación (Acta de Conformidad por la Comisión de Recepción) y emitida la planilla de Liquidación.
+                </div>
               </div>
 
               {/* Firmas Oficiales de Auditoría y Directorio */}

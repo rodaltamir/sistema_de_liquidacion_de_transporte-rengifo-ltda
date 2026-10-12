@@ -255,12 +255,20 @@ def _get_asociacion_liquidacion_data(
             sub_imp = 0.0
 
             for v in viajes_db:
+                p_raw = str(v.producto or "").strip().upper()
+                if any(k in p_raw for k in ["DIESEL", "GASOLINA", "DO", "GE", "COMBUSTIBLE"]):
+                    prod_norm = "DO"
+                elif any(k in p_raw for k in ["INSUMO", "ADITIV", "IYA"]):
+                    prod_norm = "IYA"
+                else:
+                    prod_norm = p_raw or "DO"
+
                 v_dict = {
                     "id": v.id,
                     "lote_codigo": v.lote_codigo or "-",
                     "mic_dta": v.mic_dta or "-",
                     "tramo": v.tramo,
-                    "producto": v.producto,
+                    "producto": prod_norm,
                     "placa": v.placa,
                     "fecha_carga": str(v.fecha_carga),
                     "fecha_descarga": str(v.fecha_descarga),
