@@ -88,78 +88,177 @@ def export_liquidacion_placa_pdf(liquidacion: Any, viajes: List[Any], empresa: D
     story.append(t_header)
     story.append(Spacer(1, 8))
 
-    # Tabla de viajes
+    # Tabla de viajes (17 columnas oficiales con Fila Especial de Factura)
     table_headers = [
         Paragraph("Nº", header_style),
         Paragraph("CARGA", header_style),
         Paragraph("DESCARGA", header_style),
-        Paragraph("MIC/DTA", header_style),
+        Paragraph("MCI/DTA Y OTROS", header_style),
         Paragraph("PLACA", header_style),
         Paragraph("TRAMO", header_style),
         Paragraph("CLIENTE", header_style),
         Paragraph("PROD.", header_style),
         Paragraph("VOL. ORIGEN", header_style),
-        Paragraph("VOL. RECEP.", header_style),
+        Paragraph("VOL. RECEP./DESC.", header_style),
         Paragraph("MERMA (L)", header_style),
         Paragraph("MERMA EXC.", header_style),
         Paragraph("TOLER.", header_style),
         Paragraph("DESC. (Bs)", header_style),
+        Paragraph("VOL. FACT.", header_style),
         Paragraph("TARIFA", header_style),
         Paragraph("TOTAL (Bs)", header_style),
     ]
 
     t_rows = [table_headers]
-    for idx, v in enumerate(viajes, 1):
-        t_rows.append([
-            Paragraph(str(idx), cell_style),
-            Paragraph(str(v.fecha_carga), cell_style),
-            Paragraph(str(v.fecha_descarga), cell_style),
-            Paragraph(v.mic_dta or "-", cell_style),
-            Paragraph(v.placa, cell_style),
-            Paragraph(v.tramo, cell_style),
-            Paragraph(v.cliente or "YPFB", cell_style),
-            Paragraph(v.producto, cell_style),
-            Paragraph(f"{v.volumen_origen_litros:,.0f}", cell_style),
-            Paragraph(f"{v.volumen_recepcionado_litros:,.0f}", cell_style),
-            Paragraph(f"{v.merma_real_litros:,.1f}", cell_style),
-            Paragraph(f"{v.merma_excedente_litros:,.1f}", cell_style),
-            Paragraph(f"{v.merma_tolerable_litros:.0f}L ({v.tolerancia_pct}%)", cell_style),
-            Paragraph(f"{v.merma_descontar_bs:,.2f}", cell_style),
-            Paragraph(f"{v.tarifa_flete:,.2f}", cell_style),
-            Paragraph(f"<b>{v.flete_total_bs:,.2f}</b>", cell_style),
-        ])
-
-    # Fila total
-    t_rows.append([
-        Paragraph("<b>TOTALES</b>", cell_style),
-        Paragraph("", cell_style),
-        Paragraph("", cell_style),
-        Paragraph("", cell_style),
-        Paragraph("", cell_style),
-        Paragraph("", cell_style),
-        Paragraph("", cell_style),
-        Paragraph("", cell_style),
-        Paragraph(f"<b>{liquidacion.total_volumen_origen_litros:,.0f}</b>", cell_style),
-        Paragraph(f"<b>{liquidacion.total_volumen_recepcionado_litros:,.0f}</b>", cell_style),
-        Paragraph(f"<b>{liquidacion.total_merma_real_litros:,.1f}</b>", cell_style),
-        Paragraph(f"<b>{liquidacion.total_merma_excedente_litros:,.1f}</b>", cell_style),
-        Paragraph("", cell_style),
-        Paragraph(f"<b>{liquidacion.desc_merma_bs:,.2f}</b>", cell_style),
-        Paragraph("", cell_style),
-        Paragraph(f"<b>{liquidacion.flete_total_bruto_bs:,.2f}</b>", cell_style),
-    ])
-
-    col_widths = [20, 48, 48, 65, 50, 120, 40, 42, 52, 52, 45, 45, 55, 48, 40, 55]
-    table = Table(t_rows, colWidths=col_widths, repeatRows=1)
-    table.setStyle(TableStyle([
+    custom_table_styles = [
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1E3A8A')),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
-        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor('#FEF08A')),
-        ('TOPPADDING', (0,0), (-1,-1), 3),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-    ]))
+        ('TOPPADDING', (0,0), (-1,-1), 2),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+    ]
+
+    # Agrupar viajes por Tramo y Producto, ordenando cronológicamente
+    groups_dict = {}
+    for v in viajes:
+        t_key = str(getattr(v, "tramo", "") or "SIN TRAMO").strip().upper()
+        p_key = str(getattr(v, "producto", "") or "SIN PRODUCTO").strip().upper()
+        grp_k = (t_key, p_key)
+        if grp_k not in groups_dict:
+            groups_dict[grp_k] = []
+        groups_dict[grp_k].append(v)
+
+    for grp_k in groups_dict:
+        groups_dict[grp_k].sort(key=lambda x: (str(getattr(x, "fecha_carga", "") or ""), getattr(x, "id", 0)))
+
+    global_idx = 1
+    total_vol_fact_pdf = 0.0
+    total_vol_orig_pdf = 0.0
+    total_vol_rec_pdf = 0.0
+    total_mreal_pdf = 0.0
+    total_mdesc_pdf = 0.0
+    total_flete_pdf = 0.0
+
+    current_table_row = 1
+
+    for (t_key, p_key), grp_viajes in groups_dict.items():
+        grp_vol_orig = 0.0
+        grp_vol_rec = 0.0
+        grp_vol_fact = 0.0
+        grp_mreal = 0.0
+        grp_mdesc = 0.0
+        grp_flete = 0.0
+        grp_tarifa = 0.0
+
+        for v in grp_viajes:
+            v_orig = float(v.volumen_origen_litros or 0)
+            v_rec = float(v.volumen_recepcionado_litros or 0)
+            v_fact = float(getattr(v, "volumen_facturado", None) or (v_rec / 1000.0))
+            raw_mreal = float(v.merma_real_litros or 0)
+            mreal = -abs(raw_mreal) if raw_mreal != 0 else 0.0
+            mdesc = float(v.merma_descontar_bs or 0)
+            flete = float(v.flete_total_bs or 0)
+            tarifa = float(v.tarifa_flete or 0)
+
+            grp_vol_orig += v_orig
+            grp_vol_rec += v_rec
+            grp_vol_fact += v_fact
+            grp_mreal += mreal
+            grp_mdesc += mdesc
+            grp_flete += flete
+            grp_tarifa = tarifa
+
+            total_vol_orig_pdf += v_orig
+            total_vol_rec_pdf += v_rec
+            total_vol_fact_pdf += v_fact
+            total_mreal_pdf += mreal
+            total_mdesc_pdf += mdesc
+            total_flete_pdf += flete
+
+            t_rows.append([
+                Paragraph(str(global_idx), cell_style),
+                Paragraph(str(v.fecha_carga), cell_style),
+                Paragraph(str(v.fecha_descarga), cell_style),
+                Paragraph(v.mic_dta or "-", cell_style),
+                Paragraph(v.placa, cell_style),
+                Paragraph(v.tramo, cell_style),
+                Paragraph(v.cliente or "YPFB", cell_style),
+                Paragraph(v.producto, cell_style),
+                Paragraph(f"{v_orig:,.0f}", cell_style),
+                Paragraph(f"{v_rec:,.0f}", cell_style),
+                Paragraph(f"{mreal:,.1f}", cell_style),
+                Paragraph(f"{v.merma_excedente_litros:,.1f}", cell_style),
+                Paragraph(f"{v.merma_tolerable_litros:.0f}L", cell_style),
+                Paragraph(f"{mdesc:,.2f}", cell_style),
+                Paragraph(f"{v_fact:,.2f}", cell_style),
+                Paragraph(f"{tarifa:,.2f}", cell_style),
+                Paragraph(f"<b>{flete:,.2f}</b>", cell_style),
+            ])
+            global_idx += 1
+            current_table_row += 1
+
+        # FILA ESPECIAL: Subtotal del grupo con Factura y Fecha
+        nros_f = [str(getattr(x, "nro_factura", "") or "").strip() for x in grp_viajes if getattr(x, "nro_factura", None)]
+        nros_f = [x for x in dict.fromkeys(nros_f) if x and x != "-"]
+        fechas_f = [str(x.fecha_factura) for x in grp_viajes if getattr(x, "fecha_factura", None)]
+        fechas_f = [x for x in dict.fromkeys(fechas_f) if x and x != "-"]
+        fac_label = ", ".join(nros_f) if nros_f else "S/F"
+        fecha_label = ", ".join(fechas_f) if fechas_f else "-"
+
+        subtotal_label = f"<b>TOTAL {p_key} | FACTURA: {fac_label} | FECHA: {fecha_label}</b>"
+
+        t_rows.append([
+            Paragraph(subtotal_label, cell_style),
+            Paragraph("", cell_style),
+            Paragraph("", cell_style),
+            Paragraph("", cell_style),
+            Paragraph("", cell_style),
+            Paragraph("", cell_style),
+            Paragraph("", cell_style),
+            Paragraph("", cell_style),
+            Paragraph(f"<b>{grp_vol_orig:,.0f}</b>", cell_style),
+            Paragraph(f"<b>{grp_vol_rec:,.0f}</b>", cell_style),
+            Paragraph(f"<b>{grp_mreal:,.1f}</b>", cell_style),
+            Paragraph("", cell_style),
+            Paragraph("", cell_style),
+            Paragraph(f"<b>{grp_mdesc:,.2f}</b>", cell_style),
+            Paragraph(f"<b>{grp_vol_fact:,.2f}</b>", cell_style),
+            Paragraph(f"<b>{grp_tarifa:,.2f}</b>", cell_style),
+            Paragraph(f"<b>{grp_flete:,.2f}</b>", cell_style),
+        ])
+
+        custom_table_styles.append(('SPAN', (0, current_table_row), (7, current_table_row)))
+        custom_table_styles.append(('BACKGROUND', (0, current_table_row), (-1, current_table_row), colors.HexColor('#FEF3C7')))
+        current_table_row += 1
+
+    # Fila total general
+    t_rows.append([
+        Paragraph("<b>TOTAL GENERAL</b>", cell_style),
+        Paragraph("", cell_style),
+        Paragraph("", cell_style),
+        Paragraph("", cell_style),
+        Paragraph("", cell_style),
+        Paragraph("", cell_style),
+        Paragraph("", cell_style),
+        Paragraph("", cell_style),
+        Paragraph(f"<b>{(getattr(liquidacion, 'total_volumen_origen_litros', None) or total_vol_orig_pdf):,.0f}</b>", cell_style),
+        Paragraph(f"<b>{(getattr(liquidacion, 'total_volumen_recepcionado_litros', None) or total_vol_rec_pdf):,.0f}</b>", cell_style),
+        Paragraph(f"<b>{(getattr(liquidacion, 'total_merma_real_litros', None) or total_mreal_pdf):,.1f}</b>", cell_style),
+        Paragraph(f"<b>{(getattr(liquidacion, 'total_merma_excedente_litros', None) or 0.0):,.1f}</b>", cell_style),
+        Paragraph("", cell_style),
+        Paragraph(f"<b>{(getattr(liquidacion, 'desc_merma_bs', None) or total_mdesc_pdf):,.2f}</b>", cell_style),
+        Paragraph(f"<b>{total_vol_fact_pdf:,.2f}</b>", cell_style),
+        Paragraph("", cell_style),
+        Paragraph(f"<b>{(getattr(liquidacion, 'flete_total_bruto_bs', None) or total_flete_pdf):,.2f}</b>", cell_style),
+    ])
+
+    custom_table_styles.append(('SPAN', (0, current_table_row), (7, current_table_row)))
+    custom_table_styles.append(('BACKGROUND', (0, current_table_row), (-1, current_table_row), colors.HexColor('#FEF08A')))
+
+    col_widths = [18, 44, 44, 56, 45, 95, 38, 48, 46, 46, 38, 38, 42, 44, 44, 38, 50]
+    table = Table(t_rows, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle(custom_table_styles))
     story.append(table)
     story.append(Spacer(1, 15))
 
@@ -214,21 +313,21 @@ def export_liquidacion_placa_pdf(liquidacion: Any, viajes: List[Any], empresa: D
 
     desc_rows = [
         [Paragraph("<b>DESCRIPCION</b>", header_style), Paragraph("<b>TOTAL Bs</b>", header_style)],
-        [Paragraph("<b>FLETE TOTAL</b>", sub_style), Paragraph(f"<b>{liquidacion.flete_total_bruto_bs:,.2f}</b>", sub_style)],
-        [Paragraph("Descuento por Merma", cell_style), Paragraph(f"{liquidacion.desc_merma_bs:,.2f}", cell_style)],
-        [Paragraph("Descuento de Comision 1 $us p/m3", cell_style), Paragraph(f"{liquidacion.desc_comision_usd_m3_bs:,.2f}", cell_style)],
-        [Paragraph("Descuento de Comision 7%", cell_style), Paragraph(f"{liquidacion.desc_comision_7pct_bs:,.2f}", cell_style)],
-        [Paragraph("Descuento YPFB BOL-GART 7%", cell_style), Paragraph(f"{liquidacion.desc_comision_ypfb_bolgart_7pct_bs:,.2f}", cell_style)],
-        [Paragraph("Descuento de Comision 3%", cell_style), Paragraph(f"{liquidacion.desc_comision_3pct_bs:,.2f}", cell_style)],
-        [Paragraph("Hojas de Ruta", cell_style), Paragraph(f"{liquidacion.desc_hojas_ruta_bs:,.2f}", cell_style)],
-        [Paragraph("GPS", cell_style), Paragraph(f"{liquidacion.desc_gps_bs:,.2f}", cell_style)],
-        [Paragraph("Anticipos y Otros 7%", cell_style), Paragraph(f"{liquidacion.desc_anticipos_otros_bs:,.2f}", cell_style)],
+        [Paragraph("<b>FLETE TOTAL</b>", sub_style), Paragraph(f"<b>{(liquidacion.flete_total_bruto_bs or 0.0):,.2f}</b>", sub_style)],
+        [Paragraph("Descuento por Merma", cell_style), Paragraph(f"{(liquidacion.desc_merma_bs or 0.0):,.2f}", cell_style)],
+        [Paragraph("Descuento de Comision 1 $us p/m3", cell_style), Paragraph(f"{(liquidacion.desc_comision_usd_m3_bs or 0.0):,.2f}", cell_style)],
+        [Paragraph("Descuento de Comision 7%", cell_style), Paragraph(f"{(liquidacion.desc_comision_7pct_bs or 0.0):,.2f}", cell_style)],
+        [Paragraph("Descuento YPFB BOL-GART 7%", cell_style), Paragraph(f"{(liquidacion.desc_comision_ypfb_bolgart_7pct_bs or 0.0):,.2f}", cell_style)],
+        [Paragraph("Descuento de Comision 3%", cell_style), Paragraph(f"{(liquidacion.desc_comision_3pct_bs or 0.0):,.2f}", cell_style)],
+        [Paragraph("Hojas de Ruta", cell_style), Paragraph(f"{(liquidacion.desc_hojas_ruta_bs or 0.0):,.2f}", cell_style)],
+        [Paragraph("GPS", cell_style), Paragraph(f"{(liquidacion.desc_gps_bs or 0.0):,.2f}", cell_style)],
+        [Paragraph("Anticipos y Otros 7%", cell_style), Paragraph(f"{(liquidacion.desc_anticipos_otros_bs or 0.0):,.2f}", cell_style)],
     ]
-    if liquidacion.desc_otros_ajustes_bs and liquidacion.desc_otros_ajustes_bs != 0:
-        desc_rows.append([Paragraph("Otros Descuentos / Ajustes", cell_style), Paragraph(f"{liquidacion.desc_otros_ajustes_bs:,.2f}", cell_style)])
+    if getattr(liquidacion, 'desc_otros_ajustes_bs', None) and liquidacion.desc_otros_ajustes_bs != 0:
+        desc_rows.append([Paragraph("Otros Descuentos / Ajustes", cell_style), Paragraph(f"{(liquidacion.desc_otros_ajustes_bs or 0.0):,.2f}", cell_style)])
 
-    desc_rows.append([Paragraph("<b>TOTAL DESCUENTO</b>", sub_style), Paragraph(f"<b>{liquidacion.total_descuentos_bs:,.2f}</b>", sub_style)])
-    desc_rows.append([Paragraph("<b>LIQUIDO PAGABLE</b>", title_style), Paragraph(f"<b>{liquidacion.liquido_pagable_bs:,.2f}</b>", title_style)])
+    desc_rows.append([Paragraph("<b>TOTAL DESCUENTO</b>", sub_style), Paragraph(f"<b>{(liquidacion.total_descuentos_bs or 0.0):,.2f}</b>", sub_style)])
+    desc_rows.append([Paragraph("<b>LIQUIDO PAGABLE</b>", title_style), Paragraph(f"<b>{(liquidacion.liquido_pagable_bs or 0.0):,.2f}</b>", title_style)])
 
     t_desc = Table(desc_rows, colWidths=[380, 160])
     t_desc.setStyle(TableStyle([

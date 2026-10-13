@@ -89,6 +89,10 @@ class ParametroLiquidacion(Base):
     # Cláusula legal que rige la liquidación
     leyenda_legal = Column(Text, default="Conforme lo establece la Ley 843 en su Art. 4 y de acuerdo a la cláusula contractual de Facturación y Pago, el momento en que finalizará la ejecución o la prestación del Servicio se origina después de realizada la Conciliación (Acta de Conformidad por la Comisión de Recepción) y emitida la planilla de Liquidación.")
     
+    # Catálogos personalizados por empresa (Productos y Tramos)
+    productos_json = Column(Text, nullable=True, default='["GASOLINA", "DIESEL", "INSUMOS Y ADITIVOS"]')
+    tramos_json = Column(Text, nullable=True, default='["ARICA - TAMBO QUEMADO - LA PAZ", "IQUIQUE - PISIGA - ORURO", "MEJILLONES - OLLAGÜE - UYUNI"]')
+
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 
 
@@ -115,9 +119,14 @@ class Viaje(Base):
     fecha_descarga = Column(Date, nullable=False)
     periodo_mes = Column(String(20), nullable=False, index=True)  # ej. "2023-03" (mar.-22 o mar.-23)
 
+    # Facturación
+    nro_factura = Column(String(100), nullable=True)             # Nro. de Factura
+    fecha_factura = Column(Date, nullable=True)                  # Fecha de Facturación
+
     # Volúmenes
     volumen_origen_litros = Column(Float, nullable=False)        # ej. 33999.0
-    volumen_recepcionado_litros = Column(Float, nullable=False)  # ej. 33900.0
+    volumen_recepcionado_litros = Column(Float, nullable=False)  # ej. 33900.0 (Volumen Recepcionado/Descargado)
+    volumen_facturado = Column(Float, nullable=True)             # Dato principal de operación para Total a Pagar
 
     # Mermas
     merma_real_litros = Column(Float, default=0.0)               # volumen_origen - volumen_recepcionado (-99.0)
@@ -126,6 +135,12 @@ class Viaje(Base):
     merma_excedente_litros = Column(Float, default=0.0)          # Exceso sobre tolerancia (14.0)
     precio_merma_litro_bs = Column(Float, default=7.45)
     merma_descontar_bs = Column(Float, default=0.0)              # 104.30 Bs
+
+    # Descuentos dinámicos por viaje
+    descuentos_adicionales = Column(Text, nullable=True, default="[]") # JSON: [{"concepto": str, "monto": float}]
+    descuentos_mermas = Column(Text, nullable=True, default="[]")      # JSON: [{"concepto": str, "monto": float}]
+    total_descuentos_adicionales_bs = Column(Float, default=0.0)
+    total_descuentos_mermas_bs = Column(Float, default=0.0)
 
     # Flete y tarifa
     tarifa_flete = Column(Float, nullable=False)                 # ej. 392.00 Bs o 503.61 $us/m3

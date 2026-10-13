@@ -66,7 +66,7 @@ export default function EmpresaDashboardPage() {
       q = `periodo_mes=${filter.periodo_mes}`;
     } else if (filter.mode === "semestral" && filter.fecha_desde && filter.fecha_hasta) {
       q = `fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`;
-    } else if (filter.mode === "anual" && filter.anio) {
+    } else if (filter.mode === "anual" && filter.anio && !isNaN(filter.anio)) {
       q = `anio=${filter.anio}`;
     } else if (filter.mode === "personalizado" && filter.fecha_desde && filter.fecha_hasta) {
       q = `fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`;
@@ -89,6 +89,9 @@ export default function EmpresaDashboardPage() {
 
   const kpis = data?.kpis || {};
   const distribucion = data?.distribucion_productos || {};
+  const safeDashboardYear = data?.anio && !isNaN(data.anio) ? data.anio : new Date().getFullYear();
+  const rawLabel = activeLabel || data?.periodo_activo || `Gestión ${safeDashboardYear} (Anual)`;
+  const displayLabel = rawLabel.replace(/\bNaN\b/g, String(safeDashboardYear));
 
   return (
     <div className="space-y-4 font-sans selection:bg-amber-500 selection:text-slate-950">
@@ -105,7 +108,7 @@ export default function EmpresaDashboardPage() {
                 Panel de Control Operativo
               </h1>
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                {activeLabel || data?.periodo_activo || "Periodo Activo"}
+                {displayLabel}
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -131,7 +134,7 @@ export default function EmpresaDashboardPage() {
       {/* ======================================================== */}
       <DatePeriodFilter
         initialMode="anual"
-        currentPeriodoMes={data?.periodo_activo}
+        currentPeriodoMes={data?.anio ? String(data.anio) : data?.periodo_activo}
         periodosDisponibles={data?.periodos_disponibles || []}
         onChange={handleFilterChange}
       />

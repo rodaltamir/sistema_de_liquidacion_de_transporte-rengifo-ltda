@@ -73,13 +73,35 @@ export default function DatePeriodFilter({
   const currentRealMonth = String(now.getMonth() + 1).padStart(2, "0");
   const currentRealPeriod = `${currentRealYear}-${currentRealMonth}`;
 
+  // Helper para extraer un año válido (4 dígitos) de cualquier string o periodo
+  const parseYearFromInput = (val?: string | null): number => {
+    if (!val) return currentRealYear;
+    const match = String(val).match(/\b(19\d\d|20\d\d)\b/);
+    if (match) {
+      const parsed = parseInt(match[1], 10);
+      if (!isNaN(parsed) && parsed >= 1990 && parsed <= 2100) return parsed;
+    }
+    return currentRealYear;
+  };
+
+  const parseMonthFromInput = (val?: string | null): string => {
+    if (!val) return currentRealMonth;
+    const str = String(val);
+    if (str.includes("-")) {
+      const parts = str.split("-");
+      if (parts.length >= 2) {
+        const m = parseInt(parts[1], 10);
+        if (!isNaN(m) && m >= 1 && m <= 12) {
+          return String(m).padStart(2, "0");
+        }
+      }
+    }
+    return currentRealMonth;
+  };
+
   // Parsear estado inicial
-  const initialYear = currentPeriodoMes 
-    ? parseInt(currentPeriodoMes.split("-")[0], 10) 
-    : currentRealYear;
-  const initialMonth = currentPeriodoMes 
-    ? currentPeriodoMes.split("-")[1] 
-    : currentRealMonth;
+  const initialYear = parseYearFromInput(currentPeriodoMes);
+  const initialMonth = parseMonthFromInput(currentPeriodoMes);
 
   const [mode, setMode] = useState<FilterMode>(initialMode);
   const [selectedYear, setSelectedYear] = useState<number>(initialYear);
@@ -88,6 +110,9 @@ export default function DatePeriodFilter({
   const [customFrom, setCustomFrom] = useState<string>("");
   const [customTo, setCustomTo] = useState<string>("");
   const [isExpanded, setIsExpanded] = useState<boolean>(!compact);
+
+  // Garantizar siempre un año seguro nunca NaN
+  const safeYear = !isNaN(selectedYear) && selectedYear >= 1990 ? selectedYear : currentRealYear;
 
   // Mapear periodos con datos a un mapa rápido para consulta O(1)
   const periodosDataMap = useMemo(() => {
@@ -104,13 +129,18 @@ export default function DatePeriodFilter({
 
   // Si currentPeriodoMes cambia externamente
   useEffect(() => {
-    if (currentPeriodoMes && currentPeriodoMes.includes("-")) {
-      const [y, m] = currentPeriodoMes.split("-");
-      const yNum = parseInt(y, 10);
-      if (!isNaN(yNum)) setSelectedYear(yNum);
-      if (m) {
-        setSelectedMonth(m);
-        setSelectedSemester(parseInt(m, 10) <= 6 ? 1 : 2);
+    if (currentPeriodoMes) {
+      const parsedY = parseYearFromInput(currentPeriodoMes);
+      if (!isNaN(parsedY)) {
+        setSelectedYear(parsedY);
+      }
+      if (String(currentPeriodoMes).includes("-")) {
+        const parsedM = parseMonthFromInput(currentPeriodoMes);
+        setSelectedMonth(parsedM);
+        const mNum = parseInt(parsedM, 10);
+        if (!isNaN(mNum)) {
+          setSelectedSemester(mNum <= 6 ? 1 : 2);
+        }
       }
     }
   }, [currentPeriodoMes]);
@@ -119,27 +149,28 @@ export default function DatePeriodFilter({
   const handleSelectMonth = (monthNum: string) => {
     setSelectedMonth(monthNum);
     setMode("mes");
-    const periodo = `${selectedYear}-${monthNum}`;
+    const periodo = `${safeYear}-${monthNum}`;
     const mesObj = MESES_NOMBRES.find(m => m.num === monthNum);
-    const label = `${mesObj?.largo || monthNum} ${selectedYear}`;
+    const label = `${mesObj?.largo || monthNum} ${safeYear}`;
     onChange({
       mode: "mes",
       periodo_mes: periodo,
-      anio: selectedYear,
+      anio: safeYear,
       label
     });
   };
 
   // Manejar selección semestral
-  const handleSelectSemestral = (sem: 1 | 2, yr: number = selectedYear) => {
+  const handleSelectSemestral = (sem: 1 | 2, yr: number = safeYear) => {
+    const validYr = !isNaN(yr) && yr >= 1990 ? yr : safeYear;
     setSelectedSemester(sem);
     setMode("semestral");
-    const fDesde = sem === 1 ? `${yr}-01-01` : `${yr}-07-01`;
-    const fHasta = sem === 1 ? `${yr}-06-30` : `${yr}-12-31`;
-    const label = `${sem === 1 ? "1er" : "2do"} Semestre ${yr} (${sem === 1 ? "Ene - Jun" : "Jul - Dic"})`;
+    const fDesde = sem === 1 ? `${validYr}-01-01` : `${validYr}-07-01`;
+    const fHasta = sem === 1 ? `${validYr}-06-30` : `${validYr}-12-31`;
+    const label = `${sem === 1 ? "1er" : "2do"} Semestre ${validYr} (${sem === 1 ? "Ene - Jun" : "Jul - Dic"})`;
     onChange({
       mode: "semestral",
-      anio: yr,
+      anio: validYr,
       semestre: sem,
       fecha_desde: fDesde,
       fecha_hasta: fHasta,
@@ -149,7 +180,7 @@ export default function DatePeriodFilter({
 
   // Manejar navegación de año
   const handlePrevYear = () => {
-    const newYear = selectedYear - 1;
+    const newYear = safeYear - 1;
     setSelectedYear(newYear);
     if (mode === "mes") {
       const periodo = `${newYear}-${selectedMonth}`;
@@ -174,7 +205,7 @@ export default function DatePeriodFilter({
   };
 
   const handleNextYear = () => {
-    const newYear = selectedYear + 1;
+    const newYear = safeYear + 1;
     setSelectedYear(newYear);
     if (mode === "mes") {
       const periodo = `${newYear}-${selectedMonth}`;
@@ -199,14 +230,16 @@ export default function DatePeriodFilter({
   };
 
   // Cambiar a modo Anual
-  const handleSelectAnual = (yr: number = selectedYear) => {
+  const handleSelectAnual = (yr: number = safeYear) => {
+    const validYr = !isNaN(yr) && yr >= 1990 ? yr : safeYear;
+    setSelectedYear(validYr);
     setMode("anual");
     onChange({
       mode: "anual",
-      anio: yr,
-      fecha_desde: `${yr}-01-01`,
-      fecha_hasta: `${yr}-12-31`,
-      label: `Año ${yr} Completo`
+      anio: validYr,
+      fecha_desde: `${validYr}-01-01`,
+      fecha_hasta: `${validYr}-12-31`,
+      label: `Año ${validYr} Completo`
     });
   };
 
@@ -281,19 +314,19 @@ export default function DatePeriodFilter({
   const activeFilterBadge = useMemo(() => {
     if (mode === "mes") {
       const m = MESES_NOMBRES.find(item => item.num === selectedMonth);
-      return `${m?.largo || selectedMonth} ${selectedYear}`;
+      return `${m?.largo || selectedMonth} ${safeYear}`;
     }
-    if (mode === "semestral") return `${selectedSemester === 1 ? "1er" : "2do"} Semestre ${selectedYear}`;
-    if (mode === "anual") return `Gestión Anual ${selectedYear}`;
+    if (mode === "semestral") return `${selectedSemester === 1 ? "1er" : "2do"} Semestre ${safeYear}`;
+    if (mode === "anual") return `Gestión Anual ${safeYear}`;
     if (mode === "personalizado") return customFrom && customTo ? `${customFrom} al ${customTo}` : "Rango Personalizado";
     if (mode === "historico") return "Histórico General";
     return "";
-  }, [mode, selectedMonth, selectedYear, selectedSemester, customFrom, customTo]);
+  }, [mode, selectedMonth, safeYear, selectedSemester, customFrom, customTo]);
 
   // Contar cuántos meses del año tienen datos
   const activeMonthsInYear = useMemo(() => {
-    return MESES_NOMBRES.filter(m => periodosDataMap.has(`${selectedYear}-${m.num}`)).length;
-  }, [selectedYear, periodosDataMap]);
+    return MESES_NOMBRES.filter(m => periodosDataMap.has(`${safeYear}-${m.num}`)).length;
+  }, [safeYear, periodosDataMap]);
 
   return (
     <div className={`bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl transition-all overflow-hidden ${className}`}>
@@ -380,7 +413,7 @@ export default function DatePeriodFilter({
             type="button"
             onClick={handleGoToCurrentMonth}
             className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition ${
-              mode === "mes" && selectedYear === currentRealYear && selectedMonth === currentRealMonth
+              mode === "mes" && safeYear === currentRealYear && selectedMonth === currentRealMonth
                 ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400"
                 : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-amber-500/50"
             }`}
@@ -424,9 +457,9 @@ export default function DatePeriodFilter({
 
                 <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
                   <span className="font-mono text-sm font-black text-slate-900 dark:text-white">
-                    {selectedYear}
+                    {safeYear}
                   </span>
-                  {selectedYear === currentRealYear && (
+                  {safeYear === currentRealYear && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400">
                       Año en Curso
                     </span>
@@ -456,9 +489,9 @@ export default function DatePeriodFilter({
             {/* VISUALIZADOR DE MESES COMPACTO (12 PÍLDORAS ELEGANTES) */}
             <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-1.5 sm:gap-2">
               {MESES_NOMBRES.map((mes) => {
-                const periodoKey = `${selectedYear}-${mes.num}`;
+                const periodoKey = `${safeYear}-${mes.num}`;
                 const isSelected = selectedMonth === mes.num;
-                const isCurrentRealMonth = selectedYear === currentRealYear && mes.num === currentRealMonth;
+                const isCurrentRealMonth = safeYear === currentRealYear && mes.num === currentRealMonth;
                 const dataInfo = periodosDataMap.get(periodoKey);
                 const hasData = !!dataInfo;
                 const viajesCount = dataInfo?.total_viajes;
@@ -505,10 +538,10 @@ export default function DatePeriodFilter({
               <div>
                 <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
                   <CalendarRange className="w-4 h-4 text-amber-500" />
-                  <span>Consolidado Semestral: Gestión {selectedYear}</span>
+                  <span>Consolidado Semestral: Gestión {safeYear}</span>
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Filtro oficial de auditoría por semestres para la gestión {selectedYear}.
+                  Filtro oficial de auditoría por semestres para la gestión {safeYear}.
                 </p>
               </div>
 
@@ -524,7 +557,7 @@ export default function DatePeriodFilter({
                 </button>
 
                 <div className="px-3.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-sm font-black text-slate-900 dark:text-white">
-                  {selectedYear}
+                  {safeYear}
                 </div>
 
                 <button
@@ -554,11 +587,11 @@ export default function DatePeriodFilter({
                   <div className="flex items-center gap-2">
                     <span className={`w-3 h-3 rounded-full ${selectedSemester === 1 ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-600"}`} />
                     <h5 className="font-black text-sm text-slate-900 dark:text-white">
-                      1er Semestre ({selectedYear})
+                      1er Semestre ({safeYear})
                     </h5>
                   </div>
                   <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
-                    01/01/{selectedYear} al 30/06/{selectedYear}
+                    01/01/{safeYear} al 30/06/{safeYear}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -580,11 +613,11 @@ export default function DatePeriodFilter({
                   <div className="flex items-center gap-2">
                     <span className={`w-3 h-3 rounded-full ${selectedSemester === 2 ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-600"}`} />
                     <h5 className="font-black text-sm text-slate-900 dark:text-white">
-                      2do Semestre ({selectedYear})
+                      2do Semestre ({safeYear})
                     </h5>
                   </div>
                   <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
-                    01/07/{selectedYear} al 31/12/{selectedYear}
+                    01/07/{safeYear} al 31/12/{safeYear}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -604,16 +637,16 @@ export default function DatePeriodFilter({
               <div>
                 <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
                   <Clock className="w-4 h-4 text-amber-500" />
-                  <span>Consolidado Anual: Gestión {selectedYear}</span>
+                  <span>Consolidado Anual: Gestión {safeYear}</span>
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Muestra todas las operaciones, fletes y liquidaciones realizadas entre el 01/01/{selectedYear} y el 31/12/{selectedYear}.
+                  Muestra todas las operaciones, fletes y liquidaciones realizadas entre el 01/01/{safeYear} y el 31/12/{safeYear}.
                 </p>
               </div>
 
               {/* Selector de Año Rápido */}
               <div className="flex items-center gap-2">
-                {[selectedYear - 2, selectedYear - 1, selectedYear, selectedYear + 1].map((yr) => (
+                {[safeYear - 2, safeYear - 1, safeYear, safeYear + 1].map((yr) => (
                   <button
                     key={yr}
                     type="button"
@@ -628,7 +661,7 @@ export default function DatePeriodFilter({
                       });
                     }}
                     className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold transition ${
-                      selectedYear === yr
+                      safeYear === yr
                         ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black"
                         : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-amber-500/50"
                     }`}

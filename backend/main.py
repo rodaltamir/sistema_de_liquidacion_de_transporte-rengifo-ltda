@@ -22,6 +22,13 @@ from app.api import (
 public_tables = [User.__table__, Asociacion.__table__, Empresa.__table__]
 Base.metadata.create_all(bind=engine, tables=public_tables)
 
+# Asegurar columnas actualizadas en todos los esquemas tenant
+from app.db.migrations import run_all_tenant_migrations
+try:
+    run_all_tenant_migrations()
+except Exception as e:
+    print(f"Error running tenant migrations: {e}")
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Sistema Multi-tenant de Liquidación de Pagos para Empresas de Transporte y Asociaciones",

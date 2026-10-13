@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useParams } from "next/navigation";
 import { 
   FileSpreadsheet, 
@@ -860,7 +860,7 @@ export default function LiquidacionesPage() {
                             <button
                               onClick={() => handleViewPlanilla(liq.id)}
                               className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-sm inline-flex items-center gap-1 transition active:scale-95"
-                              title="Ver planilla oficial de 17 columnas"
+                              title="Ver planilla oficial de 19 columnas"
                             >
                               <Eye className="w-3.5 h-3.5" />
                               <span>Ver Planilla</span>
@@ -907,7 +907,7 @@ export default function LiquidacionesPage() {
                 <span>Hoja 1 (Pág. 2)</span>
               </div>
               <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">
-                Detalle operativo de 17 columnas con MICs, tramos y mermas por viaje.
+                Detalle operativo de 19 columnas con MCI/DTA y otros, tramos, facturación y mermas por viaje.
               </p>
             </div>
 
@@ -966,7 +966,7 @@ export default function LiquidacionesPage() {
                 </div>
               </div>
 
-              {/* Tabla de Viajes de la Placa (17 Columnas exactas de Pág 2) */}
+              {/* Tabla de Viajes de la Placa (17 Columnas oficiales con Fila Especial de Factura) */}
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-[11px] border-collapse">
                   <thead>
@@ -974,56 +974,119 @@ export default function LiquidacionesPage() {
                       <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">Nº</th>
                       <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">FECHA DE CARGA</th>
                       <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">FECHA DE DESCARGA</th>
-                      <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">MIC/DTA Nº</th>
-                      <th className="py-2 px-2 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-left">EMPRESA</th>
+                      <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">MCI/DTA Nº Y OTROS</th>
                       <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">PLACA</th>
                       <th className="py-2 px-2 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-left">TRAMO</th>
                       <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">CLIENTE</th>
                       <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">PRODUCTO</th>
                       <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Volumen en Lt. Origen</th>
-                      <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Volumen Recepcionado</th>
+                      <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Volumen Recepcionado/Descargado</th>
                       <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Merma T/Tr</th>
                       <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Total Merma (Lt)</th>
-                      <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-center">MERMA Tolerable (0.15% / 0.25%)</th>
+                      <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-center">MERMA Tolerable</th>
                       <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Merma a Descontar Y.P.F.B. Bs.</th>
+                      <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Volumen Facturado</th>
                       <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">TARIFA Bs.</th>
-                      <th className="py-2 px-2 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Total a pagar en Bs.</th>
+                      <th className="py-2 px-2 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Total a pagar en Bob.</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {activeLiq.viajes?.map((v: any, idx: number) => (
-                      <tr 
-                        key={v.id} 
-                        className={`border-b border-slate-200 dark:border-slate-800 print:border-slate-200 hover:bg-amber-50/40 dark:hover:bg-slate-800/40 print:hover:bg-slate-50 ${
-                          idx % 2 === 0 ? "bg-white dark:bg-slate-900/60 print:bg-white" : "bg-slate-50/70 dark:bg-slate-950/40 print:bg-slate-50/50"
-                        }`}
-                      >
-                        <td className="py-1 px-1 text-center font-bold border-x border-slate-200 dark:border-slate-800 print:border-slate-200 text-slate-700 dark:text-slate-300 print:text-slate-800">{idx + 1}</td>
-                        <td className="py-1 px-1.5 text-center text-slate-500 dark:text-slate-400 print:text-slate-600 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatDate(v.fecha_carga)}</td>
-                        <td className="py-1 px-1.5 text-center text-slate-500 dark:text-slate-400 print:text-slate-600 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatDate(v.fecha_descarga)}</td>
-                        <td className="py-1 px-1.5 text-center font-mono font-bold text-slate-900 dark:text-white print:text-slate-800 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.mic_dta || "-"}</td>
-                        <td className="py-1 px-2 text-slate-700 dark:text-slate-300 print:text-slate-700 truncate max-w-[130px] border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{empresaNombre}</td>
-                        <td className="py-1 px-1 text-center font-mono font-bold text-amber-700 dark:text-amber-400 print:text-slate-900 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.placa}</td>
-                        <td className="py-1 px-2 text-slate-700 dark:text-slate-300 print:text-slate-800 uppercase text-[10px] border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.tramo}</td>
-                        <td className="py-1 px-1 text-center font-bold text-slate-600 dark:text-slate-300 print:text-slate-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.cliente || "YPFB"}</td>
-                        <td className="py-1 px-1 text-center font-bold text-amber-700 dark:text-amber-400 print:text-blue-900 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.producto}</td>
-                        <td className="py-1 px-1.5 text-right font-mono text-slate-700 dark:text-slate-200 print:text-slate-800 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.volumen_origen_litros, 0)}</td>
-                        <td className="py-1 px-1.5 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400 print:text-slate-900 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.volumen_recepcionado_litros, 0)}</td>
-                        <td className="py-1 px-1 text-right font-mono text-slate-700 dark:text-slate-300 print:text-slate-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">
-                          {v.merma_real_litros > 0 ? `-${formatNumber(v.merma_real_litros, 1)}` : formatNumber(v.merma_real_litros, 1)}
-                        </td>
-                        <td className="py-1 px-1 text-right font-mono text-slate-700 dark:text-slate-300 print:text-slate-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.merma_excedente_litros, 1)}</td>
-                        <td className="py-1 px-1 text-center font-mono text-slate-500 dark:text-slate-400 print:text-slate-600 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.merma_tolerable_litros.toFixed(0)}</td>
-                        <td className="py-1 px-1.5 text-right font-mono font-semibold text-rose-700 dark:text-rose-400 print:text-red-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.merma_descontar_bs, 1)}</td>
-                        <td className="py-1 px-1.5 text-right font-mono text-slate-700 dark:text-slate-300 print:text-slate-800 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.tarifa_flete, 2)}</td>
-                        <td className="py-1 px-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 print:text-slate-950 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.flete_total_bs, 2)}</td>
-                      </tr>
-                    ))}
+                    {(() => {
+                      if (!activeLiq.viajes || activeLiq.viajes.length === 0) return null;
+
+                      // Agrupación de viajes por (tramo, producto)
+                      const groupsMap: { [k: string]: { tramo: string; producto: string; items: any[] } } = {};
+                      for (const v of activeLiq.viajes) {
+                        const t = (v.tramo || "SIN TRAMO").trim().toUpperCase();
+                        const p = (v.producto || "SIN PRODUCTO").trim().toUpperCase();
+                        const key = `${t}___${p}`;
+                        if (!groupsMap[key]) {
+                          groupsMap[key] = { tramo: t, producto: p, items: [] };
+                        }
+                        groupsMap[key].items.push(v);
+                      }
+
+                      const groups = Object.values(groupsMap).map(g => {
+                        g.items.sort((a, b) => (a.fecha_carga || "").localeCompare(b.fecha_carga || ""));
+                        return g;
+                      });
+
+                      let globalIdx = 0;
+
+                      return groups.map((group, gIdx) => {
+                        const grpVolOrig = group.items.reduce((acc, x) => acc + (Number(x.volumen_origen_litros) || 0), 0);
+                        const grpVolRec = group.items.reduce((acc, x) => acc + (Number(x.volumen_recepcionado_litros) || 0), 0);
+                        const grpMermaReal = group.items.reduce((acc, x) => acc + (Number(x.merma_real_litros) || 0), 0);
+                        const grpMDesc = group.items.reduce((acc, x) => acc + (Number(x.merma_descontar_bs) || 0), 0);
+                        const grpVolFact = group.items.reduce((acc, x) => acc + (Number(x.volumen_facturado) || (Number(x.volumen_recepcionado_litros) / 1000) || 0), 0);
+                        const grpFlete = group.items.reduce((acc, x) => acc + (Number(x.flete_total_bs) || 0), 0);
+                        const grpTarifa = group.items[0]?.tarifa_flete || 0;
+
+                        const nrosFac = Array.from(new Set(group.items.map(x => x.nro_factura).filter(Boolean)));
+                        const fechasFac = Array.from(new Set(group.items.map(x => x.fecha_factura).filter(Boolean)));
+                        const facLabel = nrosFac.length > 0 ? nrosFac.join(", ") : "S/F";
+                        const fechaLabel = fechasFac.length > 0 ? fechasFac.map(f => formatDate(f)).join(", ") : "-";
+
+                        return (
+                          <Fragment key={gIdx}>
+                            {group.items.map((v: any) => {
+                              globalIdx++;
+                              return (
+                                <tr 
+                                  key={v.id} 
+                                  className="border-b border-slate-200 dark:border-slate-800 print:border-slate-200 hover:bg-amber-50/40 dark:hover:bg-slate-800/40 print:hover:bg-slate-50 bg-white dark:bg-slate-900/60"
+                                >
+                                  <td className="py-1 px-1 text-center font-bold border-x border-slate-200 dark:border-slate-800 print:border-slate-200 text-slate-700 dark:text-slate-300 print:text-slate-800">{globalIdx}</td>
+                                  <td className="py-1 px-1.5 text-center text-slate-500 dark:text-slate-400 print:text-slate-600 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatDate(v.fecha_carga)}</td>
+                                  <td className="py-1 px-1.5 text-center text-slate-500 dark:text-slate-400 print:text-slate-600 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatDate(v.fecha_descarga)}</td>
+                                  <td className="py-1 px-1.5 text-center font-mono font-bold text-slate-900 dark:text-white print:text-slate-800 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.mic_dta || "-"}</td>
+                                  <td className="py-1 px-1 text-center font-mono font-bold text-amber-700 dark:text-amber-400 print:text-slate-900 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.placa}</td>
+                                  <td className="py-1 px-2 text-slate-700 dark:text-slate-300 print:text-slate-800 uppercase text-[10px] border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.tramo}</td>
+                                  <td className="py-1 px-1 text-center font-bold text-slate-600 dark:text-slate-300 print:text-slate-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.cliente || "YPFB"}</td>
+                                  <td className="py-1 px-1 text-center font-bold text-amber-700 dark:text-amber-400 print:text-blue-900 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.producto}</td>
+                                  <td className="py-1 px-1.5 text-right font-mono text-slate-700 dark:text-slate-200 print:text-slate-800 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.volumen_origen_litros, 0)}</td>
+                                  <td className="py-1 px-1.5 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400 print:text-slate-900 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.volumen_recepcionado_litros, 0)}</td>
+                                  <td className="py-1 px-1 text-right font-mono text-slate-700 dark:text-slate-300 print:text-slate-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">
+                                    {v.merma_real_litros > 0 ? `-${formatNumber(v.merma_real_litros, 1)}` : formatNumber(v.merma_real_litros, 1)}
+                                  </td>
+                                  <td className="py-1 px-1 text-right font-mono text-slate-700 dark:text-slate-300 print:text-slate-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.merma_excedente_litros, 1)}</td>
+                                  <td className="py-1 px-1 text-center font-mono text-slate-500 dark:text-slate-400 print:text-slate-600 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.merma_tolerable_litros ? v.merma_tolerable_litros.toFixed(0) : "0"}</td>
+                                  <td className="py-1 px-1.5 text-right font-mono font-semibold text-rose-700 dark:text-rose-400 print:text-red-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.merma_descontar_bs, 1)}</td>
+                                  <td className="py-1 px-1.5 text-right font-mono font-bold text-sky-700 dark:text-sky-400 print:text-slate-900 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">
+                                    {formatNumber(v.volumen_facturado !== null && v.volumen_facturado !== undefined ? v.volumen_facturado : (v.volumen_recepcionado_litros / 1000), 3)}
+                                  </td>
+                                  <td className="py-1 px-1.5 text-right font-mono text-slate-700 dark:text-slate-300 print:text-slate-800 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.tarifa_flete, 2)}</td>
+                                  <td className="py-1 px-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 print:text-slate-950 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.flete_total_bs, 2)}</td>
+                                </tr>
+                              );
+                            })}
+
+                            {/* FILA ESPECIAL: Subtotal del Grupo con Facturación */}
+                            <tr className="bg-amber-100/70 dark:bg-amber-950/40 print:bg-amber-100/60 font-bold border-y-2 border-amber-300 dark:border-amber-700 text-[10.5px]">
+                              <td colSpan={8} className="py-2 px-2.5 text-left border-x border-amber-300 dark:border-amber-700">
+                                <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-2">TOTAL {group.producto}</span>
+                                <span className="text-slate-700 dark:text-slate-300 font-medium">| FACTURA: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
+                                <span className="text-slate-700 dark:text-slate-300 font-medium ml-2">| FECHA FACTURA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
+                              </td>
+                              <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-900 dark:text-white">{formatNumber(grpVolOrig, 0)}</td>
+                              <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-emerald-800 dark:text-emerald-300">{formatNumber(grpVolRec, 0)}</td>
+                              <td className="py-2 px-1 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-700 dark:text-slate-300">-{formatNumber(Math.abs(grpMermaReal), 1)}</td>
+                              <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
+                              <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
+                              <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-rose-700 dark:text-rose-400">{formatNumber(grpMDesc, 2)}</td>
+                              <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 3)}</td>
+                              <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-slate-700 dark:text-slate-300">{formatNumber(grpTarifa, 2)}</td>
+                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-amber-900 dark:text-amber-400">{formatNumber(grpFlete, 2)}</td>
+                            </tr>
+                          </Fragment>
+                        );
+                      });
+                    })()}
 
                     {/* Fila de Totales Pág 2 */}
                     <tr className="bg-slate-100 dark:bg-slate-800/90 print:bg-slate-100 font-black text-slate-900 dark:text-white print:text-slate-900 border-t-2 border-b border-slate-300 dark:border-slate-700 print:border-slate-400 text-xs">
-                      <td colSpan={9} className="py-2.5 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                        TOTALES:
+                      <td colSpan={8} className="py-2.5 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
+                        TOTAL GENERAL:
                       </td>
                       <td className="py-2.5 px-1.5 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
                         {formatNumber(activeLiq.total_volumen_origen_litros, 0)}
@@ -1040,6 +1103,9 @@ export default function LiquidacionesPage() {
                       <td className="py-2.5 px-1 border-x border-slate-300 dark:border-slate-700 print:border-slate-300"></td>
                       <td className="py-2.5 px-1.5 text-right font-mono text-rose-700 dark:text-rose-400 print:text-red-700 border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
                         {formatNumber(activeLiq.desc_merma_bs, 1)}
+                      </td>
+                      <td className="py-2.5 px-1.5 text-right font-mono font-bold text-sky-800 dark:text-sky-300 border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
+                        {formatNumber(activeLiq.viajes?.reduce((sum: number, v: any) => sum + (Number(v.volumen_facturado) || (Number(v.volumen_recepcionado_litros) / 1000) || 0), 0), 3)}
                       </td>
                       <td className="py-2.5 px-1.5 border-x border-slate-300 dark:border-slate-700 print:border-slate-300"></td>
                       <td className="py-2.5 px-2 text-right font-mono text-amber-900 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/15 print:bg-amber-50 border-x border-slate-300 dark:border-slate-700 print:border-slate-300 text-sm font-black">

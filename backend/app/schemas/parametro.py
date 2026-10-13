@@ -26,6 +26,8 @@ class ParametroBase(BaseModel):
     firma_autorizado_por: str = "DIRECTORIO"
     firma_cancelado_por: str = "TOMASA TIÑINI MITA / APOYO"
     leyenda_legal: str = "Conforme lo establece la Ley 843 en su Art. 4 y de acuerdo a la cláusula contractual de Facturación y Pago, el momento en que finalizará la ejecución o la prestación del Servicio se origina después de realizada la Conciliación (Acta de Conformidad por la Comisión de Recepción) y emitida la planilla de Liquidación."
+    productos_json: Optional[str] = '["GASOLINA", "DIESEL", "INSUMOS Y ADITIVOS"]'
+    tramos_json: Optional[str] = '["ARICA - TAMBO QUEMADO - LA PAZ", "IQUIQUE - PISIGA - ORURO", "MEJILLONES - OLLAGÜE - UYUNI"]'
 
 class ParametroUpdate(BaseModel):
     tipo_cambio_usd_bob: Optional[float] = None
@@ -51,6 +53,8 @@ class ParametroUpdate(BaseModel):
     firma_autorizado_por: Optional[str] = None
     firma_cancelado_por: Optional[str] = None
     leyenda_legal: Optional[str] = None
+    productos_json: Optional[str] = None
+    tramos_json: Optional[str] = None
 
 class ParametroResponse(ParametroBase):
     id: int

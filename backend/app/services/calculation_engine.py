@@ -28,23 +28,25 @@ def determine_trip_period(date_carga: date, date_descarga: Optional[date] = None
     
     return f"{date_descarga.year}-{str(date_descarga.month).zfill(2)}"
 
-def get_tolerancia_pct(producto: str, params: ParametroLiquidacion) -> float:
+def get_tolerancia_pct(producto: str, params: Optional[ParametroLiquidacion] = None) -> float:
     """
     Retorna el porcentaje de tolerancia contractual de merma según el producto.
     Basado en los estándares YPFB y regulaciones del sector hidrocarburos.
     """
-    prod = producto.upper()
-    if "GASOLINA" in prod:
-        return params.merma_tolerancia_gasolina_pct  # 0.25%
-    elif "DIESEL" in prod or "DO" in prod:
-        return params.merma_tolerancia_diesel_pct    # 0.15%
-    elif "IYA" in prod or "INSUMOS" in prod:
-        return params.merma_tolerancia_iya_pct       # 0.20%
+    prod = producto.upper() if producto else ""
+    if "SOYA" in prod or "GIRASOL" in prod or "ACERO" in prod or "PLANCHAS" in prod:
+        return 0.0                                   # Carga seca / Granel
+    elif "GASOLINA" in prod:
+        return params.merma_tolerancia_gasolina_pct if (params and params.merma_tolerancia_gasolina_pct is not None) else 0.25
+    elif "DIESEL" in prod or "DO" in prod or "DIÉSEL" in prod:
+        return params.merma_tolerancia_diesel_pct if (params and params.merma_tolerancia_diesel_pct is not None) else 0.15
+    elif "IYA" in prod or "INSUMOS" in prod or "ADITIVOS" in prod:
+        return params.merma_tolerancia_iya_pct if (params and params.merma_tolerancia_iya_pct is not None) else 0.20
     elif "CRUDO" in prod:
-        return params.merma_tolerancia_crudo_pct     # 0.15%
-    return params.merma_tolerancia_diesel_pct
+        return params.merma_tolerancia_crudo_pct if (params and params.merma_tolerancia_crudo_pct is not None) else 0.15
+    return params.merma_tolerancia_diesel_pct if (params and params.merma_tolerancia_diesel_pct is not None) else 0.15
 
-def get_precio_merma(producto: str, params: ParametroLiquidacion, override_precio: float = None) -> float:
+def get_precio_merma(producto: str, params: Optional[ParametroLiquidacion] = None, override_precio: float = None) -> float:
     """
     Determina el precio unitario del litro de merma a descontar (en Bs).
     Si se proporciona un override en el viaje se respeta, sino se toma del panel de control.
@@ -52,13 +54,15 @@ def get_precio_merma(producto: str, params: ParametroLiquidacion, override_preci
     if override_precio is not None and override_precio > 0:
         return override_precio
     
-    prod = producto.upper()
-    if params.precio_merma_general_bs and params.precio_merma_general_bs > 0:
-        return params.precio_merma_general_bs  # ej. 7.45 Bs como en la Hoja 2 del PDF
-    elif "GASOLINA" in prod:
-        return params.precio_merma_gasolina_litro_bs
-    else:
-        return params.precio_merma_diesel_litro_bs
+    prod = producto.upper() if producto else ""
+    if params:
+        if params.precio_merma_general_bs and params.precio_merma_general_bs > 0:
+            return params.precio_merma_general_bs  # ej. 7.45 Bs como en la Hoja 2 del PDF
+        elif "GASOLINA" in prod and params.precio_merma_gasolina_litro_bs:
+            return params.precio_merma_gasolina_litro_bs
+        elif params.precio_merma_diesel_litro_bs:
+            return params.precio_merma_diesel_litro_bs
+    return 7.45
 
 def calculate_viaje_values(
     volumen_origen_litros: float,
@@ -67,7 +71,8 @@ def calculate_viaje_values(
     tarifa_flete: float,
     tipo_tarifa: str,
     params: ParametroLiquidacion,
-    precio_merma_litro_override: float = None
+    precio_merma_litro_override: float = None,
+    volumen_facturado: float = None
 ) -> Dict[str, float]:
     """
     Realiza el cálculo operativo exacto de un viaje / despacho:
@@ -76,7 +81,8 @@ def calculate_viaje_values(
     - Merma tolerable (Litros)
     - Merma excedente (Litros a descontar)
     - Descuento por merma (Bs)
-    - Flete bruto a pagar (Bs)
+    - Volumen facturado
+    - Total a pagar (Bs) = Volumen Facturado * Tarifa
     """
     # 1. Merma Real
     merma_real = round(volumen_origen_litros - volumen_recepcionado_litros, 1)
@@ -95,23 +101,24 @@ def calculate_viaje_values(
     precio_merma = get_precio_merma(producto, params, precio_merma_litro_override)
     merma_descontar_bs = round(merma_excedente * precio_merma, 2)
 
-    # 5. Cálculo del Flete
-    # Según tipo de tarifa:
-    # BS_POR_M3: volumen_recepcionado (en m3) * tarifa
-    # USD_POR_M3: volumen_recepcionado (en m3) * tarifa * tipo_cambio
-    # BS_TOTAL_VIAJE: monto fijo
-    volumen_m3 = volumen_recepcionado_litros / 1000.0
+    # 5. Volumen Facturado y Cálculo del Total a Pagar
+    # Regla principal: Volumen Facturado * Tarifa = Total a Pagar
+    if volumen_facturado is not None and volumen_facturado > 0:
+        vol_fact = float(volumen_facturado)
+    else:
+        vol_fact = round(volumen_recepcionado_litros / 1000.0, 3)
+
     tipo = (tipo_tarifa or "BS_POR_M3").upper()
 
-    if tipo == "BS_POR_M3":
-        flete_total_bs = round(volumen_m3 * tarifa_flete, 2)
-    elif tipo == "USD_POR_M3":
+    if tipo == "USD_POR_M3":
         tipo_cambio = params.tipo_cambio_usd_bob or 6.96
-        flete_total_bs = round(volumen_m3 * tarifa_flete * (tipo_cambio / 10.0), 2) # según escala
-    elif tipo == "BS_POR_LITRO":
-        flete_total_bs = round(volumen_recepcionado_litros * tarifa_flete, 2)
-    else:
+        flete_total_bs = round(vol_fact * tarifa_flete * (tipo_cambio / 10.0), 2)
+    elif tipo == "BS_TOTAL_VIAJE":
         flete_total_bs = round(tarifa_flete, 2)
+    else:
+        # BS_POR_M3 / BS_POR_TONELADA / BS_OPERACION:
+        # volumen_facturado * tarifa = total pagar
+        flete_total_bs = round(vol_fact * tarifa_flete, 2)
 
     return {
         "merma_real_litros": merma_real,
@@ -120,6 +127,7 @@ def calculate_viaje_values(
         "merma_excedente_litros": merma_excedente,
         "precio_merma_litro_bs": precio_merma,
         "merma_descontar_bs": merma_descontar_bs,
+        "volumen_facturado": vol_fact,
         "flete_total_bs": flete_total_bs
     }
 

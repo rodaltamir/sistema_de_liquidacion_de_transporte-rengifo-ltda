@@ -35,6 +35,7 @@ def get_dashboard_metrics(
         query_viajes = session.query(Viaje)
         query_liq = session.query(Liquidacion)
         label_periodo = ""
+        target_year = datetime.now().year
 
         if fecha_desde and fecha_hasta:
             query_viajes = query_viajes.filter(Viaje.fecha_carga.between(fecha_desde, fecha_hasta))
@@ -45,14 +46,20 @@ def get_dashboard_metrics(
                 (Liquidacion.periodo_mes.between(desde_str, hasta_str))
             )
             label_periodo = f"{fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}"
+            target_year = fecha_desde.year
         elif anio:
             query_viajes = query_viajes.filter(Viaje.periodo_mes.startswith(f"{anio}-"))
             query_liq = query_liq.filter(Liquidacion.periodo_mes.startswith(f"{anio}-"))
             label_periodo = f"Año {anio}"
+            target_year = anio
         elif periodo_mes:
             query_viajes = query_viajes.filter(Viaje.periodo_mes == periodo_mes)
             query_liq = query_liq.filter(Liquidacion.periodo_mes == periodo_mes)
             label_periodo = periodo_mes
+            try:
+                target_year = int(periodo_mes.split("-")[0])
+            except Exception:
+                target_year = datetime.now().year
         else:
             # Por defecto mostrar consolidado anual (de los periodos con datos o el año actual)
             if periodos_disponibles:
@@ -116,6 +123,7 @@ def get_dashboard_metrics(
                 "asociacion_id": empresa.asociacion_id
             },
             "periodo_activo": label_periodo or periodo_mes,
+            "anio": target_year,
             "periodos_disponibles": periodos_disponibles,
             "kpis": {
                 "total_viajes": total_viajes,

@@ -1,4 +1,5 @@
 import io
+import json
 from datetime import date, datetime
 from dateutil import parser as date_parser
 import openpyxl
@@ -16,6 +17,38 @@ from app.services.excel_export import generate_viajes_template_excel
 from sqlalchemy import func
 
 router = APIRouter(prefix="/tenants/{schema_name}/viajes", tags=["Viajes y Despachos"])
+
+def process_descuentos(raw_list):
+    if not raw_list:
+        return "[]", 0.0
+    if isinstance(raw_list, str):
+        try:
+            parsed = json.loads(raw_list)
+        except Exception:
+            return "[]", 0.0
+    else:
+        parsed = raw_list
+
+    clean_items = []
+    total = 0.0
+    if isinstance(parsed, list):
+        for item in parsed:
+            if hasattr(item, "model_dump"):
+                d = item.model_dump()
+            elif isinstance(item, dict):
+                d = item
+            else:
+                continue
+            concepto = str(d.get("concepto") or "").strip()
+            try:
+                monto = float(d.get("monto") or 0.0)
+            except Exception:
+                monto = 0.0
+            if concepto and monto > 0:
+                clean_items.append({"concepto": concepto, "monto": round(monto, 2)})
+                total += monto
+    return json.dumps(clean_items), round(total, 2)
+
 
 
 @router.get("/periodos")
@@ -55,6 +88,12 @@ def list_viajes(
     fecha_hasta: Optional[date] = None,
     placa: Optional[str] = None,
     estado: Optional[str] = None,
+    producto: Optional[str] = None,
+    tramo: Optional[str] = None,
+    nro_factura: Optional[str] = None,
+    facturado: Optional[str] = None,
+    search: Optional[str] = None,
+    orden: Optional[str] = None,
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     session = get_tenant_session(schema_name)
@@ -72,8 +111,30 @@ def list_viajes(
             query = query.filter(Viaje.placa == placa.upper().strip())
         if estado:
             query = query.filter(Viaje.estado == estado)
+        if producto and producto.upper().strip() != "TODOS":
+            query = query.filter(Viaje.producto == producto.upper().strip())
+        if tramo:
+            query = query.filter(Viaje.tramo == tramo.upper().strip())
+        if nro_factura:
+            query = query.filter(Viaje.nro_factura.ilike(f"%{nro_factura.strip()}%"))
+        if facturado == "si":
+            query = query.filter(Viaje.nro_factura.isnot(None), Viaje.nro_factura != "")
+        elif facturado == "no":
+            query = query.filter((Viaje.nro_factura.is_(None)) | (Viaje.nro_factura == ""))
+        if search:
+            st = f"%{search.strip()}%"
+            query = query.filter(
+                (Viaje.nro_factura.ilike(st)) |
+                (Viaje.mic_dta.ilike(st)) |
+                (Viaje.placa.ilike(st)) |
+                (Viaje.tramo.ilike(st)) |
+                (Viaje.cliente.ilike(st)) |
+                (Viaje.producto.ilike(st))
+            )
             
-        return query.order_by(Viaje.fecha_carga.desc()).all()
+        if orden in ("asc", "agrupado"):
+            return query.order_by(Viaje.tramo.asc(), Viaje.producto.asc(), Viaje.fecha_carga.asc(), Viaje.id.asc()).all()
+        return query.order_by(Viaje.fecha_carga.desc(), Viaje.id.desc()).all()
     finally:
         session.close()
 
@@ -86,6 +147,7 @@ def preview_calculo_viaje(
     tarifa_flete: float,
     tipo_tarifa: Optional[str] = "BS_POR_M3",
     precio_merma_override: Optional[float] = None,
+    volumen_facturado: Optional[float] = None,
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     session = get_tenant_session(schema_name)
@@ -101,7 +163,8 @@ def preview_calculo_viaje(
             tarifa_flete=tarifa_flete,
             tipo_tarifa=tipo_tarifa,
             params=params,
-            precio_merma_litro_override=precio_merma_override
+            precio_merma_litro_override=precio_merma_override,
+            volumen_facturado=volumen_facturado
         )
         return calc
     finally:
@@ -147,6 +210,15 @@ def create_viaje(
         # Determinar periodo mensual aplicando la regla de holgura de 1-2 días
         periodo_determinado = determine_trip_period(viaje_in.fecha_carga, viaje_in.fecha_descarga)
 
+        # Manejo de listas dinámicas de descuentos
+        desc_adic_json, total_desc_adic = process_descuentos(viaje_in.descuentos_adicionales)
+        desc_mermas_json, total_desc_mermas = process_descuentos(viaje_in.descuentos_mermas)
+
+        # Volumen facturado
+        vol_fact = viaje_in.volumen_facturado
+        if vol_fact is None or vol_fact <= 0:
+            vol_fact = round(viaje_in.volumen_recepcionado_litros / 1000.0, 3)
+
         # Calcular mermas y flete automáticamente
         calc = calculate_viaje_values(
             volumen_origen_litros=viaje_in.volumen_origen_litros,
@@ -155,7 +227,8 @@ def create_viaje(
             tarifa_flete=viaje_in.tarifa_flete,
             tipo_tarifa=viaje_in.tipo_tarifa,
             params=params,
-            precio_merma_litro_override=viaje_in.precio_merma_litro_bs
+            precio_merma_litro_override=viaje_in.precio_merma_litro_bs,
+            volumen_facturado=vol_fact
         )
 
         # Buscar unidad_id si existe por la placa
@@ -176,14 +249,21 @@ def create_viaje(
             fecha_carga=viaje_in.fecha_carga,
             fecha_descarga=viaje_in.fecha_descarga,
             periodo_mes=periodo_determinado,
+            nro_factura=viaje_in.nro_factura.strip() if viaje_in.nro_factura else None,
+            fecha_factura=viaje_in.fecha_factura,
             volumen_origen_litros=viaje_in.volumen_origen_litros,
             volumen_recepcionado_litros=viaje_in.volumen_recepcionado_litros,
+            volumen_facturado=calc["volumen_facturado"],
             merma_real_litros=calc["merma_real_litros"],
             tolerancia_pct=calc["tolerancia_pct"],
             merma_tolerable_litros=calc["merma_tolerable_litros"],
             merma_excedente_litros=calc["merma_excedente_litros"],
             precio_merma_litro_bs=calc["precio_merma_litro_bs"],
             merma_descontar_bs=calc["merma_descontar_bs"],
+            descuentos_adicionales=desc_adic_json,
+            descuentos_mermas=desc_mermas_json,
+            total_descuentos_adicionales_bs=total_desc_adic,
+            total_descuentos_mermas_bs=total_desc_mermas,
             tarifa_flete=viaje_in.tarifa_flete,
             tipo_tarifa=viaje_in.tipo_tarifa or "BS_POR_M3",
             flete_total_bs=calc["flete_total_bs"],
@@ -244,7 +324,7 @@ async def importar_viajes_excel(
                     col_map["fecha_carga"] = col_i
                 elif ("DESCARGA" in val and "FECHA" in val) or val == "FECHA DE DESCARGA" or val == "F. DESCARGA":
                     col_map["fecha_descarga"] = col_i
-                elif "MIC" in val or "DTA" in val:
+                elif "MIC" in val or "DTA" in val or "MCI" in val:
                     col_map["mic_dta"] = col_i
                 elif "PLACA" in val:
                     col_map["placa"] = col_i
@@ -252,11 +332,19 @@ async def importar_viajes_excel(
                     col_map["tramo"] = col_i
                 elif "CLIENTE" in val:
                     col_map["cliente"] = col_i
+                elif ("NRO" in val or "N°" in val or "NUM" in val or "Nº" in val) and "FACTURA" in val:
+                    col_map["nro_factura"] = col_i
+                elif ("FECHA" in val or "F." in val) and ("FACTURA" in val or "FACTURACION" in val or "FACTURACIÓN" in val):
+                    col_map["fecha_factura"] = col_i
+                elif "FACTURA" in val and "nro_factura" not in col_map and "fecha_factura" not in col_map:
+                    col_map["nro_factura"] = col_i
                 elif "PRODUCTO" in val:
                     col_map["producto"] = col_i
                 elif "ORIGEN" in val:
                     col_map["vol_origen"] = col_i
-                elif "RECEPCIONADO" in val:
+                elif "FACTURADO" in val and "VOL" in val:
+                    col_map["vol_facturado"] = col_i
+                elif "RECEPCIONADO" in val or "DESCARGADO" in val:
                     col_map["vol_rec"] = col_i
                 elif "TARIFA" in val:
                     col_map["tarifa"] = col_i
@@ -271,8 +359,26 @@ async def importar_viajes_excel(
 
         # Si no se detectaron encabezados por texto, aplicar mapeo por posición según cantidad de columnas
         if not col_map.get("placa"):
-            if ws.max_column >= 15:
-                # Formato oficial 17 columnas de la liquidación física
+            if ws.max_column >= 18:
+                # Formato oficial 19 columnas (con Factura, Fecha Factura, Volumen Facturado, sin col Empresa)
+                col_map = {
+                    "fecha_carga": 2,
+                    "fecha_descarga": 3,
+                    "mic_dta": 4,
+                    "placa": 5,
+                    "tramo": 6,
+                    "cliente": 7,
+                    "nro_factura": 8,
+                    "fecha_factura": 9,
+                    "producto": 10,
+                    "vol_origen": 11,
+                    "vol_rec": 12,
+                    "vol_facturado": 17,
+                    "tarifa": 18
+                }
+                header_row_idx = 4
+            elif ws.max_column >= 15:
+                # Formato previo 17 columnas de la liquidación física
                 col_map = {
                     "fecha_carga": 2,
                     "fecha_descarga": 3,
@@ -319,11 +425,14 @@ async def importar_viajes_excel(
             placa = get_val("placa")
             tramo = get_val("tramo")
             cliente = get_val("cliente")
+            nro_fac = get_val("nro_factura")
+            f_fac = get_val("fecha_factura")
             producto = get_val("producto")
             f_carga = get_val("fecha_carga")
             f_descarga = get_val("fecha_descarga")
             vol_origen = get_val("vol_origen")
             vol_rec = get_val("vol_rec")
+            vol_fact = get_val("vol_facturado")
             tarifa = get_val("tarifa")
             tipo_tarifa = get_val("tipo_tarifa")
             precio_merma = get_val("precio_merma")
@@ -346,6 +455,14 @@ async def importar_viajes_excel(
                     producto_str = "GASOLINA"
                 elif "IYA" in producto_raw or "ADIT" in producto_raw:
                     producto_str = "IYA"
+                elif "SOYA" in producto_raw:
+                    producto_str = "SOYA A GRANEL"
+                elif "GIRASOL" in producto_raw:
+                    producto_str = "GIRASOL A GRANEL"
+                elif "ACERO" in producto_raw or "PLANCHA" in producto_raw:
+                    producto_str = "PLANCHAS DE ACERO"
+                elif "CRUDO" in producto_raw:
+                    producto_str = "CRUDO"
                 else:
                     producto_str = "DIESEL"
 
@@ -361,9 +478,11 @@ async def importar_viajes_excel(
 
                 date_carga = parse_date(f_carga) if f_carga else date.today()
                 date_descarga = parse_date(f_descarga) if f_descarga else date_carga
+                date_fac = parse_date(f_fac) if f_fac else None
 
                 vol_o = float(str(vol_origen or 0).replace(",", "."))
                 vol_r = float(str(vol_rec or 0).replace(",", "."))
+                vol_f = float(str(vol_fact).replace(",", ".")) if vol_fact else None
                 tf = float(str(tarifa or 392.00).replace(",", ".")) if tarifa else 392.00
                 tipo_t = str(tipo_tarifa or "BS_POR_M3").strip().upper()
                 if "USD" in tipo_t:
@@ -426,7 +545,8 @@ async def importar_viajes_excel(
                     tarifa_flete=tf,
                     tipo_tarifa=tipo_t,
                     params=params,
-                    precio_merma_litro_override=pm
+                    precio_merma_litro_override=pm,
+                    volumen_facturado=vol_f
                 )
 
                 viaje = Viaje(
@@ -436,12 +556,15 @@ async def importar_viajes_excel(
                     placa=placa_str,
                     tramo=tramo_str,
                     cliente=cliente_str,
+                    nro_factura=str(nro_fac).strip() if nro_fac else None,
+                    fecha_factura=date_fac,
                     producto=producto_str,
                     fecha_carga=date_carga,
                     fecha_descarga=date_descarga,
                     periodo_mes=periodo,
                     volumen_origen_litros=vol_o,
                     volumen_recepcionado_litros=vol_r,
+                    volumen_facturado=calc["volumen_facturado"],
                     merma_real_litros=calc["merma_real_litros"],
                     tolerancia_pct=calc["tolerancia_pct"],
                     merma_tolerable_litros=calc["merma_tolerable_litros"],
@@ -501,8 +624,30 @@ def update_viaje(
         params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
         update_data = viaje_in.model_dump(exclude_unset=True)
 
+        # Manejo de listas de descuentos en actualización
+        if "descuentos_adicionales" in update_data:
+            desc_adic_json, total_desc_adic = process_descuentos(update_data["descuentos_adicionales"])
+            viaje.descuentos_adicionales = desc_adic_json
+            viaje.total_descuentos_adicionales_bs = total_desc_adic
+            del update_data["descuentos_adicionales"]
+            if "total_descuentos_adicionales_bs" in update_data:
+                del update_data["total_descuentos_adicionales_bs"]
+
+        if "descuentos_mermas" in update_data:
+            desc_mermas_json, total_desc_mermas = process_descuentos(update_data["descuentos_mermas"])
+            viaje.descuentos_mermas = desc_mermas_json
+            viaje.total_descuentos_mermas_bs = total_desc_mermas
+            del update_data["descuentos_mermas"]
+            if "total_descuentos_mermas_bs" in update_data:
+                del update_data["total_descuentos_mermas_bs"]
+
         for field, val in update_data.items():
             setattr(viaje, field, val)
+
+        # Volumen facturado
+        vol_fact = viaje.volumen_facturado
+        if vol_fact is None or vol_fact <= 0:
+            vol_fact = round(viaje.volumen_recepcionado_litros / 1000.0, 3)
 
         # Recalcular si cambiaron volúmenes, producto o tarifas
         calc = calculate_viaje_values(
@@ -512,8 +657,10 @@ def update_viaje(
             tarifa_flete=viaje.tarifa_flete,
             tipo_tarifa=viaje.tipo_tarifa,
             params=params,
-            precio_merma_litro_override=viaje.precio_merma_litro_bs
+            precio_merma_litro_override=viaje.precio_merma_litro_bs,
+            volumen_facturado=vol_fact
         )
+        viaje.volumen_facturado = calc["volumen_facturado"]
         viaje.merma_real_litros = calc["merma_real_litros"]
         viaje.tolerancia_pct = calc["tolerancia_pct"]
         viaje.merma_tolerable_litros = calc["merma_tolerable_litros"]

@@ -237,49 +237,55 @@ def export_liquidacion_placa_excel(
     ws1.title = "Liquidacion de Fletes"
     ws1.views.sheetView[0].showGridLines = True
 
-    # 1. Cabecera Superior Izquierda (Combinada en columnas A-D para no estirar la columna A)
-    ws1.merge_cells("A2:D2")
+    # 1. Cabecera Superior Izquierda
+    ws1.merge_cells("A2:E2")
     ws1["A2"] = "LIQUIDACION DE FLETES"
     ws1["A2"].font = FONT_MAIN_TITLE
     ws1["A2"].alignment = Alignment(horizontal="left", vertical="center")
 
-    ws1.merge_cells("A3:D3")
+    ws1.merge_cells("A3:E3")
     ws1["A3"] = periodo_fmt
     ws1["A3"].font = FONT_TITLE_REGULAR
     ws1["A3"].alignment = Alignment(horizontal="left", vertical="center")
 
-    ws1.merge_cells("A4:D4")
+    ws1.merge_cells("A4:E4")
     ws1["A4"] = f"PLACA   {liquidacion.placa}"
     ws1["A4"].font = FONT_TITLE_BOLD
     ws1["A4"].alignment = Alignment(horizontal="left", vertical="center")
 
-    # 2. Factor Merma Superior Derecha (Foto 2: celda con "7,45" en columna Q fila 4)
+    # Nombre de Empresa centrado y elegante en el encabezado
+    ws1.merge_cells("G2:N3")
+    ws1["G2"] = empresa_nombre.upper()
+    ws1["G2"].font = Font(name=FONT_FAMILY, size=12, bold=True, color="0F172A")
+    ws1["G2"].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    # 2. Factor Merma Superior Derecha (Columna Q fila 4)
     factor_merma = getattr(params, 'precio_merma_general_bs', 7.45)
     c_factor = ws1.cell(row=4, column=17, value=factor_merma)
     c_factor.font = FONT_DATA_REGULAR
     c_factor.number_format = '0.00'
     c_factor.alignment = Alignment(horizontal="right", vertical="center")
 
-    # 3. Logotipo en la Esquina Superior Derecha (Columna P-Q, totalmente al borde derecho)
+    # 3. Logotipo en la Esquina Superior Derecha (Columna P-Q)
     add_logo_to_worksheet(ws1, logo_base64=logo_b64, empresa_name=empresa_nombre, cell_coord="P1", max_width=140, max_height=48)
 
-    # 4. Encabezados de Columnas (Fila 6) - Idénticos a la Foto 2
+    # 4. Encabezados de Columnas (Fila 6) - 17 Columnas oficiales (Facturación integrada en Fila Especial)
     headers_sheet1 = [
         "Nº",
         "FECHA DE\nCARGA",
         "FECHA DE\nDESCARGA",
-        "MIC/DTA Nº",
-        "EMPRESA",
+        "MCI/DTA Nº\nY OTROS",
         "PLACA",
         "TRAMO",
         "CLIENTE",
         "PRODUCTO",
         "Volumen en\nLt. Origen",
-        "Volumen\nRecepcionado",
+        "Volumen\nRecepcionado/\nDescargado",
         "Merma\nT-T",
         "Total\nMerma Litros",
         "MERMA\n0,15% s/Volumen\n(Diesel 0.15%\nGasolina 0.35%)",
         "Merma a\nDescontar\nY.P.F.B.",
+        "Volumen\nFacturado",
         "TARIFA\nBs.",
         "Total a pagar\nen Bob."
     ]
@@ -294,167 +300,240 @@ def export_liquidacion_placa_excel(
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         cell.border = BORDER_THIN_BLACK
 
-    # 5. Filas de Datos de Viajes
+    # 5. Agrupación y Ordenamiento de Viajes: Tramo -> Producto -> Fecha (antigua a más nueva)
+    groups_dict = {}
+    for v in viajes:
+        t_key = str(getattr(v, "tramo", "") or "SIN TRAMO").strip().upper()
+        p_key = str(getattr(v, "producto", "") or "SIN PRODUCTO").strip().upper()
+        grp_k = (t_key, p_key)
+        if grp_k not in groups_dict:
+            groups_dict[grp_k] = []
+        groups_dict[grp_k].append(v)
+
+    # Ordenar cronológicamente dentro de cada grupo
+    for grp_k in groups_dict:
+        groups_dict[grp_k].sort(key=lambda x: (str(getattr(x, "fecha_carga", "") or ""), getattr(x, "id", 0)))
+
     curr_row = 7
+    global_idx = 1
     total_vol_orig = 0.0
     total_vol_rec = 0.0
+    total_vol_fact = 0.0
+    total_merma_real = 0.0
     total_m_desc_bs = 0.0
     total_flete_bs = 0.0
 
-    for idx, v in enumerate(viajes, 1):
-        ws1.row_dimensions[curr_row].height = 21
+    fill_subtotal = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
+    font_subtotal = Font(name=FONT_FAMILY, size=8.5, bold=True, color="78350F")
 
-        # Col 1: Nº
-        c1 = ws1.cell(row=curr_row, column=1, value=idx)
-        c1.alignment = Alignment(horizontal="center", vertical="center")
+    for (t_key, p_key), grp_viajes in groups_dict.items():
+        grp_vol_orig = 0.0
+        grp_vol_rec = 0.0
+        grp_vol_fact = 0.0
+        grp_merma_real = 0.0
+        grp_m_desc = 0.0
+        grp_flete = 0.0
+        grp_tarifa = 0.0
 
-        # Col 2: Fecha Carga
-        c2 = ws1.cell(row=curr_row, column=2, value=format_fecha_bolivia(v.fecha_carga))
-        c2.alignment = Alignment(horizontal="center", vertical="center")
+        for v in grp_viajes:
+            ws1.row_dimensions[curr_row].height = 21
 
-        # Col 3: Fecha Descarga
-        c3 = ws1.cell(row=curr_row, column=3, value=format_fecha_bolivia(v.fecha_descarga))
-        c3.alignment = Alignment(horizontal="center", vertical="center")
+            # Col 1: Nº
+            c1 = ws1.cell(row=curr_row, column=1, value=global_idx)
+            c1.alignment = Alignment(horizontal="center", vertical="center")
+            global_idx += 1
 
-        # Col 4: MIC/DTA
-        c4 = ws1.cell(row=curr_row, column=4, value=v.mic_dta or "-")
-        c4.alignment = Alignment(horizontal="center", vertical="center")
+            # Col 2: Fecha Carga
+            c2 = ws1.cell(row=curr_row, column=2, value=format_fecha_bolivia(v.fecha_carga))
+            c2.alignment = Alignment(horizontal="center", vertical="center")
 
-        # Col 5: Empresa
-        emp_display = empresa_nombre.replace("EMPRESA DE TRANSPORTES NACIONAL E INTERNACIONAL", "").strip() or empresa_nombre
-        c5 = ws1.cell(row=curr_row, column=5, value=emp_display)
-        c5.alignment = Alignment(horizontal="left", vertical="center")
+            # Col 3: Fecha Descarga
+            c3 = ws1.cell(row=curr_row, column=3, value=format_fecha_bolivia(v.fecha_descarga))
+            c3.alignment = Alignment(horizontal="center", vertical="center")
 
-        # Col 6: Placa
-        c6 = ws1.cell(row=curr_row, column=6, value=v.placa)
-        c6.alignment = Alignment(horizontal="center", vertical="center")
+            # Col 4: MCI/DTA Nº Y OTROS
+            c4 = ws1.cell(row=curr_row, column=4, value=v.mic_dta or "-")
+            c4.alignment = Alignment(horizontal="center", vertical="center")
 
-        # Col 7: Tramo
-        c7 = ws1.cell(row=curr_row, column=7, value=v.tramo or "")
-        c7.alignment = Alignment(horizontal="left", vertical="center")
+            # Col 5: Placa
+            c5 = ws1.cell(row=curr_row, column=5, value=v.placa)
+            c5.alignment = Alignment(horizontal="center", vertical="center")
 
-        # Col 8: Cliente
-        c8 = ws1.cell(row=curr_row, column=8, value=v.cliente or "YPFB")
-        c8.alignment = Alignment(horizontal="center", vertical="center")
+            # Col 6: Tramo
+            c6 = ws1.cell(row=curr_row, column=6, value=v.tramo or "")
+            c6.alignment = Alignment(horizontal="left", vertical="center")
 
-        # Col 9: Producto
-        c9 = ws1.cell(row=curr_row, column=9, value=(v.producto or "").upper())
-        c9.alignment = Alignment(horizontal="center", vertical="center")
+            # Col 7: Cliente
+            c7 = ws1.cell(row=curr_row, column=7, value=v.cliente or "YPFB")
+            c7.alignment = Alignment(horizontal="center", vertical="center")
 
-        # Col 10: Volumen Origen
-        v_orig = float(v.volumen_origen_litros or 0)
-        total_vol_orig += v_orig
-        c10 = ws1.cell(row=curr_row, column=10, value=v_orig)
-        c10.number_format = '#,##0'
-        c10.alignment = Alignment(horizontal="right", vertical="center")
+            # Col 8: Producto
+            c8 = ws1.cell(row=curr_row, column=8, value=(v.producto or "").upper())
+            c8.alignment = Alignment(horizontal="center", vertical="center")
 
-        # Col 11: Volumen Recepcionado
-        v_rec = float(v.volumen_recepcionado_litros or 0)
-        total_vol_rec += v_rec
-        c11 = ws1.cell(row=curr_row, column=11, value=v_rec)
-        c11.number_format = '#,##0'
-        c11.alignment = Alignment(horizontal="right", vertical="center")
+            # Col 9: Volumen Origen
+            v_orig = float(v.volumen_origen_litros or 0)
+            grp_vol_orig += v_orig
+            total_vol_orig += v_orig
+            c9 = ws1.cell(row=curr_row, column=9, value=v_orig)
+            c9.number_format = '#,##0'
+            c9.alignment = Alignment(horizontal="right", vertical="center")
 
-        # Col 12: Merma T-T (Merma Real) - Negativo según formato oficial (ej. -99.0)
-        raw_m_real = float(v.merma_real_litros or 0)
-        m_real = -abs(raw_m_real) if raw_m_real != 0 else 0.0
-        c12 = ws1.cell(row=curr_row, column=12, value=m_real)
-        c12.number_format = '#,##0.0;-#,##0.0;0.0'
-        c12.alignment = Alignment(horizontal="right", vertical="center")
+            # Col 10: Volumen Recepcionado/Descargado
+            v_rec = float(v.volumen_recepcionado_litros or 0)
+            grp_vol_rec += v_rec
+            total_vol_rec += v_rec
+            c10 = ws1.cell(row=curr_row, column=10, value=v_rec)
+            c10.number_format = '#,##0'
+            c10.alignment = Alignment(horizontal="right", vertical="center")
 
-        # Col 13: Total Merma Litros (Excedente)
-        m_exc = float(v.merma_excedente_litros or 0)
-        c13 = ws1.cell(row=curr_row, column=13, value=m_exc)
-        c13.number_format = '#,##0.0'
-        c13.alignment = Alignment(horizontal="right", vertical="center")
+            # Col 11: Merma T-T (Merma Real)
+            raw_m_real = float(v.merma_real_litros or 0)
+            m_real = -abs(raw_m_real) if raw_m_real != 0 else 0.0
+            grp_merma_real += m_real
+            total_merma_real += m_real
+            c11 = ws1.cell(row=curr_row, column=11, value=m_real)
+            c11.number_format = '#,##0.0;-#,##0.0;0.0'
+            c11.alignment = Alignment(horizontal="right", vertical="center")
 
-        # Col 14: Tolerancia
-        tol_lts = float(v.merma_tolerable_litros or 0)
-        c14 = ws1.cell(row=curr_row, column=14, value=tol_lts)
-        c14.number_format = '#,##0'
-        c14.alignment = Alignment(horizontal="center", vertical="center")
+            # Col 12: Total Merma Litros
+            m_exc = float(v.merma_excedente_litros or 0)
+            c12 = ws1.cell(row=curr_row, column=12, value=m_exc)
+            c12.number_format = '#,##0.0'
+            c12.alignment = Alignment(horizontal="right", vertical="center")
 
-        # Col 15: Merma Descontar YPFB
-        m_desc = float(v.merma_descontar_bs or 0)
-        total_m_desc_bs += m_desc
-        c15 = ws1.cell(row=curr_row, column=15, value=m_desc)
-        c15.number_format = '#,##0.00'
-        c15.alignment = Alignment(horizontal="right", vertical="center")
+            # Col 13: Tolerancia
+            tol_lts = float(v.merma_tolerable_litros or 0)
+            c13 = ws1.cell(row=curr_row, column=13, value=tol_lts)
+            c13.number_format = '#,##0'
+            c13.alignment = Alignment(horizontal="center", vertical="center")
 
-        # Col 16: Tarifa Bs
-        tarifa = float(v.tarifa_flete or 0)
-        c16 = ws1.cell(row=curr_row, column=16, value=tarifa)
-        c16.number_format = '#,##0.00'
-        c16.alignment = Alignment(horizontal="right", vertical="center")
+            # Col 14: Merma Descontar YPFB
+            m_desc = float(v.merma_descontar_bs or 0)
+            grp_m_desc += m_desc
+            total_m_desc_bs += m_desc
+            c14 = ws1.cell(row=curr_row, column=14, value=m_desc)
+            c14.number_format = '#,##0.00'
+            c14.alignment = Alignment(horizontal="right", vertical="center")
 
-        # Col 17: Total a pagar en Bob.
-        flete = float(v.flete_total_bs or 0)
-        total_flete_bs += flete
-        c17 = ws1.cell(row=curr_row, column=17, value=flete)
-        c17.number_format = '#,##0.00'
-        c17.alignment = Alignment(horizontal="right", vertical="center")
+            # Col 15: Volumen Facturado
+            v_fact = float(getattr(v, "volumen_facturado", None) or (v_rec / 1000.0))
+            grp_vol_fact += v_fact
+            total_vol_fact += v_fact
+            c15 = ws1.cell(row=curr_row, column=15, value=v_fact)
+            c15.number_format = '#,##0.00'
+            c15.alignment = Alignment(horizontal="right", vertical="center")
+
+            # Col 16: Tarifa Bs
+            tarifa = float(v.tarifa_flete or 0)
+            grp_tarifa = tarifa
+            c16 = ws1.cell(row=curr_row, column=16, value=tarifa)
+            c16.number_format = '#,##0.00'
+            c16.alignment = Alignment(horizontal="right", vertical="center")
+
+            # Col 17: Total a pagar en Bob.
+            flete = float(v.flete_total_bs or 0)
+            grp_flete += flete
+            total_flete_bs += flete
+            c17 = ws1.cell(row=curr_row, column=17, value=flete)
+            c17.number_format = '#,##0.00'
+            c17.alignment = Alignment(horizontal="right", vertical="center")
+
+            for col_c in range(1, 18):
+                ws1.cell(row=curr_row, column=col_c).font = FONT_DATA_REGULAR
+                ws1.cell(row=curr_row, column=col_c).border = BORDER_THIN_BLACK
+
+            curr_row += 1
+
+        # FILA ESPECIAL: Subtotal del Grupo con Factura y Fecha
+        nros_f = [str(getattr(x, "nro_factura", "") or "").strip() for x in grp_viajes if getattr(x, "nro_factura", None)]
+        nros_f = [x for x in dict.fromkeys(nros_f) if x and x != "-"]
+        fechas_f = [format_fecha_bolivia(getattr(x, "fecha_factura", None)) for x in grp_viajes if getattr(x, "fecha_factura", None)]
+        fechas_f = [x for x in dict.fromkeys(fechas_f) if x and x != "-"]
+        fac_label = ", ".join(nros_f) if nros_f else "S/F"
+        fecha_label = ", ".join(fechas_f) if fechas_f else "-"
+
+        subtotal_title = f"TOTAL {p_key}  |  FACTURA: {fac_label}  |  FECHA FACTURA: {fecha_label}"
+
+        ws1.row_dimensions[curr_row].height = 23
+        ws1.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=8)
+        c_title = ws1.cell(row=curr_row, column=1, value=subtotal_title)
+        c_title.alignment = Alignment(horizontal="left", vertical="center")
+
+        ws1.cell(row=curr_row, column=9, value=grp_vol_orig).number_format = '#,##0'
+        ws1.cell(row=curr_row, column=10, value=grp_vol_rec).number_format = '#,##0'
+        ws1.cell(row=curr_row, column=11, value=grp_merma_real).number_format = '#,##0.0;-#,##0.0;0.0'
+        ws1.cell(row=curr_row, column=12, value="")
+        ws1.cell(row=curr_row, column=13, value="")
+        ws1.cell(row=curr_row, column=14, value=grp_m_desc).number_format = '#,##0.00'
+        ws1.cell(row=curr_row, column=15, value=grp_vol_fact).number_format = '#,##0.00'
+        ws1.cell(row=curr_row, column=16, value=grp_tarifa).number_format = '#,##0.00'
+        ws1.cell(row=curr_row, column=17, value=grp_flete).number_format = '#,##0.00'
 
         for col_c in range(1, 18):
-            ws1.cell(row=curr_row, column=col_c).font = FONT_DATA_REGULAR
-            ws1.cell(row=curr_row, column=col_c).border = BORDER_THIN_BLACK
+            cell_sub = ws1.cell(row=curr_row, column=col_c)
+            cell_sub.font = font_subtotal
+            cell_sub.fill = fill_subtotal
+            cell_sub.border = BORDER_THIN_BLACK
+            if col_c >= 9:
+                cell_sub.alignment = Alignment(horizontal="right", vertical="center")
 
         curr_row += 1
 
-    # 6. Fila de Totales de la Hoja 1 (Foto 2)
-    ws1.row_dimensions[curr_row].height = 22
+    # 6. Fila de Totales Generales de la Hoja 1
+    ws1.row_dimensions[curr_row].height = 23
+    ws1.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=8)
+    c_tot_label = ws1.cell(row=curr_row, column=1, value="TOTAL GENERAL:")
+    c_tot_label.alignment = Alignment(horizontal="right", vertical="center")
 
-    # Columnas 1 a 9 en blanco en la fila de totales (sin conteo de viajes repetido en columna 1)
-    for c_empty in range(1, 10):
-        ws1.cell(row=curr_row, column=c_empty, value="")
-
-    # Totales de Volumen Origen y Recepcionado
-    c_tot_orig = ws1.cell(row=curr_row, column=10, value=total_vol_orig or float(liquidacion.total_volumen_origen_litros or 0))
+    c_tot_orig = ws1.cell(row=curr_row, column=9, value=total_vol_orig or float(liquidacion.total_volumen_origen_litros or 0))
     c_tot_orig.number_format = '#,##0'
-    c_tot_orig.font = FONT_DATA_BOLD
     c_tot_orig.alignment = Alignment(horizontal="right", vertical="center")
 
-    c_tot_rec = ws1.cell(row=curr_row, column=11, value=total_vol_rec or float(liquidacion.total_volumen_recepcionado_litros or 0))
+    c_tot_rec = ws1.cell(row=curr_row, column=10, value=total_vol_rec or float(liquidacion.total_volumen_recepcionado_litros or 0))
     c_tot_rec.number_format = '#,##0'
-    c_tot_rec.font = FONT_DATA_BOLD
     c_tot_rec.alignment = Alignment(horizontal="right", vertical="center")
 
-    for c_mid in range(12, 15):
-        ws1.cell(row=curr_row, column=c_mid, value="")
+    c_tot_mreal = ws1.cell(row=curr_row, column=11, value=total_merma_real)
+    c_tot_mreal.number_format = '#,##0.0;-#,##0.0;0.0'
+    c_tot_mreal.alignment = Alignment(horizontal="right", vertical="center")
 
-    # Total Merma a Descontar YPFB (sombreado)
-    c_tot_mdesc = ws1.cell(row=curr_row, column=15, value=total_m_desc_bs or float(liquidacion.desc_merma_bs or 0))
+    ws1.cell(row=curr_row, column=12, value="")
+    ws1.cell(row=curr_row, column=13, value="")
+
+    c_tot_mdesc = ws1.cell(row=curr_row, column=14, value=total_m_desc_bs or float(liquidacion.desc_merma_bs or 0))
     c_tot_mdesc.number_format = '#,##0.00'
-    c_tot_mdesc.font = FONT_DATA_BOLD
-    c_tot_mdesc.fill = FILL_SHADED_GRAY
     c_tot_mdesc.alignment = Alignment(horizontal="right", vertical="center")
+
+    c_tot_vfact = ws1.cell(row=curr_row, column=15, value=total_vol_fact)
+    c_tot_vfact.number_format = '#,##0.00'
+    c_tot_vfact.alignment = Alignment(horizontal="right", vertical="center")
 
     ws1.cell(row=curr_row, column=16, value="")
 
-    # Total a Pagar en Bob. (sombreado con doble borde)
     c_tot_pagar = ws1.cell(row=curr_row, column=17, value=total_flete_bs or float(liquidacion.flete_total_bruto_bs or 0))
     c_tot_pagar.number_format = '#,##0.00'
-    c_tot_pagar.font = FONT_TOTAL_MAIN
-    c_tot_pagar.fill = FILL_SHADED_GRAY
     c_tot_pagar.alignment = Alignment(horizontal="right", vertical="center")
 
     for col_c in range(1, 18):
-        ws1.cell(row=curr_row, column=col_c).border = BORDER_TOTAL_DOUBLE
+        cell_tot = ws1.cell(row=curr_row, column=col_c)
+        cell_tot.font = FONT_TOTAL_MAIN
+        cell_tot.fill = FILL_SHADED_GRAY
+        cell_tot.border = BORDER_TOTAL_DOUBLE
 
-    # 7. Cuadro de Firmas Oficial (Abarca toda la plantilla horizontalmente de Columna A a Q)
-    # 4 Paneles simétricos: A-E (1), F-I (2), J-M (3), N-Q (4)
+    # 7. Cuadro de Firmas Oficial (Abarca de Columna A a Q)
     sign_start_row = curr_row + 4
     ws1.row_dimensions[sign_start_row].height = 17
     ws1.row_dimensions[sign_start_row + 1].height = 18
     ws1.row_dimensions[sign_start_row + 2].height = 42
 
     panels_info = [
-        ("A", "E", "", f" REALIZADO POR:\n\n   {realizado_nom}" if realizado_nom else " REALIZADO POR:"),
-        ("F", "I", "", " REVISADO POR:"),
-        ("J", "M", "", " AUTORIZADO POR:"),
-        ("N", "Q", "", " CANCELADO POR:")
+        ("A", "D", "", f" REALIZADO POR:\n\n   {realizado_nom}" if realizado_nom else " REALIZADO POR:"),
+        ("E", "H", "", " REVISADO POR:"),
+        ("I", "L", "", " AUTORIZADO POR:"),
+        ("M", "Q", "", " CANCELADO POR:")
     ]
 
-    # Fila 1 de Firmas: Nombres sobre la línea (si existen)
     for col_start, col_end, nom_val, _ in panels_info:
         if nom_val and nom_val.strip():
             ws1.merge_cells(f"{col_start}{sign_start_row}:{col_end}{sign_start_row}")
@@ -463,12 +542,10 @@ def export_liquidacion_placa_excel(
             c_nom.font = Font(name=FONT_FAMILY, size=8.5, bold=True)
             c_nom.alignment = Alignment(horizontal="center", vertical="bottom")
 
-    # Fila 2 de Firmas: Línea horizontal de firma continua que abarca de A a Q
     border_sign_underline = Border(bottom=Side(style='thin', color='000000'))
     for col_u in range(1, 18):
         ws1.cell(row=sign_start_row + 1, column=col_u).border = border_sign_underline
 
-    # Fila 3 de Firmas: Cuadros Oficiales (Títulos en esquina superior izquierda)
     row_tags = sign_start_row + 2
     for col_start, col_end, _, text_val in panels_info:
         ws1.merge_cells(f"{col_start}{row_tags}:{col_end}{row_tags}")
@@ -488,8 +565,6 @@ def export_liquidacion_placa_excel(
                 bottom=Side(style='thin', color='000000')
             )
 
-
-    # Configuración de página horizontal y centrada para impresión
     ws1.page_setup.orientation = ws1.ORIENTATION_LANDSCAPE
     ws1.page_setup.paperSize = ws1.PAPERSIZE_LETTER
     ws1.sheet_properties.pageSetUpPr.fitToPage = True
@@ -497,12 +572,11 @@ def export_liquidacion_placa_excel(
     ws1.page_setup.fitToHeight = 0
     ws1.print_options.horizontalCentered = True
 
-    # Anchos base responsivos para Hoja 1
     min_widths_sheet1 = {
-        "A": 7.0, "B": 15.0, "C": 15.0, "D": 18.0, "E": 30.0,
-        "F": 13.0, "G": 40.0, "H": 13.0, "I": 13.0, "J": 16.0,
-        "K": 16.0, "L": 15.0, "M": 16.0, "N": 20.0, "O": 17.0,
-        "P": 15.0, "Q": 22.0
+        "A": 7.0, "B": 14.0, "C": 14.0, "D": 18.0, "E": 13.0,
+        "F": 32.0, "G": 13.0, "H": 16.0, "I": 16.0, "J": 16.0,
+        "K": 14.0, "L": 15.0, "M": 16.0, "N": 17.0, "O": 16.0,
+        "P": 14.0, "Q": 19.0
     }
     adjust_column_widths(ws1, min_widths_sheet1)
 
@@ -1030,29 +1104,29 @@ def export_liquidacion_asociacion_excel(
 def generate_viajes_template_excel(empresa_name: str = "") -> io.BytesIO:
     """
     Genera una plantilla Excel estructurada conforme al estándar oficial
-    de 17 columnas (Foto 2) lista para importar viajes masivamente.
+    de 19 columnas lista para importar viajes masivamente (con Factura, Fecha Factura, Volumen Facturado y Empresa en encabezado).
     """
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Plantilla Viajes"
     ws.views.sheetView[0].showGridLines = True
 
-    ws.merge_cells("B2:E2")
+    ws.merge_cells("B2:G2")
     ws["B2"] = "PLANTILLA OFICIAL DE CARGA DE VIAJES"
     ws["B2"].font = FONT_MAIN_TITLE
 
-    ws.merge_cells("B3:E3")
-    ws["B3"] = empresa_name.upper() if empresa_name else "EMPRESA DE TRANSPORTE"
+    ws.merge_cells("B3:G3")
+    ws["B3"] = f"EMPRESA: {empresa_name.upper() if empresa_name else 'EMPRESA DE TRANSPORTE'}"
     ws["B3"].font = FONT_TITLE_BOLD
 
-    # Logotipo en la parte superior derecha (Columna P-Q)
-    add_logo_to_worksheet(ws, logo_base64=None, empresa_name=empresa_name, cell_coord="P1", max_width=140, max_height=48)
+    # Logotipo en la parte superior derecha (Columna R)
+    add_logo_to_worksheet(ws, logo_base64=None, empresa_name=empresa_name, cell_coord="R1", max_width=150, max_height=48)
 
     headers = [
-        "Nº", "FECHA DE CARGA", "FECHA DE DESCARGA", "MIC/DTA Nº", "EMPRESA",
-        "PLACA", "TRAMO", "CLIENTE", "PRODUCTO", "Volumen en Lt. Origen",
-        "Volumen Recepcionado", "Merma T-T", "Total Merma Litros",
-        "MERMA 0,15% s/Volumen", "Merma a Descontar Y.P.F.B.", "TARIFA Bs.", "Total a pagar en Bob."
+        "Nº", "FECHA DE CARGA", "FECHA DE DESCARGA", "MCI/DTA Nº Y OTROS",
+        "PLACA", "TRAMO", "CLIENTE", "Nº DE FACTURA", "FECHA DE FACTURACIÓN", "PRODUCTO",
+        "Volumen en Lt. Origen", "Volumen Recepcionado/Descargado", "Merma T-T", "Total Merma Litros",
+        "MERMA 0,15% s/Volumen", "Merma a Descontar Y.P.F.B.", "Volumen Facturado", "TARIFA Bs.", "Total a pagar en Bob."
     ]
 
     header_row = 5
@@ -1067,9 +1141,9 @@ def generate_viajes_template_excel(empresa_name: str = "") -> io.BytesIO:
     # Fila de ejemplo
     sample_row = 6
     sample_data = [
-        1, "28/02/2023", "03/03/2023", "23BO1391150T", empresa_name or "CHAXMANA TRANSPORT",
-        "4412-DPC", "ARICA - TAMBO QUEMADO - LA PAZ", "YPFB", "GASOLINA",
-        33959, 33900, -59.0, 14.0, 85, 104.30, 392.00, 13288.80
+        1, "28/02/2023", "03/03/2023", "23BO1391150T", "4412-DPC",
+        "ARICA - TAMBO QUEMADO - LA PAZ", "YPFB", "FAC-00123", "05/03/2023", "GASOLINA",
+        33959, 33900, -59.0, 14.0, 85, 104.30, 33.90, 392.00, 13288.80
     ]
     for col_idx, val in enumerate(sample_data, 1):
         cell = ws.cell(row=sample_row, column=col_idx, value=val)
@@ -1081,10 +1155,10 @@ def generate_viajes_template_excel(empresa_name: str = "") -> io.BytesIO:
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
     min_widths_template = {
-        "A": 6.5, "B": 15, "C": 15, "D": 18, "E": 28,
-        "F": 13, "G": 38, "H": 13, "I": 13, "J": 16,
-        "K": 16, "L": 13, "M": 14, "N": 17, "O": 16,
-        "P": 14, "Q": 18
+        "A": 6.5, "B": 15, "C": 15, "D": 18, "E": 13,
+        "F": 35, "G": 13, "H": 15, "I": 15, "J": 14,
+        "K": 16, "L": 16, "M": 14, "N": 15, "O": 17,
+        "P": 17, "Q": 16, "R": 14, "S": 19
     }
     adjust_column_widths(ws, min_widths_template)
 

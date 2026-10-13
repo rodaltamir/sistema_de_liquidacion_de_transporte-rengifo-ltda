@@ -40,6 +40,11 @@ def init_tenant_schema(schema_name: str):
         Cliente.__table__
     ]
     Base.metadata.create_all(bind=connectable, tables=tenant_tables)
+    from app.db.migrations import ensure_tenant_columns
+    try:
+        ensure_tenant_columns(schema_name)
+    except Exception:
+        pass
 
     # Crear configuración inicial por defecto
     tenant_session = get_tenant_session(schema_name)

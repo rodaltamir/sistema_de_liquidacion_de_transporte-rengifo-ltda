@@ -401,6 +401,7 @@ export default function UserManagementModal({ isOpen, onClose }: { isOpen: boole
         )}
 
       </div>
+      </div>
     </ModalPortal>
   );
 }
