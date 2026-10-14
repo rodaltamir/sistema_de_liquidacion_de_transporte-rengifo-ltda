@@ -93,7 +93,7 @@ export default function ViajesPage() {
   );
 }
 
-// Validador de asignación a un único mes con holgura de 1-2 días respecto al fin de mes
+// Validador de asignación a un único mes con holgura de 3 días respecto a los bordes de mes
 function determineTripPeriod(fechaCargaStr: string, fechaDescargaStr?: string): string {
   if (!fechaCargaStr) return new Date().toISOString().slice(0, 7);
   if (!fechaDescargaStr) return fechaCargaStr.slice(0, 7);
@@ -113,14 +113,25 @@ function determineTripPeriod(fechaCargaStr: string, fechaDescargaStr?: string): 
   const lastDayCarga = new Date(yC, mC, 0).getDate();
   const diasRestantesCarga = lastDayCarga - dC;
 
-  // Regla de holgura: Si cargó en los últimos 2 días del mes (días restantes <= 2),
-  // se consolida en el mes de descarga
-  if (diasRestantesCarga <= 2) {
+  // Regla de holgura de 3 días: Si cargó en los últimos 3 días (días restantes <= 3)
+  // Y descargó en los primeros 5 días del mes siguiente:
+  // Se consolida en el mes de descarga.
+  if (diasRestantesCarga <= 3 && dD <= 5) {
     return `${yD}-${String(mD).padStart(2, "0")}`;
   }
 
-  // De lo contrario, por finalización de despacho se consolida en mes de descarga
-  return `${yD}-${String(mD).padStart(2, "0")}`;
+  // De lo contrario (ej. cargó el 26 de marzo y descargó en abril),
+  // se consolida en su mes de carga original (ej. 2023-03)
+  return `${yC}-${String(mC).padStart(2, "0")}`;
+}
+
+// Helper de volumen facturado en m³ (calculado desde litros / 1000)
+function getVolFactM3(v: any): number {
+  const raw = Number(v?.volumen_facturado);
+  if (raw && raw > 0) {
+    return raw > 1000 ? raw / 1000.0 : raw;
+  }
+  return (Number(v?.volumen_recepcionado_litros) || 0) / 1000.0;
 }
 
 function ViajesContent() {
@@ -200,7 +211,7 @@ function ViajesContent() {
     periodo_mes: new Date().toISOString().slice(0, 7),
     volumen_origen_litros: 34000 as number | string,
     volumen_recepcionado_litros: 33900 as number | string,
-    volumen_facturado: 33.900 as number | string,
+    volumen_facturado: 33.90 as number | string,
     tarifa_flete: 392.00 as number | string,
     tipo_tarifa: "BS_POR_M3",
     precio_merma_litro_bs: 7.45 as number | string,
@@ -309,16 +320,20 @@ function ViajesContent() {
     const precioMerma = Number(formData.precio_merma_litro_bs) || 7.45;
     const mDescBs = Math.round(mExc * precioMerma * 100) / 100;
 
-    // Volumen Facturado y Operación Principal: Volumen Facturado * Tarifa = Total a Pagar
-    const vFact = formData.volumen_facturado !== "" && formData.volumen_facturado !== undefined 
-      ? Number(formData.volumen_facturado) 
-      : Math.round((vRec / 1000.0) * 1000) / 1000;
+    // Volumen Facturado (m³) y Operación Principal: Vol. Facturado (m³) × Tarifa (Bs./m³) = Total a Pagar
+    let vFactM3 = vRec / 1000.0;
+    if (formData.volumen_facturado !== "" && formData.volumen_facturado !== undefined) {
+      const parsed = Number(formData.volumen_facturado) || 0;
+      vFactM3 = parsed > 1000 ? parsed / 1000.0 : parsed;
+    }
 
     let fleteBs = 0;
     if (formData.tipo_tarifa === "BS_POR_M3") {
-      fleteBs = Math.round(vFact * (Number(formData.tarifa_flete) || 0) * 100) / 100;
+      fleteBs = Math.round(vFactM3 * (Number(formData.tarifa_flete) || 0) * 100) / 100;
+    } else if (formData.tipo_tarifa === "USD_POR_M3") {
+      fleteBs = Math.round(vFactM3 * (Number(formData.tarifa_flete) || 0) * 6.96 * 100) / 100;
     } else {
-      fleteBs = Math.round(vFact * (Number(formData.tarifa_flete) || 0) * 6.96 * 100) / 100;
+      fleteBs = Math.round((Number(formData.tarifa_flete) || 0) * 100) / 100;
     }
 
     const totDescAdic = (formData.descuentos_adicionales || []).reduce((acc, it) => acc + (Number(it.monto) || 0), 0);
@@ -529,7 +544,7 @@ function ViajesContent() {
         empresa_apoyo_nombre: matchApoyo.empresa_apoyo_nombre || "Empresa de Apoyo",
         volumen_origen_litros: vOri,
         volumen_recepcionado_litros: vRec,
-        volumen_facturado: Math.round((vRec / 1000.0) * 1000) / 1000
+        volumen_facturado: +(vRec / 1000.0).toFixed(3)
       }));
       return;
     }
@@ -546,7 +561,7 @@ function ViajesContent() {
         empresa_apoyo_nombre: "",
         volumen_origen_litros: vOri,
         volumen_recepcionado_litros: vRec,
-        volumen_facturado: Math.round((vRec / 1000.0) * 1000) / 1000
+        volumen_facturado: +(vRec / 1000.0).toFixed(3)
       }));
       return;
     }
@@ -588,7 +603,7 @@ function ViajesContent() {
       periodo_mes: defMes,
       volumen_origen_litros: vOri,
       volumen_recepcionado_litros: vRec,
-      volumen_facturado: Math.round((vRec / 1000.0) * 1000) / 1000,
+      volumen_facturado: +(vRec / 1000.0).toFixed(3),
       tarifa_flete: 392.00,
       tipo_tarifa: "BS_POR_M3",
       precio_merma_litro_bs: 7.45,
@@ -616,9 +631,9 @@ function ViajesContent() {
       try { parsedMerm = JSON.parse(v.descuentos_mermas); } catch (e) {}
     }
 
-    const volFact = v.volumen_facturado !== null && v.volumen_facturado !== undefined 
-      ? v.volumen_facturado 
-      : Math.round(((Number(v.volumen_recepcionado_litros) || 0) / 1000.0) * 1000) / 1000;
+    const volFact = v.volumen_facturado !== null && v.volumen_facturado !== undefined && Number(v.volumen_facturado) > 0
+      ? (Number(v.volumen_facturado) > 1000 ? +(Number(v.volumen_facturado) / 1000.0).toFixed(3) : Number(v.volumen_facturado))
+      : +((v.volumen_recepcionado_litros || 0) / 1000.0).toFixed(3);
 
     setFormData({
       mic_dta: v.mic_dta || "",
@@ -666,9 +681,9 @@ function ViajesContent() {
       try { parsedMerm = JSON.parse(v.descuentos_mermas); } catch (e) {}
     }
 
-    const volFact = v.volumen_facturado !== null && v.volumen_facturado !== undefined 
-      ? v.volumen_facturado 
-      : Math.round(((Number(v.volumen_recepcionado_litros) || 0) / 1000.0) * 1000) / 1000;
+    const volFact = v.volumen_facturado !== null && v.volumen_facturado !== undefined && Number(v.volumen_facturado) > 0
+      ? (Number(v.volumen_facturado) > 1000 ? +(Number(v.volumen_facturado) / 1000.0).toFixed(3) : Number(v.volumen_facturado))
+      : +((v.volumen_recepcionado_litros || 0) / 1000.0).toFixed(3);
 
     setFormData({
       mic_dta: "", // Dejar en blanco para que ingrese el nuevo MIC
@@ -787,9 +802,12 @@ function ViajesContent() {
       }
 
       const vRecNum = Number(formData.volumen_recepcionado_litros) || 0;
-      const vFactNum = formData.volumen_facturado !== "" && formData.volumen_facturado !== undefined
+      let vFactNum = formData.volumen_facturado !== "" && formData.volumen_facturado !== undefined
         ? Number(formData.volumen_facturado)
-        : Math.round((vRecNum / 1000.0) * 1000) / 1000;
+        : (vRecNum / 1000.0);
+      if (vFactNum > 1000) {
+        vFactNum = vFactNum / 1000.0;
+      }
 
       const payload = {
         mic_dta: formData.mic_dta.trim() || null,
@@ -1134,7 +1152,7 @@ function ViajesContent() {
   const totalRecepcionado = filtered.reduce((acc, v) => acc + (v.volumen_recepcionado_litros || 0), 0);
   const totalMermaReal = filtered.reduce((acc, v) => acc + (v.merma_real_litros || 0), 0);
   const totalDescMermaBs = filtered.reduce((acc, v) => acc + (v.merma_descontar_bs || 0), 0);
-  const totalVolFacturado = filtered.reduce((acc, v) => acc + (Number(v.volumen_facturado) || (Number(v.volumen_recepcionado_litros) / 1000) || 0), 0);
+  const totalVolFacturado = filtered.reduce((acc, v) => acc + getVolFactM3(v), 0);
   const totalFleteBs = filtered.reduce((acc, v) => acc + (v.flete_total_bs || 0), 0);
 
   // Métricas de Historial
@@ -1533,14 +1551,15 @@ function ViajesContent() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                   {(() => {
-                    // Agrupación de viajes por (tramo, producto) y orden cronológico
-                    const groupsMap: { [k: string]: { tramo: string; producto: string; items: Viaje[] } } = {};
+                    // Agrupación de viajes por (tramo, producto, nro_factura) y orden cronológico
+                    const groupsMap: { [k: string]: { tramo: string; producto: string; factura: string; items: Viaje[] } } = {};
                     for (const v of filtered) {
                       const t = (v.tramo || "SIN TRAMO").trim().toUpperCase();
                       const p = (v.producto || "SIN PRODUCTO").trim().toUpperCase();
-                      const key = `${t}___${p}`;
+                      const f = (v.nro_factura || "").trim().toUpperCase() || "S/F";
+                      const key = `${t}___${p}___${f}`;
                       if (!groupsMap[key]) {
-                        groupsMap[key] = { tramo: t, producto: p, items: [] };
+                        groupsMap[key] = { tramo: t, producto: p, factura: f, items: [] };
                       }
                       groupsMap[key].items.push(v);
                     }
@@ -1548,6 +1567,13 @@ function ViajesContent() {
                     const groups = Object.values(groupsMap).map((g) => {
                       g.items.sort((a, b) => (a.fecha_carga || "").localeCompare(b.fecha_carga || ""));
                       return g;
+                    });
+
+                    // Ordenar grupos cronológicamente por la fecha más antigua de sus viajes
+                    groups.sort((a, b) => {
+                      const dateA = a.items[0]?.fecha_carga || "";
+                      const dateB = b.items[0]?.fecha_carga || "";
+                      return dateA.localeCompare(dateB);
                     });
 
                     let globalIdx = 0;
@@ -1559,13 +1585,12 @@ function ViajesContent() {
                       const grpMermaExc = group.items.reduce((acc, x) => acc + (Number(x.merma_excedente_litros) || 0), 0);
                       const grpMermaTol = group.items.reduce((acc, x) => acc + (Number(x.merma_tolerable_litros) || 0), 0);
                       const grpMDesc = group.items.reduce((acc, x) => acc + (Number(x.merma_descontar_bs) || 0), 0);
-                      const grpVolFact = group.items.reduce((acc, x) => acc + (Number(x.volumen_facturado) || (Number(x.volumen_recepcionado_litros) / 1000) || 0), 0);
+                      const grpVolFact = group.items.reduce((acc, x) => acc + getVolFactM3(x), 0);
                       const grpFlete = group.items.reduce((acc, x) => acc + (Number(x.flete_total_bs) || 0), 0);
                       const grpTarifa = group.items[0]?.tarifa_flete || 0;
 
-                      const nrosFac = Array.from(new Set(group.items.map(x => x.nro_factura).filter(Boolean)));
+                      const facLabel = group.factura === "S/F" ? "S/F" : group.factura;
                       const fechasFac = Array.from(new Set(group.items.map(x => x.fecha_factura).filter(Boolean)));
-                      const facLabel = nrosFac.length > 0 ? nrosFac.join(", ") : "S/F";
                       const fechaLabel = fechasFac.length > 0 ? fechasFac.map(f => formatDate(f)).join(", ") : "-";
 
                       return (
@@ -1623,13 +1648,13 @@ function ViajesContent() {
                                   {formatNumber(v.merma_excedente_litros, 1)} L
                                 </td>
                                 <td className="py-2.5 px-1.5 text-center font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                                  {v.merma_tolerable_litros ? v.merma_tolerable_litros.toFixed(0) : "0"} L
+                                  {v.merma_tolerable_litros !== null && v.merma_tolerable_litros !== undefined ? Number(v.merma_tolerable_litros).toFixed(0) : "0"} L
                                 </td>
                                 <td className={`py-2.5 px-2 text-right font-mono whitespace-nowrap ${v.merma_descontar_bs > 0 ? "text-rose-700 dark:text-rose-400 font-bold" : "text-slate-400 dark:text-slate-500"}`}>
                                   {formatCurrency(v.merma_descontar_bs)}
                                 </td>
                                 <td className="py-2.5 px-2 text-right font-mono font-bold text-sky-700 dark:text-sky-400 whitespace-nowrap">
-                                  {formatNumber(v.volumen_facturado !== null && v.volumen_facturado !== undefined ? v.volumen_facturado : (v.volumen_recepcionado_litros / 1000), 3)}
+                                  {formatNumber(getVolFactM3(v), 2)}
                                 </td>
                                 <td className="py-2.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
                                   Bs. {formatNumber(v.tarifa_flete, 2)}
@@ -1684,7 +1709,7 @@ function ViajesContent() {
                             <td className="py-2 px-1 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-400">{formatNumber(grpMermaExc, 1)} L</td>
                             <td className="py-2 px-1 text-center font-mono border-x border-amber-300 dark:border-amber-700 text-slate-500">{formatNumber(grpMermaTol, 1)} L</td>
                             <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-rose-700 dark:text-rose-400">{formatCurrency(grpMDesc)}</td>
-                            <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 3)}</td>
+                            <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 2)}</td>
                             <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-slate-700 dark:text-slate-300">Bs. {formatNumber(grpTarifa, 2)}</td>
                             <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-amber-900 dark:text-amber-400">{formatCurrency(grpFlete)}</td>
                             <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
@@ -1705,7 +1730,7 @@ function ViajesContent() {
                     <td className="py-3 px-1.5 border-x border-slate-300 dark:border-slate-700"></td>
                     <td className="py-3 px-1.5 border-x border-slate-300 dark:border-slate-700"></td>
                     <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-rose-700 dark:text-rose-400">{formatCurrency(totalDescMermaBs)}</td>
-                    <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-black text-sky-700 dark:text-sky-400">{formatNumber(totalVolFacturado, 3)}</td>
+                    <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-black text-sky-700 dark:text-sky-400">{formatNumber(totalVolFacturado, 2)}</td>
                     <td className="py-3 px-2 border-x border-slate-300 dark:border-slate-700"></td>
                     <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-black text-amber-600 dark:text-amber-400 text-sm">{formatCurrency(totalFleteBs)}</td>
                     <td className="py-3 px-2 border-x border-slate-300 dark:border-slate-700"></td>
@@ -1819,7 +1844,7 @@ function ViajesContent() {
                           </span>
                         </td>
                         <td className="py-3 px-2.5 text-right font-mono font-bold text-sky-700 dark:text-sky-400 whitespace-nowrap">
-                          {formatNumber(v.volumen_facturado !== null && v.volumen_facturado !== undefined ? v.volumen_facturado : (v.volumen_recepcionado_litros / 1000), 3)}
+                          {formatNumber(getVolFactM3(v), 2)}
                         </td>
                         <td className="py-3 px-2.5 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
                           Bs. {formatNumber(v.tarifa_flete, 2)}
@@ -1992,7 +2017,7 @@ function ViajesContent() {
                     <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
                       <span className="text-[10px] text-slate-400 block">Vol. Facturado:</span>
                       <span className="font-mono font-bold text-sky-600 dark:text-sky-400">
-                        {formatNumber(selectedViajeDetail.volumen_facturado !== null && selectedViajeDetail.volumen_facturado !== undefined ? selectedViajeDetail.volumen_facturado : (selectedViajeDetail.volumen_recepcionado_litros / 1000), 3)}
+                        {formatNumber(getVolFactM3(selectedViajeDetail) * 1000, 0)} L ({formatNumber(getVolFactM3(selectedViajeDetail), 2)} m³)
                       </span>
                     </div>
                     <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
@@ -2299,20 +2324,23 @@ function ViajesContent() {
                   </div>
                 </div>
 
-                {/* Badge Informativo de Asignación Mensual con Holgura */}
-                <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs">
-                  <div className="flex items-center gap-1.5">
+                {/* Asignación de Periodo (Editable para digitalización de planillas históricas) */}
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-xs">
+                  <div className="flex items-center gap-2">
                     <Calendar className="w-3.5 h-3.5 text-amber-500" />
-                    <span className="text-slate-600 dark:text-slate-300 text-[11px]">
-                      Mes de Liquidación Asignado:
-                    </span>
-                    <span className="font-mono font-black text-amber-600 dark:text-amber-400">
-                      {formData.periodo_mes}
+                    <span className="text-slate-600 dark:text-slate-300 text-[11px] font-medium">
+                      Mes Asignado (Liquidación):
                     </span>
                   </div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                    Regla de holgura (1-2 días fin de mes)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="month"
+                      value={formData.periodo_mes}
+                      onChange={(e) => setFormData({ ...formData, periodo_mes: e.target.value })}
+                      className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-amber-500/40 rounded-lg text-xs font-mono font-black text-amber-600 dark:text-amber-400 focus:outline-none focus:border-amber-500 cursor-pointer"
+                      title="Puedes cambiar el mes de liquidación si es necesario para digitalización"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -2583,8 +2611,8 @@ function ViajesContent() {
                 </div>
               </div>
 
-              {/* Fila 6: Volúmenes, Volumen Facturado y Tarifa */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Fila 6: Volúmenes, Volumen Facturado y Tarifa (Diseño Responsivo de 2 Columnas) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
                     Volumen Origen (Lt) *
@@ -2603,12 +2631,12 @@ function ViajesContent() {
                       }
                     }}
                     placeholder="0"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1 whitespace-nowrap">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1 leading-snug">
                     Volumen Recepcionado/Descargado (Lt) *
                   </label>
                   <input
@@ -2617,11 +2645,12 @@ function ViajesContent() {
                     value={formData.volumen_recepcionado_litros}
                     onChange={(e) => {
                       const v = e.target.value;
-                      const numV = v === "" ? "" : Number(v);
+                      const numV = Number(v);
+                      const m3Val = v === "" || isNaN(numV) ? "" : Math.round((numV / 1000.0) * 1000) / 1000;
                       setFormData(prev => ({
                         ...prev,
                         volumen_recepcionado_litros: v === "" ? "" : v,
-                        volumen_facturado: v === "" ? "" : Math.round(((Number(numV) || 0) / 1000.0) * 1000) / 1000
+                        volumen_facturado: m3Val
                       }));
                     }}
                     onBlur={(e) => {
@@ -2630,14 +2659,14 @@ function ViajesContent() {
                       }
                     }}
                     placeholder="0"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
-                      Volumen Facturado *
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase leading-snug">
+                      Volumen Facturado (m³) *
                     </label>
                   </div>
                   <input
@@ -2653,10 +2682,10 @@ function ViajesContent() {
                         setFormData((prev) => ({ ...prev, volumen_facturado: 0 }));
                       }
                     }}
-                    placeholder="0.000"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-sky-600 dark:text-sky-400 focus:outline-none focus:border-amber-500"
+                    placeholder="0.00"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-sky-600 dark:text-sky-400 focus:outline-none focus:border-amber-500"
                   />
-                  <span className="text-[10px] text-slate-400 block mt-0.5">Base: Vol. Fact. × Tarifa</span>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">Operación: Vol. Facturado (m³) × Tarifa (Bs./m³) = Total a Pagar</span>
                 </div>
 
                 <div>
@@ -2677,7 +2706,7 @@ function ViajesContent() {
                       }
                     }}
                     placeholder="0.00"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>

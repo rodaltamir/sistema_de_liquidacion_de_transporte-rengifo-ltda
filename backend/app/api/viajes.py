@@ -207,14 +207,17 @@ def create_viaje(
                 detail=f"Ya existe un viaje idéntico registrado para la placa {placa_clean} en las fechas {viaje_in.fecha_carga} a {viaje_in.fecha_descarga} (MIC: {dup_viaje.mic_dta or 'S/N'})"
             )
 
-        # Determinar periodo mensual aplicando la regla de holgura de 1-2 días
-        periodo_determinado = determine_trip_period(viaje_in.fecha_carga, viaje_in.fecha_descarga)
+        # Determinar periodo mensual (respetando valor explícito si fue provisto)
+        if viaje_in.periodo_mes and viaje_in.periodo_mes.strip():
+            periodo_determinado = viaje_in.periodo_mes.strip()
+        else:
+            periodo_determinado = determine_trip_period(viaje_in.fecha_carga, viaje_in.fecha_descarga)
 
         # Manejo de listas dinámicas de descuentos
         desc_adic_json, total_desc_adic = process_descuentos(viaje_in.descuentos_adicionales)
         desc_mermas_json, total_desc_mermas = process_descuentos(viaje_in.descuentos_mermas)
 
-        # Volumen facturado
+        # Volumen facturado (en m³, por defecto igual a volumen recepcionado / 1000)
         vol_fact = viaje_in.volumen_facturado
         if vol_fact is None or vol_fact <= 0:
             vol_fact = round(viaje_in.volumen_recepcionado_litros / 1000.0, 3)
@@ -644,7 +647,7 @@ def update_viaje(
         for field, val in update_data.items():
             setattr(viaje, field, val)
 
-        # Volumen facturado
+        # Volumen facturado (en m³, por defecto igual a volumen recepcionado / 1000)
         vol_fact = viaje.volumen_facturado
         if vol_fact is None or vol_fact <= 0:
             vol_fact = round(viaje.volumen_recepcionado_litros / 1000.0, 3)
@@ -668,7 +671,10 @@ def update_viaje(
         viaje.precio_merma_litro_bs = calc["precio_merma_litro_bs"]
         viaje.merma_descontar_bs = calc["merma_descontar_bs"]
         viaje.flete_total_bs = calc["flete_total_bs"]
-        viaje.periodo_mes = determine_trip_period(viaje.fecha_carga, viaje.fecha_descarga)
+        if "periodo_mes" in update_data and update_data["periodo_mes"]:
+            viaje.periodo_mes = str(update_data["periodo_mes"]).strip()
+        elif not viaje.periodo_mes:
+            viaje.periodo_mes = determine_trip_period(viaje.fecha_carga, viaje.fecha_descarga)
 
         session.commit()
         session.refresh(viaje)

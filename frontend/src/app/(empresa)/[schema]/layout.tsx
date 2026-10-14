@@ -25,7 +25,8 @@ import {
   Shield,
   Layers,
   Search,
-  Check
+  Check,
+  History
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { getCurrentUser, clearAuth, User } from "@/lib/auth";
@@ -107,7 +108,14 @@ export default function EmpresaLayout({
       href: `/${schema}/viajes`,
       icon: Navigation,
       description: "Despachos, fletes y mermas",
-      isActive: (path: string) => path.startsWith(`/${schema}/viajes`)
+      isActive: (path: string) => path === `/${schema}/viajes`
+    },
+    {
+      name: "Historial de Viajes",
+      href: `/${schema}/historial`,
+      icon: History,
+      description: "Búsqueda por factura y detalle de viajes",
+      isActive: (path: string) => path.startsWith(`/${schema}/historial`)
     },
     {
       name: "Liquidaciones",
@@ -139,6 +147,7 @@ export default function EmpresaLayout({
     pathname.startsWith(`/${schema}/apoyo`) ? "Flota de Apoyo" :
     pathname.startsWith(`/${schema}/clientes`) ? "Clientes" :
     pathname.startsWith(`/${schema}/flota`) ? "Flota Propia" :
+    pathname.startsWith(`/${schema}/historial`) ? "Historial de Viajes" :
     pathname.startsWith(`/${schema}/viajes`) ? "Viajes" :
     pathname.startsWith(`/${schema}/liquidaciones`) ? "Liquidaciones" :
     pathname.startsWith(`/${schema}/configuracion`) ? "Configuración" :

@@ -300,12 +300,14 @@ def export_liquidacion_placa_excel(
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         cell.border = BORDER_THIN_BLACK
 
-    # 5. Agrupación y Ordenamiento de Viajes: Tramo -> Producto -> Fecha (antigua a más nueva)
+    # 5. Agrupación y Ordenamiento de Viajes: Tramo -> Producto -> Nº Factura -> Fecha (antigua a más nueva)
     groups_dict = {}
     for v in viajes:
         t_key = str(getattr(v, "tramo", "") or "SIN TRAMO").strip().upper()
         p_key = str(getattr(v, "producto", "") or "SIN PRODUCTO").strip().upper()
-        grp_k = (t_key, p_key)
+        f_raw = str(getattr(v, "nro_factura", "") or "").strip().upper()
+        f_key = f_raw if f_raw and f_raw != "-" else "S/F"
+        grp_k = (t_key, p_key, f_key)
         if grp_k not in groups_dict:
             groups_dict[grp_k] = []
         groups_dict[grp_k].append(v)
@@ -313,6 +315,17 @@ def export_liquidacion_placa_excel(
     # Ordenar cronológicamente dentro de cada grupo
     for grp_k in groups_dict:
         groups_dict[grp_k].sort(key=lambda x: (str(getattr(x, "fecha_carga", "") or ""), getattr(x, "id", 0)))
+
+    # Ordenar grupos cronológicamente por la fecha más antigua de sus viajes
+    sorted_groups = sorted(
+        groups_dict.items(),
+        key=lambda item: (
+            str(getattr(item[1][0], "fecha_carga", "") or "") if item[1] else "",
+            item[0][0],
+            item[0][1],
+            item[0][2]
+        )
+    )
 
     curr_row = 7
     global_idx = 1
@@ -326,7 +339,7 @@ def export_liquidacion_placa_excel(
     fill_subtotal = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
     font_subtotal = Font(name=FONT_FAMILY, size=8.5, bold=True, color="78350F")
 
-    for (t_key, p_key), grp_viajes in groups_dict.items():
+    for (t_key, p_key, f_key), grp_viajes in sorted_groups:
         grp_vol_orig = 0.0
         grp_vol_rec = 0.0
         grp_vol_fact = 0.0
@@ -416,11 +429,17 @@ def export_liquidacion_placa_excel(
             c14.number_format = '#,##0.00'
             c14.alignment = Alignment(horizontal="right", vertical="center")
 
-            # Col 15: Volumen Facturado
-            v_fact = float(getattr(v, "volumen_facturado", None) or (v_rec / 1000.0))
-            grp_vol_fact += v_fact
-            total_vol_fact += v_fact
-            c15 = ws1.cell(row=curr_row, column=15, value=v_fact)
+            # Col 15: Volumen Facturado (muestra en m³ con formato #,##0.00, calculado desde Litros / 1000)
+            raw_v_fact = getattr(v, "volumen_facturado", None)
+            if raw_v_fact is not None and float(raw_v_fact) > 0:
+                v_fact_num = float(raw_v_fact)
+                v_fact_m3 = (v_fact_num / 1000.0) if v_fact_num > 1000.0 else v_fact_num
+            else:
+                v_fact_m3 = round(v_rec / 1000.0, 3)
+
+            grp_vol_fact += v_fact_m3
+            total_vol_fact += v_fact_m3
+            c15 = ws1.cell(row=curr_row, column=15, value=v_fact_m3)
             c15.number_format = '#,##0.00'
             c15.alignment = Alignment(horizontal="right", vertical="center")
 

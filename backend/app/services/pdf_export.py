@@ -119,18 +119,30 @@ def export_liquidacion_placa_pdf(liquidacion: Any, viajes: List[Any], empresa: D
         ('BOTTOMPADDING', (0,0), (-1,-1), 2),
     ]
 
-    # Agrupar viajes por Tramo y Producto, ordenando cronológicamente
+    # Agrupar viajes por Tramo -> Producto -> Nº de Factura, ordenando cronológicamente
     groups_dict = {}
     for v in viajes:
         t_key = str(getattr(v, "tramo", "") or "SIN TRAMO").strip().upper()
         p_key = str(getattr(v, "producto", "") or "SIN PRODUCTO").strip().upper()
-        grp_k = (t_key, p_key)
+        f_raw = str(getattr(v, "nro_factura", "") or "").strip().upper()
+        f_key = f_raw if f_raw and f_raw != "-" else "S/F"
+        grp_k = (t_key, p_key, f_key)
         if grp_k not in groups_dict:
             groups_dict[grp_k] = []
         groups_dict[grp_k].append(v)
 
     for grp_k in groups_dict:
         groups_dict[grp_k].sort(key=lambda x: (str(getattr(x, "fecha_carga", "") or ""), getattr(x, "id", 0)))
+
+    sorted_groups = sorted(
+        groups_dict.items(),
+        key=lambda item: (
+            str(getattr(item[1][0], "fecha_carga", "") or "") if item[1] else "",
+            item[0][0],
+            item[0][1],
+            item[0][2]
+        )
+    )
 
     global_idx = 1
     total_vol_fact_pdf = 0.0
@@ -142,7 +154,7 @@ def export_liquidacion_placa_pdf(liquidacion: Any, viajes: List[Any], empresa: D
 
     current_table_row = 1
 
-    for (t_key, p_key), grp_viajes in groups_dict.items():
+    for (t_key, p_key, f_key), grp_viajes in sorted_groups:
         grp_vol_orig = 0.0
         grp_vol_rec = 0.0
         grp_vol_fact = 0.0
@@ -153,8 +165,12 @@ def export_liquidacion_placa_pdf(liquidacion: Any, viajes: List[Any], empresa: D
 
         for v in grp_viajes:
             v_orig = float(v.volumen_origen_litros or 0)
-            v_rec = float(v.volumen_recepcionado_litros or 0)
-            v_fact = float(getattr(v, "volumen_facturado", None) or (v_rec / 1000.0))
+            raw_v_fact = getattr(v, "volumen_facturado", None)
+            if raw_v_fact is not None and float(raw_v_fact) > 0:
+                v_fact_num = float(raw_v_fact)
+                v_fact = (v_fact_num / 1000.0) if v_fact_num > 1000.0 else v_fact_num
+            else:
+                v_fact = round(v_rec / 1000.0, 3)
             raw_mreal = float(v.merma_real_litros or 0)
             mreal = -abs(raw_mreal) if raw_mreal != 0 else 0.0
             mdesc = float(v.merma_descontar_bs or 0)

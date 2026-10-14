@@ -6,10 +6,13 @@ from app.models.tenant import ParametroLiquidacion
 def determine_trip_period(date_carga: date, date_descarga: Optional[date] = None) -> str:
     """
     Determina el periodo mensual único (YYYY-MM) al que pertenece un viaje.
-    Regla de holgura de 1-2 días:
-    Si la fecha de carga ocurre al final del mes (con holgura de 1 a 2 días respecto al fin de mes,
-    ej. días 27-28 en febrero de 28 días, o 29-30/30-31 en otros meses)
-    y la descarga ocurre en el mes posterior (ej. 3 de marzo), el viaje se consolida en el mes de descarga.
+    Regla de holgura de 3 días:
+    - Si la fecha de carga y descarga están en el mismo mes -> mes de carga.
+    - Si la fecha de carga ocurre al final del mes dentro de la holgura de 3 días
+      (días restantes <= 3, ej. día 27 en mes de 30 días, día 28 en mes de 31 días, o día 25 en febrero de 28 días)
+      Y la descarga ocurre a inicios del mes siguiente (ej. primeros 5 días) -> se consolida en el mes de descarga.
+    - De lo contrario (ej. cargó el 26 de marzo y descargó el 10 de abril):
+      no está dentro de la holgura de 3 días de fin de mes, por lo que pertenece a su mes de carga original (2023-03).
     Garantiza que ningún viaje quede dividido entre dos meses ni duplicado.
     """
     if not date_carga:
@@ -23,10 +26,12 @@ def determine_trip_period(date_carga: date, date_descarga: Optional[date] = None
     last_day_carga = calendar.monthrange(date_carga.year, date_carga.month)[1]
     dias_restantes_carga = last_day_carga - date_carga.day
     
-    if dias_restantes_carga <= 2:
+    # Si cargó en los últimos 3 días y descargó en los primeros 5 días del mes siguiente:
+    if dias_restantes_carga <= 3 and date_descarga.day <= 5:
         return f"{date_descarga.year}-{str(date_descarga.month).zfill(2)}"
     
-    return f"{date_descarga.year}-{str(date_descarga.month).zfill(2)}"
+    # De lo contrario, se consolida en el mes de carga
+    return f"{date_carga.year}-{str(date_carga.month).zfill(2)}"
 
 def get_tolerancia_pct(producto: str, params: Optional[ParametroLiquidacion] = None) -> float:
     """
@@ -102,23 +107,29 @@ def calculate_viaje_values(
     merma_descontar_bs = round(merma_excedente * precio_merma, 2)
 
     # 5. Volumen Facturado y Cálculo del Total a Pagar
-    # Regla principal: Volumen Facturado * Tarifa = Total a Pagar
-    if volumen_facturado is not None and volumen_facturado > 0:
-        vol_fact = float(volumen_facturado)
+    # Regla: La unidad de medida de Volumen Facturado es en METROS CÚBICOS (m³)
+    # Por defecto es el volumen recepcionado (o descargado) convertido a m³: volumen_recepcionado_litros / 1000
+    # Tarifa viene en Bs./m³
+    # Total a Pagar = Volumen Facturado (m³) * Tarifa (Bs./m³)
+    if volumen_facturado is not None and float(volumen_facturado) > 0:
+        val_f = float(volumen_facturado)
+        # Normalizar si vino accidentalmente en litros (> 1000)
+        vol_fact_m3 = round(val_f / 1000.0, 4) if val_f > 1000.0 else round(val_f, 4)
     else:
-        vol_fact = round(volumen_recepcionado_litros / 1000.0, 3)
+        vol_fact_m3 = round(volumen_recepcionado_litros / 1000.0, 4)
+
+    vol_fact_litros = round(vol_fact_m3 * 1000.0, 1)
 
     tipo = (tipo_tarifa or "BS_POR_M3").upper()
 
     if tipo == "USD_POR_M3":
         tipo_cambio = params.tipo_cambio_usd_bob or 6.96
-        flete_total_bs = round(vol_fact * tarifa_flete * (tipo_cambio / 10.0), 2)
+        flete_total_bs = round(vol_fact_m3 * tarifa_flete * (tipo_cambio / 10.0), 2)
     elif tipo == "BS_TOTAL_VIAJE":
         flete_total_bs = round(tarifa_flete, 2)
     else:
-        # BS_POR_M3 / BS_POR_TONELADA / BS_OPERACION:
-        # volumen_facturado * tarifa = total pagar
-        flete_total_bs = round(vol_fact * tarifa_flete, 2)
+        # BS_POR_M3: Volumen Facturado (m³) * Tarifa (Bs./m³) = Total a Pagar (Bs)
+        flete_total_bs = round(vol_fact_m3 * tarifa_flete, 2)
 
     return {
         "merma_real_litros": merma_real,
@@ -127,7 +138,8 @@ def calculate_viaje_values(
         "merma_excedente_litros": merma_excedente,
         "precio_merma_litro_bs": precio_merma,
         "merma_descontar_bs": merma_descontar_bs,
-        "volumen_facturado": vol_fact,
+        "volumen_facturado": vol_fact_m3,
+        "volumen_facturado_m3": vol_fact_m3,
         "flete_total_bs": flete_total_bs
     }
 
