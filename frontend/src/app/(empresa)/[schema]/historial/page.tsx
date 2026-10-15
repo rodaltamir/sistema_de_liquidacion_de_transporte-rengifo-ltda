@@ -34,6 +34,7 @@ import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
 import DatePeriodFilter, { DateFilterChangeEvent } from "@/components/DatePeriodFilter";
 import ModalPortal from "@/components/ModalPortal";
 import SaveNewCatalogModal from "@/components/SaveNewCatalogModal";
+import ImportExcelModal from "@/components/ImportExcelModal";
 
 interface ItemDescuento {
   concepto: string;
@@ -132,6 +133,7 @@ function HistorialViajesContent() {
   const [unidades, setUnidades] = useState<Unidad[]>([]);
   const [unidadesApoyo, setUnidadesApoyo] = useState<UnidadApoyo[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Catálogos dinámicos
   const [catalogProductos, setCatalogProductos] = useState<string[]>([
@@ -713,7 +715,7 @@ function HistorialViajesContent() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             type="button"
             onClick={() => router.push(`/${schema}/viajes`)}
@@ -721,6 +723,14 @@ function HistorialViajesContent() {
           >
             <Navigation className="w-3.5 h-3.5 text-amber-500" />
             <span>Registro Operativo</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowImportModal(true)}
+            className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-black text-xs rounded-xl shadow-md transition active:scale-95 flex items-center gap-1.5"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+            <span>Importar Plantilla Excel</span>
           </button>
           <button
             type="button"
@@ -2007,6 +2017,16 @@ function HistorialViajesContent() {
           </div>
         </ModalPortal>
       )}
+
+      {/* Modal de Importación Inteligente Excel */}
+      <ImportExcelModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        schema={schema}
+        onSuccess={() => {
+          loadViajes();
+        }}
+      />
 
     </div>
   );

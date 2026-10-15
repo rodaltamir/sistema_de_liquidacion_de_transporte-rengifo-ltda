@@ -3,7 +3,7 @@ import json
 from datetime import date, datetime
 from dateutil import parser as date_parser
 import openpyxl
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from fastapi.responses import Response
 from typing import List, Optional
 from app.db.session import get_tenant_session
@@ -13,6 +13,7 @@ from app.models.tenant import Viaje, ParametroLiquidacion, UnidadTransporte
 from app.schemas.viaje import ViajeCreate, ViajeUpdate, ViajeResponse, ViajeCalculoPreview
 from app.services.calculation_engine import calculate_viaje_values, determine_trip_period
 from app.services.excel_export import generate_viajes_template_excel
+from app.services.excel_importer import get_excel_sheets, parse_excel_viajes_data
 
 from sqlalchemy import func
 
@@ -299,277 +300,183 @@ def download_plantilla_viajes(schema_name: str, empresa: Empresa = Depends(verif
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
-@router.post("/importar-excel")
-async def importar_viajes_excel(
+@router.post("/excel-info")
+async def get_excel_info(
     schema_name: str,
     file: UploadFile = File(...),
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
         raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
-
     contents = await file.read()
     try:
-        wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
+        sheets = get_excel_sheets(contents)
+        return {
+            "success": True,
+            "filename": file.filename,
+            "sheets": sheets,
+            "default_sheet": sheets[0] if sheets else ""
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"No se pudo leer el archivo Excel: {str(e)}")
 
-    ws = wb.active
+@router.post("/preview-excel")
+async def preview_viajes_excel(
+    schema_name: str,
+    file: UploadFile = File(...),
+    sheet_name: Optional[str] = Form(None),
+    empresa: Empresa = Depends(verify_tenant_exists)
+):
+    if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
+        raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
+    contents = await file.read()
     session = get_tenant_session(schema_name)
     try:
+        preview_data = parse_excel_viajes_data(
+            file_bytes=contents,
+            sheet_name=sheet_name,
+            session=session,
+            max_preview_records=100
+        )
+        return preview_data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al analizar el archivo Excel: {str(e)}")
+    finally:
+        session.close()
+
+@router.post("/importar-excel")
+async def importar_viajes_excel(
+    schema_name: str,
+    file: UploadFile = File(...),
+    sheet_name: Optional[str] = Form(None),
+    overwrite_duplicates: bool = Form(False),
+    empresa: Empresa = Depends(verify_tenant_exists)
+):
+    if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
+        raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
+
+    contents = await file.read()
+    session = get_tenant_session(schema_name)
+    try:
+        parsed_data = parse_excel_viajes_data(
+            file_bytes=contents,
+            sheet_name=sheet_name,
+            session=session,
+            max_preview_records=None
+        )
+
         params = session.query(ParametroLiquidacion).first()
         if not params:
             params = ParametroLiquidacion()
 
-        viajes_creados = []
+        viajes_creados = 0
+        viajes_actualizados = 0
+        viajes_omitidos = 0
         errores = []
         periodos_detectados = set()
 
-        # Detección inteligente de encabezados y mapeo de columnas
-        col_map = {}
-        header_row_idx = 4
-        for r_cand in range(1, 8):
-            row_vals = [str(ws.cell(row=r_cand, column=c).value or "").strip().upper() for c in range(1, ws.max_column + 1)]
-            for col_i, val in enumerate(row_vals, 1):
-                if ("CARGA" in val and "FECHA" in val) or val == "FECHA DE CARGA" or val == "F. CARGA":
-                    col_map["fecha_carga"] = col_i
-                elif ("DESCARGA" in val and "FECHA" in val) or val == "FECHA DE DESCARGA" or val == "F. DESCARGA":
-                    col_map["fecha_descarga"] = col_i
-                elif "MIC" in val or "DTA" in val or "MCI" in val:
-                    col_map["mic_dta"] = col_i
-                elif "PLACA" in val:
-                    col_map["placa"] = col_i
-                elif "TRAMO" in val:
-                    col_map["tramo"] = col_i
-                elif "CLIENTE" in val:
-                    col_map["cliente"] = col_i
-                elif ("NRO" in val or "N°" in val or "NUM" in val or "Nº" in val) and "FACTURA" in val:
-                    col_map["nro_factura"] = col_i
-                elif ("FECHA" in val or "F." in val) and ("FACTURA" in val or "FACTURACION" in val or "FACTURACIÓN" in val):
-                    col_map["fecha_factura"] = col_i
-                elif "FACTURA" in val and "nro_factura" not in col_map and "fecha_factura" not in col_map:
-                    col_map["nro_factura"] = col_i
-                elif "PRODUCTO" in val:
-                    col_map["producto"] = col_i
-                elif "ORIGEN" in val:
-                    col_map["vol_origen"] = col_i
-                elif "FACTURADO" in val and "VOL" in val:
-                    col_map["vol_facturado"] = col_i
-                elif "RECEPCIONADO" in val or "DESCARGADO" in val:
-                    col_map["vol_rec"] = col_i
-                elif "TARIFA" in val:
-                    col_map["tarifa"] = col_i
-                elif "OBS" in val:
-                    col_map["obs"] = col_i
-                elif "LOTE" in val:
-                    col_map["lote"] = col_i
+        unidades_cache = {u.placa: u for u in session.query(UnidadTransporte).all()}
 
-            if "placa" in col_map and ("vol_origen" in col_map or "vol_rec" in col_map):
-                header_row_idx = r_cand
-                break
-
-        # Si no se detectaron encabezados por texto, aplicar mapeo por posición según cantidad de columnas
-        if not col_map.get("placa"):
-            if ws.max_column >= 18:
-                # Formato oficial 19 columnas (con Factura, Fecha Factura, Volumen Facturado, sin col Empresa)
-                col_map = {
-                    "fecha_carga": 2,
-                    "fecha_descarga": 3,
-                    "mic_dta": 4,
-                    "placa": 5,
-                    "tramo": 6,
-                    "cliente": 7,
-                    "nro_factura": 8,
-                    "fecha_factura": 9,
-                    "producto": 10,
-                    "vol_origen": 11,
-                    "vol_rec": 12,
-                    "vol_facturado": 17,
-                    "tarifa": 18
-                }
-                header_row_idx = 4
-            elif ws.max_column >= 15:
-                # Formato previo 17 columnas de la liquidación física
-                col_map = {
-                    "fecha_carga": 2,
-                    "fecha_descarga": 3,
-                    "mic_dta": 4,
-                    "placa": 6,
-                    "tramo": 7,
-                    "cliente": 8,
-                    "producto": 9,
-                    "vol_origen": 10,
-                    "vol_rec": 11,
-                    "tarifa": 16
-                }
-                header_row_idx = 4
-            else:
-                # Formato estándar 14 columnas
-                col_map = {
-                    "mic_dta": 1,
-                    "placa": 2,
-                    "tramo": 3,
-                    "cliente": 4,
-                    "producto": 5,
-                    "fecha_carga": 6,
-                    "fecha_descarga": 7,
-                    "vol_origen": 8,
-                    "vol_rec": 9,
-                    "tarifa": 10,
-                    "tipo_tarifa": 11,
-                    "precio_merma": 12,
-                    "lote": 13,
-                    "obs": 14
-                }
-                header_row_idx = 4
-
-        seen_mics_in_batch = set()
-        seen_trips_in_batch = set()
-
-        start_row = header_row_idx + 1
-        for r in range(start_row, ws.max_row + 1):
-            def get_val(key):
-                idx = col_map.get(key)
-                return ws.cell(row=r, column=idx).value if idx else None
-
-            mic_dta = get_val("mic_dta")
-            placa = get_val("placa")
-            tramo = get_val("tramo")
-            cliente = get_val("cliente")
-            nro_fac = get_val("nro_factura")
-            f_fac = get_val("fecha_factura")
-            producto = get_val("producto")
-            f_carga = get_val("fecha_carga")
-            f_descarga = get_val("fecha_descarga")
-            vol_origen = get_val("vol_origen")
-            vol_rec = get_val("vol_rec")
-            vol_fact = get_val("vol_facturado")
-            tarifa = get_val("tarifa")
-            tipo_tarifa = get_val("tipo_tarifa")
-            precio_merma = get_val("precio_merma")
-            lote = get_val("lote")
-            obs = get_val("obs")
-
-            if not placa and not vol_origen and not vol_rec:
-                continue
-
+        for rec in parsed_data["records"]:
             try:
-                placa_str = str(placa or "").strip().upper()
-                if not placa_str:
-                    errores.append(f"Fila {r}: Placa no especificada")
-                    continue
+                placa = rec["placa"]
+                date_carga = datetime.fromisoformat(rec["fecha_carga"]).date()
+                date_descarga = datetime.fromisoformat(rec["fecha_descarga"]).date()
+                date_fac = datetime.fromisoformat(rec["fecha_factura"]).date() if rec.get("fecha_factura") else None
+                mic_str = rec.get("mic_dta")
+                vol_o = rec["volumen_origen_litros"]
+                vol_r = rec["volumen_recepcionado_litros"]
+                vol_f = rec["volumen_facturado"]
+                tarifa = rec["tarifa_flete"]
+                tipo_t = rec.get("tipo_tarifa", "BS_POR_M3")
 
-                tramo_str = str(tramo or "TRAMO NO ESPECIFICADO").strip().upper()
-                cliente_str = str(cliente or "YPFB").strip().upper()
-                producto_raw = str(producto or "DIESEL").strip().upper()
-                if "GAS" in producto_raw:
-                    producto_str = "GASOLINA"
-                elif "IYA" in producto_raw or "ADIT" in producto_raw:
-                    producto_str = "IYA"
-                elif "SOYA" in producto_raw:
-                    producto_str = "SOYA A GRANEL"
-                elif "GIRASOL" in producto_raw:
-                    producto_str = "GIRASOL A GRANEL"
-                elif "ACERO" in producto_raw or "PLANCHA" in producto_raw:
-                    producto_str = "PLANCHAS DE ACERO"
-                elif "CRUDO" in producto_raw:
-                    producto_str = "CRUDO"
-                else:
-                    producto_str = "DIESEL"
-
-                def parse_date(v):
-                    if isinstance(v, (datetime, date)):
-                        return v.date() if isinstance(v, datetime) else v
-                    if isinstance(v, str):
-                        try:
-                            return date_parser.parse(v).date()
-                        except Exception:
-                            return date.today()
-                    return date.today()
-
-                date_carga = parse_date(f_carga) if f_carga else date.today()
-                date_descarga = parse_date(f_descarga) if f_descarga else date_carga
-                date_fac = parse_date(f_fac) if f_fac else None
-
-                vol_o = float(str(vol_origen or 0).replace(",", "."))
-                vol_r = float(str(vol_rec or 0).replace(",", "."))
-                vol_f = float(str(vol_fact).replace(",", ".")) if vol_fact else None
-                tf = float(str(tarifa or 392.00).replace(",", ".")) if tarifa else 392.00
-                tipo_t = str(tipo_tarifa or "BS_POR_M3").strip().upper()
-                if "USD" in tipo_t:
-                    tipo_t = "USD_POR_M3"
-                else:
-                    tipo_t = "BS_POR_M3"
-
-                pm = float(str(precio_merma).replace(",", ".")) if precio_merma else None
-
-                # Determinar periodo con holgura de 1-2 días
-                periodo = determine_trip_period(date_carga, date_descarga)
-                periodos_detectados.add(periodo)
-
-                # Control anti-duplicados por MIC/DTA
-                mic_str = str(mic_dta).strip().upper() if mic_dta else None
+                # Verificar si ya existe en la base de datos
+                existing_viaje = None
                 if mic_str:
-                    if mic_str in seen_mics_in_batch:
-                        errores.append(f"Fila {r}: Viaje omitido por MIC/DTA duplicado en el archivo ({mic_str})")
-                        continue
-                    exist_mic = session.query(Viaje).filter(Viaje.mic_dta == mic_str).first()
-                    if exist_mic:
-                        errores.append(f"Fila {r}: Omitido por MIC/DTA '{mic_str}' ya registrado en el sistema (Placa {exist_mic.placa})")
-                        continue
-                    seen_mics_in_batch.add(mic_str)
+                    existing_viaje = session.query(Viaje).filter(Viaje.mic_dta == mic_str).first()
+                if not existing_viaje:
+                    existing_viaje = session.query(Viaje).filter(
+                        Viaje.placa == placa,
+                        Viaje.fecha_carga == date_carga,
+                        Viaje.fecha_descarga == date_descarga,
+                        Viaje.volumen_recepcionado_litros == vol_r
+                    ).first()
 
-                # Control anti-duplicados por placa, fechas y volumen
-                trip_key = (placa_str, date_carga, date_descarga, vol_r)
-                if trip_key in seen_trips_in_batch:
-                    errores.append(f"Fila {r}: Viaje omitido por registro idéntico duplicado en el archivo ({placa_str}, {date_carga})")
-                    continue
-                exist_trip = session.query(Viaje).filter(
-                    Viaje.placa == placa_str,
-                    Viaje.fecha_carga == date_carga,
-                    Viaje.fecha_descarga == date_descarga,
-                    Viaje.volumen_recepcionado_litros == vol_r
-                ).first()
-                if exist_trip:
-                    errores.append(f"Fila {r}: Omitido por existir ya en sistema ({placa_str}, {date_carga} a {date_descarga})")
-                    continue
-                seen_trips_in_batch.add(trip_key)
+                if existing_viaje:
+                    if not overwrite_duplicates:
+                        viajes_omitidos += 1
+                        continue
+                    else:
+                        calc = calculate_viaje_values(
+                            volumen_origen_litros=vol_o,
+                            volumen_recepcionado_litros=vol_r,
+                            producto=rec["producto"],
+                            tarifa_flete=tarifa,
+                            tipo_tarifa=tipo_t,
+                            params=params,
+                            volumen_facturado=vol_f
+                        )
+                        existing_viaje.tramo = rec["tramo"]
+                        existing_viaje.cliente = rec["cliente"]
+                        existing_viaje.producto = rec["producto"]
+                        if rec.get("nro_factura"):
+                            existing_viaje.nro_factura = str(rec["nro_factura"]).strip()
+                        if date_fac:
+                            existing_viaje.fecha_factura = date_fac
+                        existing_viaje.volumen_origen_litros = vol_o
+                        existing_viaje.volumen_recepcionado_litros = vol_r
+                        existing_viaje.volumen_facturado = calc["volumen_facturado"]
+                        existing_viaje.merma_real_litros = calc["merma_real_litros"]
+                        existing_viaje.tolerancia_pct = calc["tolerancia_pct"]
+                        existing_viaje.merma_tolerable_litros = calc["merma_tolerable_litros"]
+                        existing_viaje.merma_excedente_litros = calc["merma_excedente_litros"]
+                        existing_viaje.precio_merma_litro_bs = calc["precio_merma_litro_bs"]
+                        existing_viaje.merma_descontar_bs = calc["merma_descontar_bs"]
+                        existing_viaje.tarifa_flete = tarifa
+                        existing_viaje.flete_total_bs = calc["flete_total_bs"]
+                        viajes_actualizados += 1
+                        periodos_detectados.add(existing_viaje.periodo_mes)
+                        continue
 
                 # Asegurar que exista la unidad
-                u = session.query(UnidadTransporte).filter(UnidadTransporte.placa == placa_str).first()
+                u = unidades_cache.get(placa)
+                if not u:
+                    u = session.query(UnidadTransporte).filter(UnidadTransporte.placa == placa).first()
                 if not u:
                     u = UnidadTransporte(
-                        placa=placa_str,
+                        placa=placa,
                         marca="Tractocamión / Cisterna",
-                        capacidad_litros=vol_o,
+                        capacidad_litros=vol_o if vol_o > 0 else 34000,
                         estado="Activo"
                     )
                     session.add(u)
                     session.commit()
                     session.refresh(u)
+                    unidades_cache[placa] = u
 
-                # Calcular mermas y flete automáticamente
                 calc = calculate_viaje_values(
                     volumen_origen_litros=vol_o,
                     volumen_recepcionado_litros=vol_r,
-                    producto=producto_str,
-                    tarifa_flete=tf,
+                    producto=rec["producto"],
+                    tarifa_flete=tarifa,
                     tipo_tarifa=tipo_t,
                     params=params,
-                    precio_merma_litro_override=pm,
                     volumen_facturado=vol_f
                 )
 
-                viaje = Viaje(
+                periodo = determine_trip_period(date_carga, date_descarga)
+                periodos_detectados.add(periodo)
+
+                nuevo_viaje = Viaje(
                     mic_dta=mic_str,
-                    lote_codigo=str(lote).strip() if lote else "1",
+                    lote_codigo="1",
                     unidad_id=u.id,
-                    placa=placa_str,
-                    tramo=tramo_str,
-                    cliente=cliente_str,
-                    nro_factura=str(nro_fac).strip() if nro_fac else None,
+                    placa=placa,
+                    tramo=rec["tramo"],
+                    cliente=rec["cliente"],
+                    nro_factura=str(rec["nro_factura"]).strip() if rec.get("nro_factura") else None,
                     fecha_factura=date_fac,
-                    producto=producto_str,
+                    producto=rec["producto"],
                     fecha_carga=date_carga,
                     fecha_descarga=date_descarga,
                     periodo_mes=periodo,
@@ -582,25 +489,26 @@ async def importar_viajes_excel(
                     merma_excedente_litros=calc["merma_excedente_litros"],
                     precio_merma_litro_bs=calc["precio_merma_litro_bs"],
                     merma_descontar_bs=calc["merma_descontar_bs"],
-                    tarifa_flete=tf,
+                    tarifa_flete=tarifa,
                     tipo_tarifa=tipo_t,
                     flete_total_bs=calc["flete_total_bs"],
-                    estado="Pendiente",
-                    observaciones=str(obs).strip() if obs else None
+                    estado="Pendiente"
                 )
-                session.add(viaje)
-                viajes_creados.append(viaje)
-
+                session.add(nuevo_viaje)
+                viajes_creados += 1
             except Exception as row_ex:
-                errores.append(f"Fila {r}: {str(row_ex)}")
+                errores.append(f"Fila {rec.get('fila')}: {str(row_ex)}")
 
-        if viajes_creados:
+        if viajes_creados or viajes_actualizados:
             session.commit()
 
         return {
             "success": True,
-            "message": f"Se importaron {len(viajes_creados)} viajes con éxito.",
-            "total_importados": len(viajes_creados),
+            "message": f"Se procesaron {viajes_creados + viajes_actualizados} viajes ({viajes_creados} nuevos, {viajes_actualizados} actualizados, {viajes_omitidos} omitidos por duplicado).",
+            "total_importados": viajes_creados,
+            "total_actualizados": viajes_actualizados,
+            "total_omitidos": viajes_omitidos,
+            "total_filas_leidas": parsed_data["total_valid_rows"],
             "periodos_detectados": sorted(list(periodos_detectados)),
             "errores": errores
         }

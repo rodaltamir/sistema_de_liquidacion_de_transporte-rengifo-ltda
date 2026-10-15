@@ -44,6 +44,14 @@ backend/exports/*.xlsx
 backend/exports/*.pdf
 !backend/exports/.gitkeep
 
+# Sample Excel files & large import templates (>100MB)
+samples/
+backend/samples/
+backend/exports/samples/
+*.xlsx
+*.xlsm
+*.xls
+
 # IDE & OS Files
 .vscode/
 .idea/
