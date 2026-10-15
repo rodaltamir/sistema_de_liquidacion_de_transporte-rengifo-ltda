@@ -2,6 +2,7 @@ import io
 from typing import Dict, Any, List
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib import colors
+from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
@@ -10,15 +11,16 @@ def export_liquidacion_placa_pdf(liquidacion: Any, viajes: List[Any], empresa: D
     Genera un PDF oficial con dos páginas correspondientes a las Hojas 2 y 3 del PDF:
     - Página 1: Detalle de Fletes por Placa (Horizontal)
     - Página 2: Resumen de Descuentos y Líquido Pagable (Vertical u Horizontal con firmas)
+    Incluye holgura superior de 2.0 cm para perforado y anillado.
     """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=landscape(letter),
-        leftMargin=20,
-        rightMargin=20,
-        topMargin=20,
-        bottomMargin=20
+        leftMargin=15,
+        rightMargin=15,
+        topMargin=2.0 * cm,  # 2.0 cm de holgura superior para perforado y anillado
+        bottomMargin=15
     )
 
     styles = getSampleStyleSheet()
@@ -370,15 +372,16 @@ def export_liquidacion_placa_pdf(liquidacion: Any, viajes: List[Any], empresa: D
 def export_liquidacion_asociacion_pdf(asociacion_name: str, periodo_mes: str, grupos_empresa: List[Dict[str, Any]]) -> io.BytesIO:
     """
     Genera un PDF oficial con la Liquidación General de la Asociación (Hoja 1 del PDF).
+    Incluye holgura superior de 2.0 cm para perforado y anillado.
     """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=landscape(letter),
-        leftMargin=15,
-        rightMargin=15,
-        topMargin=15,
-        bottomMargin=15
+        leftMargin=12,
+        rightMargin=12,
+        topMargin=2.0 * cm,  # 2.0 cm de holgura superior para perforado y anillado
+        bottomMargin=12
     )
 
     styles = getSampleStyleSheet()
@@ -437,7 +440,7 @@ def export_liquidacion_asociacion_pdf(asociacion_name: str, periodo_mes: str, gr
         Paragraph("PRECIO M.", header_style),
         Paragraph("M. DESC (Bs)", header_style),
         Paragraph("VOL (m3)", header_style),
-        Paragraph("FLETE ($us/m3)", header_style),
+        Paragraph("FLETE (Bs/m3)", header_style),
         Paragraph("IMPORTE (Bs)", header_style),
     ]
 
@@ -481,9 +484,20 @@ def export_liquidacion_asociacion_pdf(asociacion_name: str, periodo_mes: str, gr
             mex = float(v.get("merma_excedente_litros", 0))
             pm = float(v.get("precio_merma_litro_bs", 0))
             mdesc = float(v.get("merma_descontar_bs", 0))
-            m3 = rec / 1000.0
+            
+            # Volumen a Facturar en m3 (calculado en base a volumen facturado en Litros / 1000)
+            v_f = v.get("volumen_facturado")
+            if v_f is not None and float(v_f) > 0:
+                val_f = float(v_f)
+                v_fact_lt = val_f * 1000.0 if val_f < 1000.0 else val_f
+                m3 = round(v_fact_lt / 1000.0, 3)
+            else:
+                m3 = float(v.get("volumen_facturar_m3") or (rec / 1000.0))
+
             tf = float(v.get("tarifa_flete", 0))
             imp = float(v.get("flete_total_bs", 0))
+            if imp == 0 and tf > 0:
+                imp = round(m3 * tf, 2)
 
             sub_desp += desp
             sub_rec += rec

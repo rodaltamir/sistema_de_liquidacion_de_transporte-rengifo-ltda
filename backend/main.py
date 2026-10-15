@@ -45,6 +45,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition", "Content-Type", "Content-Length"],
 )
 
 # Registrar Routers
@@ -54,6 +55,7 @@ app.include_router(empresas.router, prefix=settings.API_V1_STR)
 app.include_router(dashboard.router, prefix=settings.API_V1_STR)
 app.include_router(unidades.router, prefix=settings.API_V1_STR)
 app.include_router(apoyo.router, prefix=settings.API_V1_STR)
+app.include_router(apoyo.unidades_apoyo_alias_router, prefix=settings.API_V1_STR)
 app.include_router(viajes.router, prefix=settings.API_V1_STR)
 app.include_router(liquidaciones.router, prefix=settings.API_V1_STR)
 app.include_router(parametros.router, prefix=settings.API_V1_STR)

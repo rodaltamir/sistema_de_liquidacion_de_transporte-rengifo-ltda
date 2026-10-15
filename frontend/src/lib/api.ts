@@ -1,5 +1,9 @@
 export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
+    // Si estamos navegando bajo HTTPS o puerto proxy, usar el mismo origen /api
+    if (window.location.protocol === 'https:' || window.location.port === '3443') {
+      return `${window.location.origin}/api`;
+    }
     const host = window.location.hostname;
     return `${window.location.protocol}//${host}:8001/api`;
   }
@@ -39,10 +43,16 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     throw new Error(errorDetail);
   }
 
-  // Si es descarga binaria (Excel, PDF)
+  // Si es descarga binaria (Excel, PDF, CSV)
   const contentType = response.headers.get('content-type');
-  if (contentType && (contentType.includes('application/pdf') || contentType.includes('application/vnd.openxmlformats'))) {
-    return response.blob();
+  if (contentType && (
+    contentType.includes('application/pdf') || 
+    contentType.includes('application/vnd.openxmlformats') ||
+    contentType.includes('spreadsheetml') ||
+    contentType.includes('application/octet-stream')
+  )) {
+    const rawBlob = await response.blob();
+    return new Blob([rawBlob], { type: contentType.split(';')[0].trim() });
   }
 
   return response.json();

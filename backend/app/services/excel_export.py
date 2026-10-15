@@ -591,6 +591,14 @@ def export_liquidacion_placa_excel(
     ws1.page_setup.fitToHeight = 0
     ws1.print_options.horizontalCentered = True
 
+    # Holgura de 2.0 cm en la parte superior para perforado y anillado
+    ws1.page_margins.top = 0.8       # 0.8 pulgadas = 2.032 cm
+    ws1.page_margins.bottom = 0.4    # 0.4 pulgadas = 1.0 cm
+    ws1.page_margins.left = 0.4      # 0.4 pulgadas = 1.0 cm
+    ws1.page_margins.right = 0.4     # 0.4 pulgadas = 1.0 cm
+    ws1.page_margins.header = 0.3
+    ws1.page_margins.footer = 0.3
+
     min_widths_sheet1 = {
         "A": 7.0, "B": 14.0, "C": 14.0, "D": 18.0, "E": 13.0,
         "F": 32.0, "G": 13.0, "H": 16.0, "I": 16.0, "J": 16.0,
@@ -734,6 +742,14 @@ def export_liquidacion_placa_excel(
     ws2.page_setup.fitToWidth = 1
     ws2.page_setup.fitToHeight = 0
     ws2.print_options.horizontalCentered = True
+
+    # Holgura de 2.0 cm en la parte superior para perforado y anillado
+    ws2.page_margins.top = 0.8       # 0.8 pulgadas = 2.032 cm
+    ws2.page_margins.bottom = 0.4    # 0.4 pulgadas = 1.0 cm
+    ws2.page_margins.left = 0.4      # 0.4 pulgadas = 1.0 cm
+    ws2.page_margins.right = 0.4     # 0.4 pulgadas = 1.0 cm
+    ws2.page_margins.header = 0.3
+    ws2.page_margins.footer = 0.3
 
     # Anchos armónicos para Hoja 2
     min_widths_sheet2 = {
@@ -978,8 +994,14 @@ def export_liquidacion_asociacion_excel(
                 c_md.number_format = '#,##0.00'
                 c_md.alignment = Alignment(horizontal="right", vertical="center")
 
-                # 13 Volumen a Facturar (m3)
-                v_m3 = v_rec / 1000.0
+                # 13 Volumen a Facturar (m3) - Calculado desde Volumen Facturado en Lt / 1000
+                v_f = v.get("volumen_facturado")
+                if v_f is not None and float(v_f) > 0:
+                    val_f = float(v_f)
+                    v_fact_lt = val_f * 1000.0 if val_f < 1000.0 else val_f
+                    v_m3 = round(v_fact_lt / 1000.0, 3)
+                else:
+                    v_m3 = float(v.get("volumen_facturar_m3") or (v_rec / 1000.0))
                 prod_m3 += v_m3
                 c_m3 = ws.cell(row=current_row, column=13, value=v_m3)
                 c_m3.number_format = '#,##0.000'
@@ -993,6 +1015,8 @@ def export_liquidacion_asociacion_excel(
 
                 # 15 Importe a Facturar (Bs)
                 v_imp = float(v.get("flete_total_bs") or 0)
+                if v_imp == 0 and v_tar > 0:
+                    v_imp = round(v_m3 * v_tar, 2)
                 prod_imp += v_imp
                 c_imp = ws.cell(row=current_row, column=15, value=v_imp)
                 c_imp.number_format = '#,##0.00'
@@ -1103,6 +1127,14 @@ def export_liquidacion_asociacion_excel(
     ws.page_setup.fitToHeight = 0
     ws.print_options.horizontalCentered = True
 
+    # Holgura de 2.0 cm en la parte superior para perforado y anillado
+    ws.page_margins.top = 0.8       # 0.8 pulgadas = 2.032 cm
+    ws.page_margins.bottom = 0.4    # 0.4 pulgadas = 1.0 cm
+    ws.page_margins.left = 0.4      # 0.4 pulgadas = 1.0 cm
+    ws.page_margins.right = 0.4     # 0.4 pulgadas = 1.0 cm
+    ws.page_margins.header = 0.3
+    ws.page_margins.footer = 0.3
+
     # Anchos responsivos base para la planilla de Asociación
     min_widths_asoc = {
         "A": 7, "B": 30, "C": 34, "D": 12, "E": 14,
@@ -1145,7 +1177,7 @@ def generate_viajes_template_excel(empresa_name: str = "") -> io.BytesIO:
         "Nº", "FECHA DE CARGA", "FECHA DE DESCARGA", "MCI/DTA Nº Y OTROS",
         "PLACA", "TRAMO", "CLIENTE", "Nº DE FACTURA", "FECHA DE FACTURACIÓN", "PRODUCTO",
         "Volumen en Lt. Origen", "Volumen Recepcionado/Descargado", "Merma T-T", "Total Merma Litros",
-        "MERMA 0,15% s/Volumen", "Merma a Descontar Y.P.F.B.", "Volumen Facturado", "TARIFA Bs.", "Total a pagar en Bob."
+        "MERMA 0,15% s/Volumen", "Merma a Descontar Y.P.F.B.", "Volumen Facturado (Lt)", "TARIFA Bs.", "Total a pagar en Bob."
     ]
 
     header_row = 5
@@ -1162,7 +1194,7 @@ def generate_viajes_template_excel(empresa_name: str = "") -> io.BytesIO:
     sample_data = [
         1, "28/02/2023", "03/03/2023", "23BO1391150T", "4412-DPC",
         "ARICA - TAMBO QUEMADO - LA PAZ", "YPFB", "FAC-00123", "05/03/2023", "GASOLINA",
-        33959, 33900, -59.0, 14.0, 85, 104.30, 33.90, 392.00, 13288.80
+        33959, 33900, -59.0, 14.0, 85, 104.30, 33900, 392.00, 13288.80
     ]
     for col_idx, val in enumerate(sample_data, 1):
         cell = ws.cell(row=sample_row, column=col_idx, value=val)
@@ -1172,6 +1204,22 @@ def generate_viajes_template_excel(empresa_name: str = "") -> io.BytesIO:
             cell.alignment = Alignment(horizontal="right", vertical="center")
         else:
             cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Configuración de página horizontal y centrada para impresión
+    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+    ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.print_options.horizontalCentered = True
+
+    # Holgura de 2.0 cm en la parte superior para perforado y anillado
+    ws.page_margins.top = 0.8       # 0.8 pulgadas = 2.032 cm
+    ws.page_margins.bottom = 0.4    # 0.4 pulgadas = 1.0 cm
+    ws.page_margins.left = 0.4      # 0.4 pulgadas = 1.0 cm
+    ws.page_margins.right = 0.4     # 0.4 pulgadas = 1.0 cm
+    ws.page_margins.header = 0.3
+    ws.page_margins.footer = 0.3
 
     min_widths_template = {
         "A": 6.5, "B": 15, "C": 15, "D": 18, "E": 13,

@@ -234,9 +234,36 @@ def get_liquidacion_consolidada(
             )
 
         if not viajes:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No se encontraron viajes registrados para la cisterna {placa_clean} en {display_label}"
+            return LiquidacionDetalleResponse(
+                id=0,
+                codigo=codigo_periodo,
+                periodo_mes=periodo_label,
+                placa=placa_clean,
+                fecha_emision=date.today(),
+                total_viajes=0,
+                total_volumen_origen_litros=0.0,
+                total_volumen_recepcionado_litros=0.0,
+                total_merma_real_litros=0.0,
+                total_merma_excedente_litros=0.0,
+                flete_total_bruto_bs=0.0,
+                desc_merma_bs=0.0,
+                desc_comision_usd_m3_bs=0.0,
+                desc_comision_7pct_bs=0.0,
+                desc_comision_ypfb_bolgart_7pct_bs=0.0,
+                desc_comision_3pct_bs=0.0,
+                desc_hojas_ruta_bs=0.0,
+                desc_gps_bs=0.0,
+                desc_anticipos_otros_bs=0.0,
+                desc_otros_ajustes_bs=0.0,
+                total_descuentos_bs=0.0,
+                liquido_pagable_bs=0.0,
+                firmas_json=json.dumps(firmas_default),
+                estado="Sin Despachos",
+                notas=f"No se encontraron viajes registrados para {placa_clean} en {display_label}",
+                created_at=datetime.now(),
+                viajes=[],
+                empresa=empresa_dict,
+                firmas=firmas_default
             )
 
         # Si no existe guardada en DB pero hay viajes, calcular en vivo el cuadro oficial

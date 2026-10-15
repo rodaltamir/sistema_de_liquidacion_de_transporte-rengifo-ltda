@@ -229,6 +229,8 @@ def _get_asociacion_liquidacion_data(
     total_merma_descontar_bs = 0.0
     total_volumen_m3 = 0.0
     total_importe_facturar_bs = 0.0
+    total_descuentos_bs = 0.0
+    total_liquido_bs = 0.0
     periodo_display_global = periodo_mes or "Periodo General"
 
     for emp in empresas:
@@ -253,6 +255,8 @@ def _get_asociacion_liquidacion_data(
             sub_mdesc = 0.0
             sub_m3 = 0.0
             sub_imp = 0.0
+            sub_desc = 0.0
+            sub_liq = 0.0
 
             for v in viajes_db:
                 p_raw = str(v.producto or "").strip().upper()
@@ -262,6 +266,18 @@ def _get_asociacion_liquidacion_data(
                     prod_norm = "IYA"
                 else:
                     prod_norm = p_raw or "DO"
+
+                # Volumen Facturado en Lt y m3
+                if v.volumen_facturado is not None and float(v.volumen_facturado) > 0:
+                    val_f = float(v.volumen_facturado)
+                    vol_fact_litros = round(val_f * 1000.0, 1) if val_f < 1000.0 else round(val_f, 1)
+                else:
+                    vol_fact_litros = round(v.volumen_recepcionado_litros, 1)
+                vol_fact_m3 = round(vol_fact_litros / 1000.0, 3)
+
+                flete_bs = v.flete_total_bs if v.flete_total_bs is not None else round(vol_fact_m3 * (v.tarifa_flete or 0.0), 2)
+                desc_tot = v.total_descuentos_bs
+                liq_pag = v.liquido_pagable_bs
 
                 v_dict = {
                     "id": v.id,
@@ -274,13 +290,16 @@ def _get_asociacion_liquidacion_data(
                     "fecha_descarga": str(v.fecha_descarga),
                     "volumen_origen_litros": v.volumen_origen_litros,
                     "volumen_recepcionado_litros": v.volumen_recepcionado_litros,
+                    "volumen_facturado": vol_fact_litros,
                     "merma_real_litros": v.merma_real_litros,
                     "merma_excedente_litros": v.merma_excedente_litros,
                     "precio_merma_litro_bs": v.precio_merma_litro_bs,
                     "merma_descontar_bs": v.merma_descontar_bs,
-                    "volumen_facturar_m3": round(v.volumen_recepcionado_litros / 1000.0, 3),
+                    "volumen_facturar_m3": vol_fact_m3,
                     "tarifa_flete": v.tarifa_flete,
-                    "flete_total_bs": v.flete_total_bs
+                    "flete_total_bs": flete_bs,
+                    "total_descuentos_bs": desc_tot,
+                    "liquido_pagable_bs": liq_pag
                 }
                 viajes_list.append(v_dict)
 
@@ -288,8 +307,10 @@ def _get_asociacion_liquidacion_data(
                 sub_rec += v.volumen_recepcionado_litros
                 sub_mreal += v.merma_real_litros
                 sub_mdesc += v.merma_descontar_bs
-                sub_m3 += (v.volumen_recepcionado_litros / 1000.0)
-                sub_imp += v.flete_total_bs
+                sub_m3 += vol_fact_m3
+                sub_imp += flete_bs
+                sub_desc += desc_tot
+                sub_liq += liq_pag
 
             t_session.close()
 
@@ -303,7 +324,9 @@ def _get_asociacion_liquidacion_data(
                 "subtotal_merma_real": round(sub_mreal, 1),
                 "subtotal_merma_descontar_bs": round(sub_mdesc, 2),
                 "subtotal_volumen_m3": round(sub_m3, 3),
-                "subtotal_importe_bs": round(sub_imp, 2)
+                "subtotal_importe_bs": round(sub_imp, 2),
+                "subtotal_descuentos_bs": round(sub_desc, 2),
+                "subtotal_liquido_bs": round(sub_liq, 2)
             })
 
             total_despachado += sub_desp
@@ -312,6 +335,8 @@ def _get_asociacion_liquidacion_data(
             total_merma_descontar_bs += sub_mdesc
             total_volumen_m3 += sub_m3
             total_importe_facturar_bs += sub_imp
+            total_descuentos_bs += sub_desc
+            total_liquido_bs += sub_liq
 
         except Exception:
             continue
@@ -332,7 +357,9 @@ def _get_asociacion_liquidacion_data(
             "merma_real_litros": round(total_merma_real, 1),
             "merma_descontar_facturar_bs": round(total_merma_descontar_bs, 2),
             "volumen_facturar_m3": round(total_volumen_m3, 3),
-            "importe_facturar_bs": round(total_importe_facturar_bs, 2)
+            "importe_facturar_bs": round(total_importe_facturar_bs, 2),
+            "total_descuentos_bs": round(total_descuentos_bs, 2),
+            "liquido_pagable_bs": round(total_liquido_bs, 2)
         }
     }
 

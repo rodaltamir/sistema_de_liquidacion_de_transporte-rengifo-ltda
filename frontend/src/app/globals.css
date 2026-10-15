@@ -48,6 +48,8 @@ body {
   body {
     background: white !important;
     color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   .no-print {
     display: none !important;
@@ -57,9 +59,20 @@ body {
   }
   .page-break {
     page-break-before: always;
+    break-before: page;
   }
   @page {
     size: landscape;
-    margin: 10mm;
+    margin-top: 20mm; /* 2.0 cm de holgura superior para perforado y anillado */
+    margin-bottom: 10mm;
+    margin-left: 10mm;
+    margin-right: 10mm;
+  }
+  thead {
+    display: table-header-group;
+  }
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 }

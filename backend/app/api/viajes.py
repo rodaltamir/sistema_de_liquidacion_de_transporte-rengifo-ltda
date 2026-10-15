@@ -148,6 +148,8 @@ def preview_calculo_viaje(
     tipo_tarifa: Optional[str] = "BS_POR_M3",
     precio_merma_override: Optional[float] = None,
     volumen_facturado: Optional[float] = None,
+    total_descuentos_adicionales: Optional[float] = 0.0,
+    total_descuentos_mermas: Optional[float] = 0.0,
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     session = get_tenant_session(schema_name)
@@ -164,7 +166,9 @@ def preview_calculo_viaje(
             tipo_tarifa=tipo_tarifa,
             params=params,
             precio_merma_litro_override=precio_merma_override,
-            volumen_facturado=volumen_facturado
+            volumen_facturado=volumen_facturado,
+            total_descuentos_adicionales=total_descuentos_adicionales or 0.0,
+            total_descuentos_mermas=total_descuentos_mermas or 0.0
         )
         return calc
     finally:
@@ -217,10 +221,12 @@ def create_viaje(
         desc_adic_json, total_desc_adic = process_descuentos(viaje_in.descuentos_adicionales)
         desc_mermas_json, total_desc_mermas = process_descuentos(viaje_in.descuentos_mermas)
 
-        # Volumen facturado (en m³, por defecto igual a volumen recepcionado / 1000)
+        # Volumen facturado (en Litros, por defecto igual a volumen recepcionado)
         vol_fact = viaje_in.volumen_facturado
         if vol_fact is None or vol_fact <= 0:
-            vol_fact = round(viaje_in.volumen_recepcionado_litros / 1000.0, 3)
+            vol_fact = round(viaje_in.volumen_recepcionado_litros, 1)
+        elif vol_fact < 1000.0:
+            vol_fact = round(vol_fact * 1000.0, 1)
 
         # Calcular mermas y flete automáticamente
         calc = calculate_viaje_values(
@@ -231,7 +237,9 @@ def create_viaje(
             tipo_tarifa=viaje_in.tipo_tarifa,
             params=params,
             precio_merma_litro_override=viaje_in.precio_merma_litro_bs,
-            volumen_facturado=vol_fact
+            volumen_facturado=vol_fact,
+            total_descuentos_adicionales=total_desc_adic,
+            total_descuentos_mermas=total_desc_mermas
         )
 
         # Buscar unidad_id si existe por la placa
@@ -647,10 +655,12 @@ def update_viaje(
         for field, val in update_data.items():
             setattr(viaje, field, val)
 
-        # Volumen facturado (en m³, por defecto igual a volumen recepcionado / 1000)
+        # Volumen facturado (en Litros, por defecto igual a volumen recepcionado)
         vol_fact = viaje.volumen_facturado
         if vol_fact is None or vol_fact <= 0:
-            vol_fact = round(viaje.volumen_recepcionado_litros / 1000.0, 3)
+            vol_fact = round(viaje.volumen_recepcionado_litros, 1)
+        elif vol_fact < 1000.0:
+            vol_fact = round(vol_fact * 1000.0, 1)
 
         # Recalcular si cambiaron volúmenes, producto o tarifas
         calc = calculate_viaje_values(
@@ -661,7 +671,9 @@ def update_viaje(
             tipo_tarifa=viaje.tipo_tarifa,
             params=params,
             precio_merma_litro_override=viaje.precio_merma_litro_bs,
-            volumen_facturado=vol_fact
+            volumen_facturado=vol_fact,
+            total_descuentos_adicionales=viaje.total_descuentos_adicionales_bs,
+            total_descuentos_mermas=viaje.total_descuentos_mermas_bs
         )
         viaje.volumen_facturado = calc["volumen_facturado"]
         viaje.merma_real_litros = calc["merma_real_litros"]

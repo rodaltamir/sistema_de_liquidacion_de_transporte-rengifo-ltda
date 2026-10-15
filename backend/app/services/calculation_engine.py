@@ -6,32 +6,17 @@ from app.models.tenant import ParametroLiquidacion
 def determine_trip_period(date_carga: date, date_descarga: Optional[date] = None) -> str:
     """
     Determina el periodo mensual único (YYYY-MM) al que pertenece un viaje.
-    Regla de holgura de 3 días:
-    - Si la fecha de carga y descarga están en el mismo mes -> mes de carga.
-    - Si la fecha de carga ocurre al final del mes dentro de la holgura de 3 días
-      (días restantes <= 3, ej. día 27 en mes de 30 días, día 28 en mes de 31 días, o día 25 en febrero de 28 días)
-      Y la descarga ocurre a inicios del mes siguiente (ej. primeros 5 días) -> se consolida en el mes de descarga.
-    - De lo contrario (ej. cargó el 26 de marzo y descargó el 10 de abril):
-      no está dentro de la holgura de 3 días de fin de mes, por lo que pertenece a su mes de carga original (2023-03).
-    Garantiza que ningún viaje quede dividido entre dos meses ni duplicado.
+    En la digitalización y operativa de fletes y transporte en Bolivia (YPFB),
+    el viaje se ancla al mes de su fecha de carga (origen del despacho).
+    Garantiza que ningún viaje quede dividido entre dos meses ni desplazado erróneamente.
     """
     if not date_carga:
+        if date_descarga:
+            return f"{date_descarga.year}-{str(date_descarga.month).zfill(2)}"
         return date.today().strftime("%Y-%m")
-    if not date_descarga:
-        return f"{date_carga.year}-{str(date_carga.month).zfill(2)}"
     
-    if date_carga.year == date_descarga.year and date_carga.month == date_descarga.month:
-        return f"{date_carga.year}-{str(date_carga.month).zfill(2)}"
-    
-    last_day_carga = calendar.monthrange(date_carga.year, date_carga.month)[1]
-    dias_restantes_carga = last_day_carga - date_carga.day
-    
-    # Si cargó en los últimos 3 días y descargó en los primeros 5 días del mes siguiente:
-    if dias_restantes_carga <= 3 and date_descarga.day <= 5:
-        return f"{date_descarga.year}-{str(date_descarga.month).zfill(2)}"
-    
-    # De lo contrario, se consolida en el mes de carga
     return f"{date_carga.year}-{str(date_carga.month).zfill(2)}"
+
 
 def get_tolerancia_pct(producto: str, params: Optional[ParametroLiquidacion] = None) -> float:
     """
@@ -77,7 +62,9 @@ def calculate_viaje_values(
     tipo_tarifa: str,
     params: ParametroLiquidacion,
     precio_merma_litro_override: float = None,
-    volumen_facturado: float = None
+    volumen_facturado: float = None,
+    total_descuentos_adicionales: float = 0.0,
+    total_descuentos_mermas: float = 0.0
 ) -> Dict[str, float]:
     """
     Realiza el cálculo operativo exacto de un viaje / despacho:
@@ -107,18 +94,17 @@ def calculate_viaje_values(
     merma_descontar_bs = round(merma_excedente * precio_merma, 2)
 
     # 5. Volumen Facturado y Cálculo del Total a Pagar
-    # Regla: La unidad de medida de Volumen Facturado es en METROS CÚBICOS (m³)
-    # Por defecto es el volumen recepcionado (o descargado) convertido a m³: volumen_recepcionado_litros / 1000
-    # Tarifa viene en Bs./m³
-    # Total a Pagar = Volumen Facturado (m³) * Tarifa (Bs./m³)
+    # Regla: La unidad de medida de Volumen Facturado es en LITROS (Lt, ej. 33.900 L, 33.910 L, 33.215 L)
+    # Por defecto es igual al volumen recepcionado/descargado en Litros: volumen_recepcionado_litros
+    # Operación oficial: (Volumen Facturado en Lt / 1000) * Tarifa (Bs.) = Total a Pagar (Bs)
     if volumen_facturado is not None and float(volumen_facturado) > 0:
         val_f = float(volumen_facturado)
-        # Normalizar si vino accidentalmente en litros (> 1000)
-        vol_fact_m3 = round(val_f / 1000.0, 4) if val_f > 1000.0 else round(val_f, 4)
+        # Si alguien ingresó accidentalmente en m³ (< 1000), normalizar a Litros (* 1000)
+        vol_fact_litros = round(val_f * 1000.0, 1) if val_f < 1000.0 else round(val_f, 1)
     else:
-        vol_fact_m3 = round(volumen_recepcionado_litros / 1000.0, 4)
+        vol_fact_litros = round(volumen_recepcionado_litros, 1)
 
-    vol_fact_litros = round(vol_fact_m3 * 1000.0, 1)
+    vol_fact_m3 = round(vol_fact_litros / 1000.0, 4)
 
     tipo = (tipo_tarifa or "BS_POR_M3").upper()
 
@@ -128,8 +114,11 @@ def calculate_viaje_values(
     elif tipo == "BS_TOTAL_VIAJE":
         flete_total_bs = round(tarifa_flete, 2)
     else:
-        # BS_POR_M3: Volumen Facturado (m³) * Tarifa (Bs./m³) = Total a Pagar (Bs)
+        # BS_POR_M3: (Volumen Facturado en Lt / 1000) * Tarifa = Total a Pagar (Bs)
         flete_total_bs = round(vol_fact_m3 * tarifa_flete, 2)
+
+    total_descuentos_bs = round(merma_descontar_bs + float(total_descuentos_adicionales or 0.0) + float(total_descuentos_mermas or 0.0), 2)
+    liquido_pagable_bs = round(flete_total_bs - total_descuentos_bs, 2)
 
     return {
         "merma_real_litros": merma_real,
@@ -138,9 +127,11 @@ def calculate_viaje_values(
         "merma_excedente_litros": merma_excedente,
         "precio_merma_litro_bs": precio_merma,
         "merma_descontar_bs": merma_descontar_bs,
-        "volumen_facturado": vol_fact_m3,
+        "volumen_facturado": vol_fact_litros,
         "volumen_facturado_m3": vol_fact_m3,
-        "flete_total_bs": flete_total_bs
+        "flete_total_bs": flete_total_bs,
+        "total_descuentos_bs": total_descuentos_bs,
+        "liquido_pagable_bs": liquido_pagable_bs
     }
 
 def calculate_liquidacion_resumen(

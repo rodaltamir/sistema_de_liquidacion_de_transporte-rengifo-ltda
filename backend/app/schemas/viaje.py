@@ -85,6 +85,8 @@ class ViajeResponse(ViajeBase):
     merma_excedente_litros: float
     merma_descontar_bs: float
     flete_total_bs: float
+    total_descuentos_bs: Optional[float] = 0.0
+    liquido_pagable_bs: Optional[float] = 0.0
     estado: str
     liquidacion_id: Optional[int] = None
     created_at: datetime
@@ -101,3 +103,5 @@ class ViajeCalculoPreview(BaseModel):
     merma_descontar_bs: float
     volumen_facturado: float
     flete_total_bs: float
+    total_descuentos_bs: Optional[float] = 0.0
+    liquido_pagable_bs: Optional[float] = 0.0

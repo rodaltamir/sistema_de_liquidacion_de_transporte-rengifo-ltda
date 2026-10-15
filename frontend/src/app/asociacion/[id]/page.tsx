@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
+import { downloadBlob } from "@/lib/download";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
 import ThemeToggle from "@/components/ThemeToggle";
 import DatePeriodFilter, { DateFilterChangeEvent, FilterMode } from "@/components/DatePeriodFilter";
@@ -167,15 +168,9 @@ function AsociacionDetalleContent() {
         qParams.push(`periodo_mes=${periodoMes}`);
       }
       const blob = await apiFetch(`/asociaciones/${asocId}/export/excel?${qParams.join("&")}`);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
       const safeLabel = (liqData?.periodo_mes || activeFilterLabel || periodoMes || "General").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "");
-      a.download = `Liquidacion_Asociacion_${(asociacion?.name || asocId).replace(/\s+/g, "_")}_${safeLabel}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const filename = `Liquidacion_Asociacion_${(asociacion?.name || asocId).replace(/\s+/g, "_")}_${safeLabel}.xlsx`;
+      downloadBlob(blob, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     } catch (err: any) {
       Swal.fire({ 
         icon: "error", 
@@ -197,15 +192,9 @@ function AsociacionDetalleContent() {
         qParams.push(`periodo_mes=${periodoMes}`);
       }
       const blob = await apiFetch(`/asociaciones/${asocId}/export/pdf?${qParams.join("&")}`);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
       const safeLabel = (liqData?.periodo_mes || activeFilterLabel || periodoMes || "General").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "");
-      a.download = `Liquidacion_Asociacion_${(asociacion?.name || asocId).replace(/\s+/g, "_")}_${safeLabel}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const filename = `Liquidacion_Asociacion_${(asociacion?.name || asocId).replace(/\s+/g, "_")}_${safeLabel}.pdf`;
+      downloadBlob(blob, filename, "application/pdf");
     } catch (err: any) {
       Swal.fire({ 
         icon: "error", 
@@ -631,7 +620,7 @@ function AsociacionDetalleContent() {
                         <th className="py-2.5 px-1 border border-slate-200 dark:border-slate-800 print:border-slate-900">Precio Merma (Bs/L)</th>
                         <th className="py-2.5 px-1.5 border border-slate-200 dark:border-slate-800 print:border-slate-900">Merma Descontar (Bs)</th>
                         <th className="py-2.5 px-1.5 border border-slate-200 dark:border-slate-800 print:border-slate-900">Vol. Facturar (m³)</th>
-                        <th className="py-2.5 px-1.5 border border-slate-200 dark:border-slate-800 print:border-slate-900">Flete ($us/m³)</th>
+                        <th className="py-2.5 px-1.5 border border-slate-200 dark:border-slate-800 print:border-slate-900">Flete (Bs/m³)</th>
                         <th className="py-2.5 px-2 border border-slate-200 dark:border-slate-800 print:border-slate-900">Importe Facturar (Bs)</th>
                       </tr>
                     </thead>

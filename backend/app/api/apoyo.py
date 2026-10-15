@@ -377,3 +377,13 @@ def delete_unidad_apoyo(
         return {"message": "Camión de apoyo eliminado correctamente"}
     finally:
         session.close()
+
+
+# Router Alias para compatibilidad con llamadas directas a /unidades-apoyo
+unidades_apoyo_alias_router = APIRouter(prefix="/tenants/{schema_name}/unidades-apoyo", tags=["Unidades de Apoyo (Alias)"])
+
+@unidades_apoyo_alias_router.get("/", response_model=List[UnidadApoyoResponse])
+@unidades_apoyo_alias_router.get("", response_model=List[UnidadApoyoResponse])
+def list_unidades_apoyo_alias(schema_name: str, empresa: Empresa = Depends(verify_tenant_exists)):
+    return list_all_unidades_apoyo(schema_name=schema_name, empresa=empresa)
+

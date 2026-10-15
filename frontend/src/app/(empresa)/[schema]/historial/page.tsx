@@ -100,44 +100,26 @@ interface Cliente {
   nit?: string;
 }
 
-// Validador de asignación a un único mes con holgura de 3 días respecto a los bordes de mes
+// Validador de asignación a un único mes según fecha de carga (origen del despacho)
 function determineTripPeriod(fechaCargaStr: string, fechaDescargaStr?: string): string {
-  if (!fechaCargaStr) return new Date().toISOString().slice(0, 7);
-  if (!fechaDescargaStr) return fechaCargaStr.slice(0, 7);
-
-  const partsC = fechaCargaStr.split("-").map(Number);
-  const partsD = fechaDescargaStr.split("-").map(Number);
-  if (partsC.length < 3 || partsD.length < 3) return fechaCargaStr.slice(0, 7);
-
-  const [yC, mC, dC] = partsC;
-  const [yD, mD, dD] = partsD;
-
-  if (yC === yD && mC === mD) {
-    return `${yC}-${String(mC).padStart(2, "0")}`;
+  if (!fechaCargaStr) {
+    if (fechaDescargaStr) return fechaDescargaStr.slice(0, 7);
+    return new Date().toISOString().slice(0, 7);
   }
-
-  const lastDayCarga = new Date(yC, mC, 0).getDate();
-  const diasRestantesCarga = lastDayCarga - dC;
-
-  // Regla de holgura de 3 días: Si cargó en los últimos 3 días (días restantes <= 3)
-  // Y descargó en los primeros 5 días del mes siguiente:
-  // Se consolida en el mes de descarga.
-  if (diasRestantesCarga <= 3 && dD <= 5) {
-    return `${yD}-${String(mD).padStart(2, "0")}`;
-  }
-
-  // De lo contrario (ej. cargó el 26 de marzo y descargó en abril),
-  // se consolida en su mes de carga original (ej. 2023-03)
-  return `${yC}-${String(mC).padStart(2, "0")}`;
+  return fechaCargaStr.slice(0, 7);
 }
 
-// Helper de volumen facturado en m³ (normaliza litros a m³)
-function getVolFactM3(v: any): number {
+// Helper de volumen facturado en Litros (ej. 33.900 L, 33.910 L)
+function getVolFactLitros(v: any): number {
   const raw = Number(v?.volumen_facturado);
   if (raw && raw > 0) {
-    return raw > 1000 ? raw / 1000.0 : raw;
+    return raw < 1000 ? raw * 1000 : raw;
   }
-  return (Number(v?.volumen_recepcionado_litros) || 0) / 1000.0;
+  return Number(v?.volumen_recepcionado_litros) || 0;
+}
+
+function getVolFactM3(v: any): number {
+  return getVolFactLitros(v) / 1000.0;
 }
 
 function HistorialViajesContent() {
@@ -235,7 +217,7 @@ function HistorialViajesContent() {
     try {
       const [uData, aData, cData] = await Promise.all([
         apiFetch(`/tenants/${schema}/unidades/`).catch(() => []),
-        apiFetch(`/tenants/${schema}/unidades-apoyo/`).catch(() => []),
+        apiFetch(`/tenants/${schema}/apoyo/unidades/todas`).catch(() => []),
         apiFetch(`/tenants/${schema}/clientes/`).catch(() => [])
       ]);
       setUnidades(Array.isArray(uData) ? uData : []);
@@ -318,10 +300,17 @@ function HistorialViajesContent() {
   const facturadosList = filteredViajes.filter(v => v.nro_factura && v.nro_factura.trim() !== "" && v.nro_factura !== "-");
   const sinFacturaList = filteredViajes.filter(v => !v.nro_factura || v.nro_factura.trim() === "" || v.nro_factura === "-");
   
+  const montoTotalFleteBs = filteredViajes.reduce((acc, v) => acc + (Number(v.flete_total_bs) || 0), 0);
+  const totalMermasBs = filteredViajes.reduce((acc, v) => acc + (Number(v.merma_descontar_bs) || 0), 0);
+  const totalDescAdicBs = filteredViajes.reduce((acc, v) => acc + (Number(v.total_descuentos_adicionales_bs) || 0) + (Number(v.total_descuentos_mermas_bs) || 0), 0);
+  const totalDescuentosBs = totalMermasBs + totalDescAdicBs;
+  const montoLiquidoBs = montoTotalFleteBs - totalDescuentosBs;
+
   const montoTotalFacturadoBs = facturadosList.reduce((acc, v) => acc + (Number(v.flete_total_bs) || 0), 0);
   const montoSinFacturaBs = sinFacturaList.reduce((acc, v) => acc + (Number(v.flete_total_bs) || 0), 0);
 
-  const totalVolumenFacturadoM3 = filteredViajes.reduce((acc, v) => acc + getVolFactM3(v), 0);
+  const totalVolumenFacturadoLt = filteredViajes.reduce((acc, v) => acc + getVolFactLitros(v), 0);
+  const totalVolumenFacturadoM3 = totalVolumenFacturadoLt / 1000.0;
 
   // Agrupación por (Tramo, Producto, Nro Factura)
   const groupsMap: { [k: string]: { tramo: string; producto: string; factura: string; items: Viaje[] } } = {};
@@ -382,8 +371,8 @@ function HistorialViajesContent() {
       volumen_origen_litros: v.volumen_origen_litros,
       volumen_recepcionado_litros: v.volumen_recepcionado_litros,
       volumen_facturado: v.volumen_facturado !== null && v.volumen_facturado !== undefined && Number(v.volumen_facturado) > 0
-        ? (Number(v.volumen_facturado) > 1000 ? +(Number(v.volumen_facturado) / 1000.0).toFixed(3) : Number(v.volumen_facturado))
-        : +((v.volumen_recepcionado_litros || 0) / 1000.0).toFixed(3),
+        ? (Number(v.volumen_facturado) < 1000 ? Math.round(Number(v.volumen_facturado) * 1000) : Number(v.volumen_facturado))
+        : (v.volumen_recepcionado_litros || 0),
       tarifa_flete: v.tarifa_flete,
       observaciones: v.observaciones || "",
       es_apoyo: Boolean(v.es_apoyo),
@@ -395,18 +384,134 @@ function HistorialViajesContent() {
     setShowEditModal(true);
   };
 
+  // Helpers para manejo de descuentos en modal de edición
+  const addDescuentoAdicional = () => {
+    setFormData(prev => ({
+      ...prev,
+      descuentos_adicionales: [...prev.descuentos_adicionales, { concepto: "", monto: 0 }]
+    }));
+  };
+
+  const removeDescuentoAdicional = (idx: number) => {
+    setFormData(prev => ({
+      ...prev,
+      descuentos_adicionales: prev.descuentos_adicionales.filter((_, i) => i !== idx)
+    }));
+  };
+
+  const updateDescuentoAdicional = (idx: number, field: "concepto" | "monto", val: any) => {
+    setFormData(prev => {
+      const copy = [...prev.descuentos_adicionales];
+      copy[idx] = { ...copy[idx], [field]: val };
+      return { ...prev, descuentos_adicionales: copy };
+    });
+  };
+
+  const addDescuentoMerma = () => {
+    setFormData(prev => ({
+      ...prev,
+      descuentos_mermas: [...prev.descuentos_mermas, { concepto: "", monto: 0 }]
+    }));
+  };
+
+  const removeDescuentoMerma = (idx: number) => {
+    setFormData(prev => ({
+      ...prev,
+      descuentos_mermas: prev.descuentos_mermas.filter((_, i) => i !== idx)
+    }));
+  };
+
+  const updateDescuentoMerma = (idx: number, field: "concepto" | "monto", val: any) => {
+    setFormData(prev => {
+      const copy = [...prev.descuentos_mermas];
+      copy[idx] = { ...copy[idx], [field]: val };
+      return { ...prev, descuentos_mermas: copy };
+    });
+  };
+
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingViaje) return;
 
     try {
+      // Validaciones de descuentos adicionales
+      for (let i = 0; i < formData.descuentos_adicionales.length; i++) {
+        const item = formData.descuentos_adicionales[i];
+        if (!item.concepto || !item.concepto.trim()) {
+          Swal.fire({
+            icon: "warning",
+            title: "Descuento Incompleto",
+            text: `Por favor ingresa el concepto para el descuento adicional #${i + 1}.`,
+            background: "#0f172a",
+            color: "#f8fafc",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+        if (isNaN(Number(item.monto)) || Number(item.monto) <= 0) {
+          Swal.fire({
+            icon: "warning",
+            title: "Monto de Descuento Inválido",
+            text: `El monto para el descuento "${item.concepto}" debe ser un número mayor a 0.`,
+            background: "#0f172a",
+            color: "#f8fafc",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+      }
+
+      // Validaciones de descuentos por merma
+      for (let i = 0; i < formData.descuentos_mermas.length; i++) {
+        const item = formData.descuentos_mermas[i];
+        if (!item.concepto || !item.concepto.trim()) {
+          Swal.fire({
+            icon: "warning",
+            title: "Descuento por Merma Incompleto",
+            text: `Por favor ingresa el concepto para el descuento de merma #${i + 1}.`,
+            background: "#0f172a",
+            color: "#f8fafc",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+        if (isNaN(Number(item.monto)) || Number(item.monto) <= 0) {
+          Swal.fire({
+            icon: "warning",
+            title: "Monto de Descuento Inválido",
+            text: `El monto para el descuento de merma "${item.concepto}" debe ser un número mayor a 0.`,
+            background: "#0f172a",
+            color: "#f8fafc",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+      }
+
+      const totDescViaje = (liveCalc.mermaDescontarBs || 0) + (liveCalc.totAdic || 0) + (liveCalc.totMerm || 0);
+      if (totDescViaje > liveCalc.fleteTotalBs && liveCalc.fleteTotalBs > 0) {
+        const confirmDesc = await Swal.fire({
+          title: "¿Descuentos mayores al flete?",
+          text: `El total de descuentos (${formatCurrency(totDescViaje)}) supera el flete bruto (${formatCurrency(liveCalc.fleteTotalBs)}), resultando en un saldo neto de ${formatCurrency(liveCalc.netoPagable)}. ¿Deseas guardar los cambios?`,
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonText: "Sí, guardar despacho",
+          cancelButtonText: "Revisar descuentos",
+          confirmButtonColor: "#f59e0b",
+          cancelButtonColor: "#334155",
+          background: "#0f172a",
+          color: "#f8fafc"
+        });
+        if (!confirmDesc.isConfirmed) return;
+      }
+
       const vOrig = Number(formData.volumen_origen_litros) || 0;
       const vRec = Number(formData.volumen_recepcionado_litros) || 0;
       let vFact = formData.volumen_facturado !== "" && formData.volumen_facturado !== undefined
         ? Number(formData.volumen_facturado)
-        : (vRec / 1000.0);
-      if (vFact > 1000) {
-        vFact = vFact / 1000.0;
+        : vRec;
+      if (vFact < 1000) {
+        vFact = vFact * 1000.0;
       }
       const tar = Number(formData.tarifa_flete) || 0;
 
@@ -416,8 +521,8 @@ function HistorialViajesContent() {
         volumen_recepcionado_litros: vRec,
         volumen_facturado: vFact,
         tarifa_flete: tar,
-        descuentos_adicionales_json: formData.descuentos_adicionales,
-        descuentos_mermas_json: formData.descuentos_mermas
+        descuentos_adicionales: formData.descuentos_adicionales,
+        descuentos_mermas: formData.descuentos_mermas
       };
 
       await apiFetch(`/tenants/${schema}/viajes/${editingViaje.id}`, {
@@ -543,10 +648,10 @@ function HistorialViajesContent() {
   const liveCalc = (() => {
     const vOrig = Number(formData.volumen_origen_litros) || 0;
     const vRec = Number(formData.volumen_recepcionado_litros) || 0;
-    let vFactM3 = vRec / 1000.0;
+    let vFactLt = vRec;
     if (formData.volumen_facturado !== "" && formData.volumen_facturado !== undefined) {
       const parsed = Number(formData.volumen_facturado) || 0;
-      vFactM3 = parsed > 1000 ? parsed / 1000.0 : parsed;
+      vFactLt = parsed < 1000 ? parsed * 1000 : parsed;
     }
     const tar = Number(formData.tarifa_flete) || 0;
 
@@ -564,11 +669,12 @@ function HistorialViajesContent() {
     const mermaDescontarBs = mermaExcLitros * 7.45;
 
     // Operación principal: (Volumen Facturado en Lt / 1000) * Tarifa = Total Flete a Pagar
-    const fleteTotalBs = Math.round(vFactM3 * tar * 100) / 100;
+    const fleteTotalBs = Math.round((vFactLt / 1000.0) * tar * 100) / 100;
 
     const totAdic = formData.descuentos_adicionales.reduce((acc, d) => acc + (Number(d.monto) || 0), 0);
     const totMerm = formData.descuentos_mermas.reduce((acc, d) => acc + (Number(d.monto) || 0), 0);
-    const netoPagable = fleteTotalBs - mermaDescontarBs - totAdic - totMerm;
+    const totalDescuentos = Math.round((mermaDescontarBs + totAdic + totMerm) * 100) / 100;
+    const netoPagable = Math.round((fleteTotalBs - totalDescuentos) * 100) / 100;
 
     return {
       faltante,
@@ -578,6 +684,7 @@ function HistorialViajesContent() {
       fleteTotalBs,
       totAdic,
       totMerm,
+      totalDescuentos,
       netoPagable
     };
   })();
@@ -692,9 +799,9 @@ function HistorialViajesContent() {
               Volumen Facturado Total
             </span>
             <div className="text-2xl font-black text-sky-600 dark:text-sky-400 font-mono mt-0.5">
-              {formatNumber(totalVolumenFacturadoM3, 2)}
+              {formatNumber(totalVolumenFacturadoLt, 0)} L
             </div>
-            <span className="text-[10px] text-slate-400 font-medium">m³ conciliados</span>
+            <span className="text-[10px] text-slate-400 font-medium">Lt conciliados ({formatNumber(totalVolumenFacturadoM3, 2)} m³)</span>
           </div>
           <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-500 flex-shrink-0">
             <Scale className="w-5 h-5" />
@@ -925,8 +1032,11 @@ function HistorialViajesContent() {
                     const grpMermaExc = group.items.reduce((acc, x) => acc + (Number(x.merma_excedente_litros) || 0), 0);
                     const grpMermaTol = group.items.reduce((acc, x) => acc + (Number(x.merma_tolerable_litros) || 0), 0);
                     const grpMDesc = group.items.reduce((acc, x) => acc + (Number(x.merma_descontar_bs) || 0), 0);
-                    const grpVolFact = group.items.reduce((acc, x) => acc + getVolFactM3(x), 0);
+                    const grpDescAdic = group.items.reduce((acc, x) => acc + (Number(x.total_descuentos_adicionales_bs) || 0) + (Number(x.total_descuentos_mermas_bs) || 0), 0);
+                    const grpTotDesc = grpMDesc + grpDescAdic;
+                    const grpVolFact = group.items.reduce((acc, x) => acc + getVolFactLitros(x), 0);
                     const grpFlete = group.items.reduce((acc, x) => acc + (Number(x.flete_total_bs) || 0), 0);
+                    const grpLiquido = grpFlete - grpTotDesc;
                     const grpTarifa = group.items[0]?.tarifa_flete || 0;
 
                     const facLabel = group.factura === "S/F" ? "S/F" : group.factura;
@@ -973,10 +1083,22 @@ function HistorialViajesContent() {
                               <td className="py-2 px-1.5 text-center font-mono text-slate-500 dark:text-slate-400">{v.merma_tolerable_litros !== null && v.merma_tolerable_litros !== undefined ? Number(v.merma_tolerable_litros).toFixed(0) : "0"} L</td>
                               <td className="py-2 px-2 text-right font-mono font-bold text-rose-600 dark:text-rose-400">{formatCurrency(v.merma_descontar_bs)}</td>
                               <td className="py-2 px-2 text-right font-mono font-bold text-sky-700 dark:text-sky-400">
-                                {formatNumber(getVolFactM3(v), 2)}
+                                {formatNumber(getVolFactLitros(v), 0)} L
                               </td>
                               <td className="py-2 px-2 text-right font-mono text-slate-700 dark:text-slate-300">{formatNumber(v.tarifa_flete, 2)}</td>
-                              <td className="py-2 px-2.5 text-right font-mono font-black text-amber-700 dark:text-amber-400">{formatCurrency(v.flete_total_bs)}</td>
+                              <td className="py-2 px-2.5 text-right font-mono font-black text-amber-700 dark:text-amber-400 whitespace-nowrap">
+                                <div>{formatCurrency(v.flete_total_bs)}</div>
+                                {(() => {
+                                  const totDesc = (Number(v.merma_descontar_bs) || 0) + (Number(v.total_descuentos_adicionales_bs) || 0) + (Number(v.total_descuentos_mermas_bs) || 0);
+                                  if (totDesc <= 0) return null;
+                                  return (
+                                    <div className="text-[9px] font-normal leading-tight mt-0.5">
+                                      <div className="text-rose-600 dark:text-rose-400">Desc: -{formatCurrency(totDesc)}</div>
+                                      <div className="text-emerald-700 dark:text-emerald-400 font-bold">Líq: {formatCurrency(v.flete_total_bs - totDesc)}</div>
+                                    </div>
+                                  );
+                                })()}
+                              </td>
                               <td className="py-2 px-2 text-center whitespace-nowrap">
                                 <div className="flex items-center justify-center gap-1">
                                   <button
@@ -1030,9 +1152,17 @@ function HistorialViajesContent() {
                           <td className="py-2 px-1.5 border-x border-amber-300 dark:border-amber-700"></td>
                           <td className="py-2 px-1.5 border-x border-amber-300 dark:border-amber-700"></td>
                           <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-rose-700 dark:text-rose-400">{formatCurrency(grpMDesc)}</td>
-                          <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 2)}</td>
+                          <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 0)} L</td>
                           <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-slate-700 dark:text-slate-300">{formatNumber(grpTarifa, 2)}</td>
-                          <td className="py-2 px-2.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-amber-900 dark:text-amber-400">{formatCurrency(grpFlete)}</td>
+                          <td className="py-2 px-2.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-amber-900 dark:text-amber-400 whitespace-nowrap">
+                            <div>{formatCurrency(grpFlete)}</div>
+                            {grpTotDesc > 0 && (
+                              <div className="text-[9px] font-normal leading-tight mt-0.5">
+                                <div className="text-rose-700 dark:text-rose-400">Desc: -{formatCurrency(grpTotDesc)}</div>
+                                <div className="text-emerald-800 dark:text-emerald-300 font-bold">Líq: {formatCurrency(grpLiquido)}</div>
+                              </div>
+                            )}
+                          </td>
                           <td className="py-2 px-2 border-x border-amber-300 dark:border-amber-700"></td>
                         </tr>
                       </Fragment>
@@ -1057,14 +1187,20 @@ function HistorialViajesContent() {
                   <td className="py-3 px-1.5 text-right font-mono"></td>
                   <td className="py-3 px-1.5 text-center font-mono"></td>
                   <td className="py-3 px-2 text-right font-mono text-rose-600 dark:text-rose-400">
-                    {formatCurrency(filteredViajes.reduce((acc, x) => acc + (Number(x.merma_descontar_bs) || 0), 0))}
+                    {formatCurrency(totalMermasBs)}
                   </td>
                   <td className="py-3 px-2 text-right font-mono text-sky-600 dark:text-sky-400">
-                    {formatNumber(totalVolumenFacturadoM3, 2)} m³
+                    {formatNumber(totalVolumenFacturadoLt, 0)} L
                   </td>
                   <td className="py-3 px-2 text-right font-mono"></td>
-                  <td className="py-3 px-2.5 text-right font-mono text-amber-600 dark:text-amber-400 text-sm">
-                    {formatCurrency(filteredViajes.reduce((acc, x) => acc + (Number(x.flete_total_bs) || 0), 0))}
+                  <td className="py-3 px-2.5 text-right font-mono text-amber-600 dark:text-amber-400 text-sm whitespace-nowrap">
+                    <div>{formatCurrency(montoTotalFleteBs)}</div>
+                    {totalDescuentosBs > 0 && (
+                      <div className="text-[10px] font-bold leading-tight mt-0.5">
+                        <div className="text-rose-600 dark:text-rose-400">Desc: -{formatCurrency(totalDescuentosBs)}</div>
+                        <div className="text-emerald-600 dark:text-emerald-400">Líq: {formatCurrency(montoLiquidoBs)}</div>
+                      </div>
+                    )}
                   </td>
                   <td className="py-3 px-2"></td>
                 </tr>
@@ -1096,7 +1232,7 @@ function HistorialViajesContent() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {filteredViajes.map((v, idx) => {
                   const hasFactura = v.nro_factura && v.nro_factura.trim() !== "" && v.nro_factura !== "-";
-                  const vFact = getVolFactM3(v);
+                  const vFactLt = getVolFactLitros(v);
 
                   return (
                     <tr key={v.id} className="hover:bg-amber-500/5 transition">
@@ -1128,7 +1264,7 @@ function HistorialViajesContent() {
                         {v.producto}
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-sky-600 dark:text-sky-400">
-                        {formatNumber(vFact, 2)}
+                        {formatNumber(vFactLt, 0)} L
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono text-slate-700 dark:text-slate-300">
                         {formatNumber(v.tarifa_flete, 2)}
@@ -1261,7 +1397,7 @@ function HistorialViajesContent() {
                     <div>
                       <span className="text-[10px] text-slate-400 block">Volumen Facturado</span>
                       <span className="font-mono font-black text-sky-600 dark:text-sky-400 text-sm">
-                        {formatNumber(getVolFactM3(selectedViajeDetail), 2)} m³ <span className="text-xs font-semibold text-slate-500">({formatNumber(selectedViajeDetail.volumen_facturado && Number(selectedViajeDetail.volumen_facturado) > 1000 ? Number(selectedViajeDetail.volumen_facturado) : (getVolFactM3(selectedViajeDetail) * 1000), 0)} Lt)</span>
+                        {formatNumber(getVolFactLitros(selectedViajeDetail), 0)} Lt
                       </span>
                     </div>
                     <div>
@@ -1285,20 +1421,101 @@ function HistorialViajesContent() {
                   </div>
                 </div>
 
-                {/* Resumen Financiero */}
-                <div className="p-4 bg-amber-500/10 border border-amber-500/25 rounded-2xl flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-amber-900 dark:text-amber-300 uppercase block">
-                      Total Flete Bruto
-                    </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                      Vol. Facturado × Tarifa (Bs. {selectedViajeDetail.tarifa_flete})
-                    </span>
-                  </div>
-                  <div className="text-xl font-black text-amber-600 dark:text-amber-400 font-mono">
-                    {formatCurrency(selectedViajeDetail.flete_total_bs)}
-                  </div>
-                </div>
+                {/* Descuentos Adicionales y de Merma */}
+                {(() => {
+                  let adicList: ItemDescuento[] = [];
+                  if (Array.isArray(selectedViajeDetail.descuentos_adicionales_json)) adicList = selectedViajeDetail.descuentos_adicionales_json;
+                  else if (typeof selectedViajeDetail.descuentos_adicionales_json === "string") {
+                    try { adicList = JSON.parse(selectedViajeDetail.descuentos_adicionales_json); } catch (e) {}
+                  }
+
+                  let mermList: ItemDescuento[] = [];
+                  if (Array.isArray(selectedViajeDetail.descuentos_mermas_json)) mermList = selectedViajeDetail.descuentos_mermas_json;
+                  else if (typeof selectedViajeDetail.descuentos_mermas_json === "string") {
+                    try { mermList = JSON.parse(selectedViajeDetail.descuentos_mermas_json); } catch (e) {}
+                  }
+
+                  if (adicList.length === 0 && mermList.length === 0) return null;
+
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {adicList.length > 0 && (
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1.5">
+                            Descuentos Adicionales ({adicList.length})
+                          </span>
+                          <div className="space-y-1">
+                            {adicList.map((item, idx) => (
+                              <div key={idx} className="flex items-center justify-between text-[11px] py-0.5 border-b border-slate-200 dark:border-slate-800 last:border-none">
+                                <span className="text-slate-700 dark:text-slate-300">{item.concepto || `Concepto #${idx + 1}`}</span>
+                                <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-{formatCurrency(item.monto || 0)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {mermList.length > 0 && (
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1.5">
+                            Descuentos de Merma Registrados ({mermList.length})
+                          </span>
+                          <div className="space-y-1">
+                            {mermList.map((item, idx) => (
+                              <div key={idx} className="flex items-center justify-between text-[11px] py-0.5 border-b border-slate-200 dark:border-slate-800 last:border-none">
+                                <span className="text-slate-700 dark:text-slate-300">{item.concepto || `Merma #${idx + 1}`}</span>
+                                <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-{formatCurrency(item.monto || 0)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Resumen Financiero Completo */}
+                {(() => {
+                  const mDesc = Number(selectedViajeDetail.merma_descontar_bs) || 0;
+                  const adicDesc = (Number(selectedViajeDetail.total_descuentos_adicionales_bs) || 0) + (Number(selectedViajeDetail.total_descuentos_mermas_bs) || 0);
+                  const totDesc = mDesc + adicDesc;
+                  const liquido = (Number(selectedViajeDetail.flete_total_bs) || 0) - totDesc;
+
+                  return (
+                    <div className="p-4 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/25 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="text-xs font-bold text-amber-900 dark:text-amber-300 uppercase block">
+                          Resumen de Liquidación
+                        </span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {totDesc > 0 ? "Flete Bruto Base - Descuentos Aplicados = Total Líquido" : `Vol. Facturado × Tarifa (Bs. ${selectedViajeDetail.tarifa_flete})`}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 sm:gap-4 sm:text-right">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block uppercase font-medium">Flete Bruto:</span>
+                          <span className="text-base font-black text-amber-600 dark:text-amber-400 font-mono">
+                            {formatCurrency(selectedViajeDetail.flete_total_bs)}
+                          </span>
+                        </div>
+                        {totDesc > 0 && (
+                          <div>
+                            <span className="text-[10px] text-rose-500 block uppercase font-medium">Descuentos:</span>
+                            <span className="text-base font-black text-rose-600 dark:text-rose-400 font-mono">
+                              -{formatCurrency(totDesc)}
+                            </span>
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block uppercase">Total a Pagar (Líquido):</span>
+                          <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                            {formatCurrency(liquido)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Footer */}
@@ -1370,7 +1587,7 @@ function HistorialViajesContent() {
                           setFormData(prev => ({
                             ...prev,
                             fecha_carga: val,
-                            periodo_mes: determineTripPeriod(val, prev.fecha_descarga)
+                            periodo_mes: prev.periodo_mes || determineTripPeriod(val, prev.fecha_descarga)
                           }));
                         }}
                         className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
@@ -1389,7 +1606,7 @@ function HistorialViajesContent() {
                           setFormData(prev => ({
                             ...prev,
                             fecha_descarga: val,
-                            periodo_mes: determineTripPeriod(prev.fecha_carga, val)
+                            periodo_mes: prev.periodo_mes || determineTripPeriod(prev.fecha_carga, val)
                           }));
                         }}
                         className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
@@ -1550,12 +1767,10 @@ function HistorialViajesContent() {
                       value={formData.volumen_recepcionado_litros}
                       onChange={(e) => {
                         const val = e.target.value;
-                        const numV = Number(val);
-                        const m3Val = val === "" || isNaN(numV) ? "" : Math.round((numV / 1000.0) * 1000) / 1000;
                         setFormData({
                           ...formData,
                           volumen_recepcionado_litros: val,
-                          volumen_facturado: m3Val
+                          volumen_facturado: val
                         });
                       }}
                       className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
@@ -1563,17 +1778,17 @@ function HistorialViajesContent() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1 leading-snug">
-                      Volumen Facturado (m³) *
+                      Volumen Facturado (Lt) *
                     </label>
                     <input
                       type="number"
-                      step="0.001"
-                      placeholder="0.00"
+                      step="1"
+                      placeholder="ej. 33900"
                       value={formData.volumen_facturado}
                       onChange={(e) => setFormData({ ...formData, volumen_facturado: e.target.value })}
                       className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-sky-600 dark:text-sky-400 focus:outline-none focus:border-amber-500"
                     />
-                    <span className="text-[10px] text-slate-400 block mt-0.5">Operación: Vol. Facturado (m³) × Tarifa (Bs./m³) = Total a Pagar</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Operación: (Vol. Facturado en Lt / 1000) × Tarifa (Bs./m³) = Total a Pagar</span>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
@@ -1589,14 +1804,186 @@ function HistorialViajesContent() {
                   </div>
                 </div>
 
-                {/* Resumen en vivo */}
-                <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl flex items-center justify-between text-xs">
-                  <span className="font-bold text-amber-900 dark:text-amber-300">
-                    Flete Total: {formatCurrency(liveCalc.fleteTotalBs)}
+                {/* Descuentos Adicionales y Mermas (Editables) */}
+                <div className="space-y-3 pt-1">
+                  {/* 1. Descuentos Adicionales */}
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                          Descuentos Adicionales
+                        </span>
+                        {liveCalc.totAdic > 0 && (
+                          <span className="text-[10px] font-mono font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+                            Total: {formatCurrency(liveCalc.totAdic)}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addDescuentoAdicional}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-400 border border-amber-500/30 transition active:scale-95"
+                      >
+                        <Plus className="w-3 h-3 stroke-[3]" />
+                        <span>Adicionar Descuento</span>
+                      </button>
+                    </div>
+
+                    {formData.descuentos_adicionales.length === 0 ? (
+                      <p className="text-[11px] text-slate-400 italic">
+                        Sin descuentos adicionales. Haz clic en "Adicionar Descuento" para registrar conceptos y montos.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {formData.descuentos_adicionales.map((item, idx) => (
+                          <div key={idx} className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <input
+                              type="text"
+                              placeholder="Concepto del descuento adicional..."
+                              value={item.concepto}
+                              onChange={(e) => updateDescuentoAdicional(idx, "concepto", e.target.value)}
+                              className="flex-1 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
+                            />
+                            <div className="w-32 relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">Bs.</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={item.monto || ""}
+                                onChange={(e) => updateDescuentoAdicional(idx, "monto", parseFloat(e.target.value) || 0)}
+                                className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 text-right"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeDescuentoAdicional(idx)}
+                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition"
+                              title="Eliminar este descuento"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. Descuentos Mermas */}
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                          Descuentos Mermas
+                        </span>
+                        {liveCalc.totMerm > 0 && (
+                          <span className="text-[10px] font-mono font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+                            Total: {formatCurrency(liveCalc.totMerm)}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addDescuentoMerma}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-400 border border-amber-500/30 transition active:scale-95"
+                      >
+                        <Plus className="w-3 h-3 stroke-[3]" />
+                        <span>Adicionar Descuento Merma</span>
+                      </button>
+                    </div>
+
+                    {formData.descuentos_mermas.length === 0 ? (
+                      <p className="text-[11px] text-slate-400 italic">
+                        Sin descuentos por merma adicionales. Haz clic en "Adicionar Descuento Merma" para registrar conceptos y montos.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {formData.descuentos_mermas.map((item, idx) => (
+                          <div key={idx} className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <input
+                              type="text"
+                              placeholder="Concepto específico merma..."
+                              value={item.concepto}
+                              onChange={(e) => updateDescuentoMerma(idx, "concepto", e.target.value)}
+                              className="flex-1 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
+                            />
+                            <div className="w-32 relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">Bs.</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={item.monto || ""}
+                                onChange={(e) => updateDescuentoMerma(idx, "monto", parseFloat(e.target.value) || 0)}
+                                className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 text-right"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeDescuentoMerma(idx)}
+                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition"
+                              title="Eliminar este descuento de merma"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Panel de Cálculos Automáticos Oficiales (Tiempo Real) */}
+                <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
+                  <span className="font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider text-[10px] block">
+                    Cálculos Automáticos YPFB en Tiempo Real:
                   </span>
-                  <span className="font-bold text-rose-600 dark:text-rose-400">
-                    Desc. Merma: {formatCurrency(liveCalc.mermaDescontarBs)}
-                  </span>
+                  
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
+                    <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80">
+                      <span className="text-slate-500 dark:text-slate-400 text-[10px] block uppercase font-bold">Merma Real:</span>
+                      <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                        {liveCalc.faltante > 0 ? `-${liveCalc.faltante}` : liveCalc.faltante} L
+                      </span>
+                      <span className="text-[9px] text-slate-400 block">Tol: {liveCalc.mermaTolLitros} L</span>
+                    </div>
+
+                    <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80">
+                      <span className="text-slate-500 dark:text-slate-400 text-[10px] block uppercase font-bold">Desc. Merma (Carga):</span>
+                      <span className={`font-mono font-bold text-xs ${liveCalc.mermaDescontarBs > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                        {formatCurrency(liveCalc.mermaDescontarBs)}
+                      </span>
+                      <span className="text-[9px] text-slate-400 block">Exc: {liveCalc.mermaExcLitros} L</span>
+                    </div>
+
+                    <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80">
+                      <span className="text-slate-500 dark:text-slate-400 text-[10px] block uppercase font-bold">Flete Bruto:</span>
+                      <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                        {formatCurrency(liveCalc.fleteTotalBs)}
+                      </span>
+                      <span className="text-[9px] text-slate-400 block">Base Facturada</span>
+                    </div>
+
+                    <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80">
+                      <span className="text-slate-500 dark:text-slate-400 text-[10px] block uppercase font-bold">Total Descuentos:</span>
+                      <span className={`font-mono font-bold text-xs ${liveCalc.totalDescuentos > 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-400"}`}>
+                        {liveCalc.totalDescuentos > 0 ? `-${formatCurrency(liveCalc.totalDescuentos)}` : "Bs. 0,00"}
+                      </span>
+                      {(liveCalc.totAdic > 0 || liveCalc.totMerm > 0) && (
+                        <span className="text-[9px] text-slate-400 block">Inc. adicionales</span>
+                      )}
+                    </div>
+
+                    <div className="p-2 rounded-xl bg-amber-500/10 dark:bg-amber-950/30 border border-amber-500/30 col-span-2 sm:col-span-1">
+                      <span className="text-amber-800 dark:text-amber-400 text-[10px] block uppercase font-black">Total a Pagar (Neto):</span>
+                      <span className="font-mono font-black text-amber-700 dark:text-amber-400 text-sm">
+                        {formatCurrency(liveCalc.netoPagable)}
+                      </span>
+                      <span className="text-[9px] text-amber-600/80 dark:text-amber-400/80 block">Líquido Despacho</span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Botones de acción */}

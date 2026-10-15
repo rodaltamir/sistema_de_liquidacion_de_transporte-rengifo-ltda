@@ -162,6 +162,14 @@ class Viaje(Base):
     unidad = relationship("UnidadTransporte", back_populates="viajes")
     liquidacion = relationship("Liquidacion", back_populates="viajes_items")
 
+    @property
+    def total_descuentos_bs(self) -> float:
+        return round((self.merma_descontar_bs or 0.0) + (self.total_descuentos_adicionales_bs or 0.0) + (self.total_descuentos_mermas_bs or 0.0), 2)
+
+    @property
+    def liquido_pagable_bs(self) -> float:
+        return round((self.flete_total_bs or 0.0) - self.total_descuentos_bs, 2)
+
 
 class Liquidacion(Base):
     """

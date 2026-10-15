@@ -76,6 +76,22 @@ services:
     networks:
       - transporte_network
 
+  proxy:
+    image: nginx:alpine
+    container_name: transporte_proxy_ssl
+    restart: always
+    ports:
+      - "3443:443"
+      - "3080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - transporte_network
+
 networks:
   transporte_network:
     driver: bridge

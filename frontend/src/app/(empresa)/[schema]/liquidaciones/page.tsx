@@ -27,16 +27,21 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
+import { downloadBlob } from "@/lib/download";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
 import DatePeriodFilter, { DateFilterChangeEvent, FilterMode } from "@/components/DatePeriodFilter";
 import ModalPortal from "@/components/ModalPortal";
 
-const getVolFactM3 = (v: any) => {
+const getVolFactLitros = (v: any) => {
   const raw = Number(v?.volumen_facturado);
   if (raw && raw > 0) {
-    return raw > 1000 ? raw / 1000.0 : raw;
+    return raw < 1000 ? Math.round(raw * 1000) : raw;
   }
-  return (Number(v?.volumen_recepcionado_litros) || 0) / 1000.0;
+  return Number(v?.volumen_recepcionado_litros) || 0;
+};
+
+const getVolFactM3 = (v: any) => {
+  return getVolFactLitros(v) / 1000.0;
 };
 
 export default function LiquidacionesPage() {
@@ -196,7 +201,7 @@ export default function LiquidacionesPage() {
           try {
             const consolidadaUrl = `/tenants/${schema}/liquidaciones/consolidada?placa=${targetPlaca}&tipo_periodo=${filterMode}${dateFilterQuery ? `&${dateFilterQuery}` : (periodo ? `&periodo_mes=${periodo}` : "")}`;
             const detalle = await apiFetch(consolidadaUrl);
-            if (detalle && detalle.placa) {
+            if (detalle && detalle.placa && (detalle.total_viajes > 0 || (detalle.viajes && detalle.viajes.length > 0))) {
               setActiveLiq(detalle);
               if (!selectedPlaca) setSelectedPlaca(detalle.placa);
             } else {
@@ -316,14 +321,8 @@ export default function LiquidacionesPage() {
     if (!activeLiq) return;
     try {
       const blob = await apiFetch(`/tenants/${schema}/liquidaciones/${activeLiq.id}/export/excel`);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Liquidacion_${activeLiq.placa}_${activeLiq.periodo_mes}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const filename = `Liquidacion_${activeLiq.placa}_${activeLiq.periodo_mes}.xlsx`;
+      downloadBlob(blob, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     } catch (err: any) {
       Swal.fire({ icon: "error", title: "Error al exportar Excel", text: err.message, background: "#0f172a", color: "#f8fafc", confirmButtonColor: "#f59e0b" });
     }
@@ -333,14 +332,8 @@ export default function LiquidacionesPage() {
     if (!activeLiq) return;
     try {
       const blob = await apiFetch(`/tenants/${schema}/liquidaciones/${activeLiq.id}/export/pdf`);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Liquidacion_${activeLiq.placa}_${activeLiq.periodo_mes}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const filename = `Liquidacion_${activeLiq.placa}_${activeLiq.periodo_mes}.pdf`;
+      downloadBlob(blob, filename, "application/pdf");
     } catch (err: any) {
       Swal.fire({ icon: "error", title: "Error al exportar PDF", text: err.message, background: "#0f172a", color: "#f8fafc", confirmButtonColor: "#f59e0b" });
     }
@@ -1034,7 +1027,7 @@ export default function LiquidacionesPage() {
                         const grpVolRec = group.items.reduce((acc, x) => acc + (Number(x.volumen_recepcionado_litros) || 0), 0);
                         const grpMermaReal = group.items.reduce((acc, x) => acc + (Number(x.merma_real_litros) || 0), 0);
                         const grpMDesc = group.items.reduce((acc, x) => acc + (Number(x.merma_descontar_bs) || 0), 0);
-                        const grpVolFact = group.items.reduce((acc, x) => acc + getVolFactM3(x), 0);
+                        const grpVolFact = group.items.reduce((acc, x) => acc + getVolFactLitros(x), 0);
                         const grpFlete = group.items.reduce((acc, x) => acc + (Number(x.flete_total_bs) || 0), 0);
                         const grpTarifa = group.items[0]?.tarifa_flete || 0;
 
@@ -1068,7 +1061,7 @@ export default function LiquidacionesPage() {
                                   <td className="py-1 px-1 text-center font-mono text-slate-500 dark:text-slate-400 print:text-slate-600 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.merma_tolerable_litros !== null && v.merma_tolerable_litros !== undefined ? Number(v.merma_tolerable_litros).toFixed(0) : "0"}</td>
                                   <td className="py-1 px-1.5 text-right font-mono font-semibold text-rose-700 dark:text-rose-400 print:text-red-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.merma_descontar_bs, 1)}</td>
                                   <td className="py-1 px-1.5 text-right font-mono font-bold text-sky-700 dark:text-sky-400 print:text-slate-900 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">
-                                    {formatNumber(getVolFactM3(v), 2)}
+                                    {formatNumber(getVolFactLitros(v), 0)}
                                   </td>
                                   <td className="py-1 px-1.5 text-right font-mono text-slate-700 dark:text-slate-300 print:text-slate-800 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.tarifa_flete, 2)}</td>
                                   <td className="py-1 px-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 print:text-slate-950 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.flete_total_bs, 2)}</td>
@@ -1089,7 +1082,7 @@ export default function LiquidacionesPage() {
                               <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
                               <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
                               <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-rose-700 dark:text-rose-400">{formatNumber(grpMDesc, 2)}</td>
-                              <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 2)}</td>
+                              <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 0)}</td>
                               <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-slate-700 dark:text-slate-300">{formatNumber(grpTarifa, 2)}</td>
                               <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-amber-900 dark:text-amber-400">{formatNumber(grpFlete, 2)}</td>
                             </tr>
@@ -1120,7 +1113,7 @@ export default function LiquidacionesPage() {
                         {formatNumber(activeLiq.desc_merma_bs, 1)}
                       </td>
                       <td className="py-2.5 px-1.5 text-right font-mono font-bold text-sky-800 dark:text-sky-300 border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                        {formatNumber((activeLiq?.viajes || []).reduce((sum: number, v: any) => sum + getVolFactM3(v), 0), 2)}
+                        {formatNumber((activeLiq?.viajes || []).reduce((sum: number, v: any) => sum + getVolFactLitros(v), 0), 0)}
                       </td>
                       <td className="py-2.5 px-1.5 border-x border-slate-300 dark:border-slate-700 print:border-slate-300"></td>
                       <td className="py-2.5 px-2 text-right font-mono text-amber-900 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/15 print:bg-amber-50 border-x border-slate-300 dark:border-slate-700 print:border-slate-300 text-sm font-black">
