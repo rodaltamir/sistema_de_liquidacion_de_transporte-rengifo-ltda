@@ -35,11 +35,27 @@ import { apiFetch } from "@/lib/api";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
 import { downloadBlob } from "@/lib/download";
 
+export interface EmpresaDetectada {
+  nombre: string;
+  action: "reutilizar" | "crear";
+  empresa_id?: number | null;
+  schema_name: string;
+  already_in_asociacion: boolean;
+  total_viajes: number;
+  viajes_listos: number;
+  viajes_incompletos: number;
+  total_volumen_litros: number;
+  total_volumen_m3: number;
+  total_flete_bs: number;
+  cisternas_count: number;
+}
+
 export interface ImportExcelModalProps {
   isOpen: boolean;
   onClose: () => void;
   schema?: string;
   globalMode?: boolean;
+  defaultImportType?: "empresa" | "asociacion";
   initialAsociacionId?: number | null;
   initialAsociacionName?: string;
   initialAsociacionSigla?: string;
@@ -52,11 +68,13 @@ export interface ImportExcelModalProps {
     periodos_detectados: string[];
     target_schema?: string;
     empresa_name?: string;
+    asociacion_name?: string;
   }) => void;
 }
 
 export interface PreviewRecord {
   fila: number;
+  empresa?: string;
   placa: string;
   tramo: string;
   cliente: string;
@@ -96,6 +114,8 @@ interface PreviewResponse {
   records: PreviewRecord[];
   skipped_details: SkippedDetail[];
   suggested_company_name?: string;
+  is_multi_empresa?: boolean;
+  empresas_detectadas?: EmpresaDetectada[];
   summary: {
     total_viajes: number;
     viajes_listos: number;
@@ -105,6 +125,7 @@ interface PreviewResponse {
     total_flete_bs: number;
     periodos_detectados: string[];
     total_placas_unicas: number;
+    total_empresas_detectadas?: number;
   };
 }
 
@@ -113,6 +134,7 @@ export default function ImportExcelModal({
   onClose,
   schema,
   globalMode = false,
+  defaultImportType = "empresa",
   initialAsociacionId = null,
   initialAsociacionName = "",
   initialAsociacionSigla = "",
@@ -127,6 +149,11 @@ export default function ImportExcelModal({
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Tipo de importación: "empresa" (Individual) o "asociacion" (Multi-Empresa)
+  const [importType, setImportType] = useState<"empresa" | "asociacion">(
+    initialAsociacionId ? "asociacion" : defaultImportType
+  );
+
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [previewData, setPreviewData] = useState<PreviewResponse | null>(null);
@@ -137,7 +164,7 @@ export default function ImportExcelModal({
   const [tableFilter, setTableFilter] = useState<"all" | "ready" | "incomplete">("all");
   const [tableSearch, setTableSearch] = useState("");
 
-  // Opciones de Destino para Modo Global
+  // Opciones de Destino para Modo Global / Empresa Individual
   const [importMode, setImportMode] = useState<"create_new" | "use_existing">("create_new");
   const [newEmpresaName, setNewEmpresaName] = useState(initialEmpresaName || "");
   const [newEmpresaTipo, setNewEmpresaTipo] = useState("Sociedad");
@@ -154,22 +181,28 @@ export default function ImportExcelModal({
   const [asociaciones, setAsociaciones] = useState<any[]>([]);
   const [empresas, setEmpresas] = useState<any[]>([]);
 
-  // Cargar asociaciones y empresas si está en globalMode
+  // Cargar asociaciones y empresas si está en globalMode o modo asociacion
   useEffect(() => {
-    if (isOpen && globalMode) {
+    if (isOpen) {
       Promise.all([
         apiFetch("/asociaciones/").catch(() => []),
         apiFetch("/empresas/").catch(() => [])
       ]).then(([asocData, empData]) => {
-        setAsociaciones(Array.isArray(asocData) ? asocData : []);
+        const validAsocs = Array.isArray(asocData) ? asocData : [];
+        setAsociaciones(validAsocs);
         const validEmps = Array.isArray(empData) ? empData : [];
         setEmpresas(validEmps);
         if (validEmps.length > 0 && !selectedExistingSchema) {
           setSelectedExistingSchema(validEmps[0].schema_name);
         }
+        if (initialAsociacionId) {
+          setNewEmpresaAsocId(initialAsociacionId);
+        } else if (validAsocs.length > 0 && !newEmpresaAsocId) {
+          setNewEmpresaAsocId(validAsocs[0].id);
+        }
       });
     }
-  }, [isOpen, globalMode]);
+  }, [isOpen, initialAsociacionId]);
 
   // Reset state o inicializar con props al abrir/cerrar
   useEffect(() => {
@@ -189,16 +222,21 @@ export default function ImportExcelModal({
       setCreatingNewAsoc(false);
       setNewAsocNombre("");
       setNewAsocSigla("");
+      setImportType(initialAsociacionId ? "asociacion" : defaultImportType);
     } else {
       if (initialAsociacionId) {
+        setImportType("asociacion");
         setNewEmpresaAsocId(initialAsociacionId);
         setCreatingNewAsoc(false);
       } else if (initialAsociacionName) {
+        setImportType("asociacion");
         setCreatingNewAsoc(true);
         setNewAsocNombre(initialAsociacionName);
         if (initialAsociacionSigla) {
           setNewAsocSigla(initialAsociacionSigla);
         }
+      } else if (defaultImportType) {
+        setImportType(defaultImportType);
       }
       if (initialEmpresaName) {
         setNewEmpresaName(initialEmpresaName);
@@ -357,7 +395,9 @@ export default function ImportExcelModal({
       const next = [...prev];
       const r = { ...next[index] };
 
-      if (field === "placa") {
+      if (field === "empresa") {
+        r.empresa = String(val).toUpperCase();
+      } else if (field === "placa") {
         r.placa = String(val).toUpperCase().trim();
       } else if (field === "tramo") {
         r.tramo = String(val).toUpperCase();
@@ -479,6 +519,53 @@ export default function ImportExcelModal({
     };
   }, [includedRecords]);
 
+  // Agrupación dinámica de empresas sobre los registros incluidos
+  const dynamicEmpresasSummary = useMemo(() => {
+    const map = new Map<string, {
+      nombre: string;
+      totalViajes: number;
+      totalVol: number;
+      totalFlete: number;
+      placas: Set<string>;
+    }>();
+
+    includedRecords.forEach(r => {
+      const empName = (r.empresa || "").trim().toUpperCase() || (importType === "empresa" ? (newEmpresaName || "EMPRESA PRINCIPAL") : "EMPRESA ASOCIADA");
+      if (!map.has(empName)) {
+        map.set(empName, {
+          nombre: empName,
+          totalViajes: 0,
+          totalVol: 0,
+          totalFlete: 0,
+          placas: new Set<string>()
+        });
+      }
+      const item = map.get(empName)!;
+      item.totalViajes += 1;
+      item.totalVol += (r.volumen_facturado || 0);
+      item.totalFlete += (r.flete_total_bs || 0);
+      if (r.placa) {
+        item.placas.add(r.placa.trim().toUpperCase());
+      }
+    });
+
+    return Array.from(map.values()).map(item => {
+      const detected = previewData?.empresas_detectadas?.find(d => d.nombre.toUpperCase() === item.nombre.toUpperCase());
+      const existingEmp = empresas.find(e => e.name.toUpperCase() === item.nombre.toUpperCase());
+      const isExisting = Boolean(detected?.action === "reutilizar" || existingEmp);
+      
+      return {
+        nombre: item.nombre,
+        action: isExisting ? ("reutilizar" as const) : ("crear" as const),
+        totalViajes: item.totalViajes,
+        totalVolumenLitros: Math.round(item.totalVol * 10) / 10,
+        totalVolumenM3: Math.round((item.totalVol / 1000.0) * 1000) / 1000,
+        totalFleteBs: Math.round(item.totalFlete * 100) / 100,
+        totalPlacas: item.placas.size
+      };
+    });
+  }, [includedRecords, previewData, empresas, importType, newEmpresaName]);
+
   // Filtro de la tabla
   const filteredRecords = useMemo(() => {
     return editableRecords.filter((r) => {
@@ -493,13 +580,14 @@ export default function ImportExcelModal({
       // Buscador
       if (tableSearch.trim()) {
         const q = tableSearch.toLowerCase().trim();
+        const empMatch = r.empresa?.toLowerCase().includes(q);
         const pMatch = r.placa?.toLowerCase().includes(q);
         const tMatch = r.tramo?.toLowerCase().includes(q);
         const fMatch = r.nro_factura?.toLowerCase().includes(q);
         const mMatch = r.mic_dta?.toLowerCase().includes(q);
         const cMatch = r.cliente?.toLowerCase().includes(q);
         const prodMatch = r.producto?.toLowerCase().includes(q);
-        if (!pMatch && !tMatch && !fMatch && !mMatch && !cMatch && !prodMatch) return false;
+        if (!empMatch && !pMatch && !tMatch && !fMatch && !mMatch && !cMatch && !prodMatch) return false;
       }
 
       return true;
@@ -536,9 +624,33 @@ export default function ImportExcelModal({
       if (!incompletePrompt.isConfirmed) return;
     }
 
-    // Si está en globalMode y elige crear nueva empresa, validar nombre
-    let targetEmpresaDisplay = "";
-    if (globalMode) {
+    let targetDisplay = "";
+    if (importType === "asociacion") {
+      if (creatingNewAsoc) {
+        if (!newAsocNombre.trim()) {
+          Swal.fire({
+            icon: "warning",
+            title: "Nombre de Asociación requerido",
+            text: "Por favor ingresa el nombre de la Asociación a crear.",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+        targetDisplay = `Asociación '${newAsocNombre.trim()}' (Nueva)`;
+      } else {
+        const foundAsoc = asociaciones.find(a => String(a.id) === String(newEmpresaAsocId));
+        if (!foundAsoc && !initialAsociacionId) {
+          Swal.fire({
+            icon: "warning",
+            title: "Selecciona una Asociación",
+            text: "Debes elegir una Asociación para vincular las empresas y despachos.",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+        targetDisplay = `Asociación '${foundAsoc?.name || initialAsociacionName || "Asociación Seleccionada"}'`;
+      }
+    } else if (globalMode) {
       if (importMode === "create_new") {
         if (!newEmpresaName.trim()) {
           Swal.fire({
@@ -549,7 +661,7 @@ export default function ImportExcelModal({
           });
           return;
         }
-        targetEmpresaDisplay = newEmpresaName.trim();
+        targetDisplay = `Crear Empresa '${newEmpresaName.trim()}'`;
       } else {
         const found = empresas.find(e => e.schema_name === selectedExistingSchema);
         if (!found) {
@@ -561,14 +673,25 @@ export default function ImportExcelModal({
           });
           return;
         }
-        targetEmpresaDisplay = found.name;
+        targetDisplay = `Empresa existente '${found.name}'`;
       }
     }
+
+    const totalNuevas = dynamicEmpresasSummary.filter(e => e.action === "crear").length;
+    const totalReutilizadas = dynamicEmpresasSummary.filter(e => e.action === "reutilizar").length;
 
     let confirmHtml = `
       <div class="text-left text-xs space-y-2 text-slate-300">
         <p>Se importarán <b>${dynamicSummary.totalViajes}</b> despachos con un flete total de <b>${formatCurrency(dynamicSummary.totalFleteBs)}</b>.</p>
-        ${globalMode ? `<p class="text-amber-400 font-semibold">• Destino: ${importMode === 'create_new' ? `Crear Empresa '${targetEmpresaDisplay}'` : `Empresa existente '${targetEmpresaDisplay}'`}</p>` : ''}
+        <p class="text-amber-400 font-semibold">• Modalidad: ${importType === "asociacion" ? "🏛️ Asociación (Multi-Empresa)" : "🏢 Empresa Individual"}</p>
+        <p class="text-sky-400 font-semibold">• Destino: ${targetDisplay || (schema ? `Empresa '${schema}'` : 'Directorio')}</p>
+        ${importType === "asociacion" ? `
+          <div class="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1 text-[11px]">
+            <p class="text-white font-bold">• Empresas detectadas: <b>${dynamicEmpresasSummary.length}</b></p>
+            <p class="text-emerald-400">• Reutilizar empresas existentes: <b>${totalReutilizadas}</b></p>
+            <p class="text-sky-400">• Crear nuevas empresas en la asociación: <b>${totalNuevas}</b></p>
+          </div>
+        ` : ''}
         <p>• Cisternas identificadas: <b>${dynamicSummary.totalPlacas}</b></p>
         <p>• Despachos listos: <b class="text-emerald-400">${dynamicSummary.listosCount}</b></p>
         ${dynamicSummary.incompletosCount > 0 ? `<p class="text-amber-400">• Despachos incompletos: <b>${dynamicSummary.incompletosCount}</b></p>` : ''}
@@ -598,7 +721,24 @@ export default function ImportExcelModal({
 
       let res: any;
 
-      if (globalMode) {
+      if (importType === "asociacion") {
+        formPayload.append("mode", "asociacion");
+        if (creatingNewAsoc && newAsocNombre.trim()) {
+          formPayload.append("nueva_asociacion_nombre", newAsocNombre.trim());
+          if (newAsocSigla.trim()) {
+            formPayload.append("nueva_asociacion_sigla", newAsocSigla.trim().toUpperCase());
+          }
+        } else if (newEmpresaAsocId && newEmpresaAsocId !== "__create_new__") {
+          formPayload.append("asociacion_id", String(newEmpresaAsocId));
+        } else if (initialAsociacionId) {
+          formPayload.append("asociacion_id", String(initialAsociacionId));
+        }
+
+        res = await apiFetch("/empresas/importar-con-empresa", {
+          method: "POST",
+          body: formPayload
+        });
+      } else if (globalMode) {
         formPayload.append("mode", importMode);
         if (importMode === "create_new") {
           formPayload.append("empresa_name", newEmpresaName.trim());
@@ -628,25 +768,42 @@ export default function ImportExcelModal({
       }
 
       const finalSchema = res.target_schema || schema;
-      const finalName = res.empresa_name || targetEmpresaDisplay;
+      const finalName = res.empresa_name || targetDisplay;
+
+      let successDetailHtml = `
+        <div class="space-y-3 text-left text-xs text-slate-300">
+          <p class="font-bold text-sm text-emerald-400">${res.message || "Despachos registrados correctamente en el sistema."}</p>
+          <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1.5">
+            ${res.asociacion_name ? `<div>• <b>Asociación:</b> <span class="text-amber-400">${res.asociacion_name}</span></div>` : ''}
+            ${res.total_empresas_procesadas ? `<div>• <b>Empresas Procesadas:</b> ${res.total_empresas_procesadas} (${res.empresas_creadas || 0} creadas, ${res.empresas_reutilizadas || 0} reutilizadas)</div>` : ''}
+            <div>• <b>Viajes Importados:</b> ${res.total_importados || res.total_viajes_importados || dynamicSummary.totalViajes}</div>
+            <div>• <b>Cisternas Involucradas:</b> ${dynamicSummary.totalPlacas}</div>
+            <div>• <b>Flete Total:</b> ${formatCurrency(dynamicSummary.totalFleteBs)}</div>
+            <div>• <b>Períodos:</b> ${res.periodos_detectados?.join(", ") || "General"}</div>
+          </div>
+          ${Array.isArray(res.empresas_detalle) && res.empresas_detalle.length > 0 ? `
+            <div class="max-h-40 overflow-y-auto space-y-1 pr-1">
+              <span class="text-[10px] uppercase font-bold text-slate-400">Desglose por Empresa:</span>
+              ${res.empresas_detalle.map((ed: any) => `
+                <div class="p-1.5 bg-slate-950/70 rounded-lg border border-slate-800 flex items-center justify-between text-[11px]">
+                  <span class="font-semibold text-white truncate max-w-[180px]">${ed.empresa_name}</span>
+                  <div class="flex items-center gap-2">
+                    <span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${ed.accion === 'creada' ? 'bg-sky-500/20 text-sky-400' : 'bg-emerald-500/20 text-emerald-400'}">${ed.accion === 'creada' ? 'Nueva' : 'Reutilizada'}</span>
+                    <span class="text-amber-400 font-bold">${ed.total_viajes} viajes</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `;
 
       const successModal = await Swal.fire({
         icon: "success",
         title: "¡Importación Exitosa!",
-        html: `
-          <div class="space-y-3 text-left text-xs text-slate-300">
-            <p class="font-bold text-sm text-emerald-400">${res.message || "Despachos registrados correctamente en el sistema."}</p>
-            <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
-              ${finalName ? `<div>• <b>Empresa:</b> <span class="text-amber-400">${finalName}</span></div>` : ''}
-              <div>• <b>Viajes Importados:</b> ${res.total_importados}</div>
-              <div>• <b>Cisternas Involucradas:</b> ${dynamicSummary.totalPlacas}</div>
-              <div>• <b>Flete Total:</b> ${formatCurrency(dynamicSummary.totalFleteBs)}</div>
-              <div>• <b>Períodos:</b> ${res.periodos_detectados?.join(", ") || "General"}</div>
-            </div>
-          </div>
-        `,
-        showCancelButton: Boolean(finalSchema),
-        confirmButtonText: finalSchema ? "Ir al Historial de Viajes" : "Entendido",
+        html: successDetailHtml,
+        showCancelButton: Boolean(finalSchema || res.asociacion_id),
+        confirmButtonText: res.asociacion_id ? "Ver Asociación" : (finalSchema ? "Ir al Historial de Viajes" : "Entendido"),
         cancelButtonText: "Permanecer aquí",
         confirmButtonColor: "#10b981",
         cancelButtonColor: "#334155",
@@ -655,18 +812,23 @@ export default function ImportExcelModal({
       });
 
       onSuccess({
-        total_importados: res.total_importados,
-        total_actualizados: res.total_actualizados,
-        total_omitidos: res.total_omitidos,
+        total_importados: res.total_importados || res.total_viajes_importados || dynamicSummary.totalViajes,
+        total_actualizados: res.total_actualizados || res.total_viajes_actualizados || 0,
+        total_omitidos: res.total_omitidos || 0,
         periodos_detectados: res.periodos_detectados || [],
         target_schema: finalSchema,
-        empresa_name: finalName
+        empresa_name: finalName,
+        asociacion_name: res.asociacion_name
       });
 
       onClose();
 
-      if (successModal.isConfirmed && finalSchema) {
-        router.push(`/${finalSchema}/historial`);
+      if (successModal.isConfirmed) {
+        if (res.asociacion_id) {
+          router.push(`/asociacion/${res.asociacion_id}`);
+        } else if (finalSchema) {
+          router.push(`/${finalSchema}/historial`);
+        }
       }
     } catch (err: any) {
       Swal.fire({
@@ -837,142 +999,112 @@ export default function ImportExcelModal({
               </div>
             )}
 
-            {/* ZONA 2: CONFIGURACIÓN DE DESTINO (EN MODO GLOBAL) */}
-            {previewData && !isLoadingPreview && globalMode && (
-              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-amber-500/30 shadow-lg space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+            {/* ZONA 2: SELECTOR DE MODALIDAD Y CONFIGURACIÓN DE DESTINO */}
+            {previewData && !isLoadingPreview && (
+              <div className="space-y-4">
+                {/* Selector de Modalidad de Importación */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-1.5 bg-slate-950 border border-slate-800 rounded-2xl shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setImportType("empresa")}
+                    className={`flex-1 flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl font-bold text-xs transition ${
+                      importType === "empresa"
+                        ? "bg-amber-500 text-slate-950 shadow-md font-black"
+                        : "text-slate-400 hover:text-white hover:bg-slate-900/50"
+                    }`}
+                  >
                     <Building2 className="w-4 h-4" />
-                    <span>Paso 1: Destino de la Importación</span>
-                  </div>
-                  <span className="text-[11px] text-slate-400">
-                    Define dónde se almacenarán los viajes y camiones
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Opción A: Crear Nueva Empresa */}
-                  <div
-                    onClick={() => setImportMode("create_new")}
-                    className={`p-3.5 rounded-xl border cursor-pointer transition ${
-                      importMode === "create_new"
-                        ? "border-amber-500 bg-amber-500/10 shadow-sm"
-                        : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
+                    <span>Importación por Empresa (Individual)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImportType("asociacion")}
+                    className={`flex-1 flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl font-bold text-xs transition ${
+                      importType === "asociacion"
+                        ? "bg-emerald-500 text-slate-950 shadow-md font-black"
+                        : "text-slate-400 hover:text-white hover:bg-slate-900/50"
                     }`}
                   >
-                    <div className="flex items-center gap-2 mb-2">
-                      <input
-                        type="radio"
-                        checked={importMode === "create_new"}
-                        onChange={() => setImportMode("create_new")}
-                        className="text-amber-500 focus:ring-amber-500 bg-slate-950"
-                      />
-                      <span className="text-xs font-bold text-white">Crear Nueva Empresa Automáticamente</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 pl-5 leading-relaxed">
-                      Se registrará en el directorio y se inicializará su esquema dedicado en la base de datos.
-                    </p>
-                  </div>
-
-                  {/* Opción B: Asignar a Empresa Existente */}
-                  <div
-                    onClick={() => setImportMode("use_existing")}
-                    className={`p-3.5 rounded-xl border cursor-pointer transition ${
-                      importMode === "use_existing"
-                        ? "border-emerald-500 bg-emerald-500/10 shadow-sm"
-                        : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <input
-                        type="radio"
-                        checked={importMode === "use_existing"}
-                        onChange={() => setImportMode("use_existing")}
-                        className="text-emerald-500 focus:ring-emerald-500 bg-slate-950"
-                      />
-                      <span className="text-xs font-bold text-white">Asignar a Empresa Existente</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 pl-5 leading-relaxed">
-                      Incorpora estos viajes dentro de una empresa ya registrada en el sistema.
-                    </p>
-                  </div>
+                    <Layers className="w-4 h-4" />
+                    <span>Importación por Asociación (Multi-Empresa)</span>
+                    {previewData?.is_multi_empresa && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-900 text-emerald-300 border border-emerald-500/30 font-black uppercase">
+                        Detectado ({previewData.empresas_detectadas?.length || dynamicEmpresasSummary.length})
+                      </span>
+                    )}
+                  </button>
                 </div>
 
-                {/* Campos según modo seleccionado */}
-                {importMode === "create_new" ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-800/80">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                        Razón Social de la Nueva Empresa *
-                      </label>
-                      <input
-                        type="text"
-                        value={newEmpresaName}
-                        onChange={(e) => setNewEmpresaName(e.target.value)}
-                        placeholder="Ej: DRIVER S.R.L."
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                      />
+                {/* Subzona A: Modo Asociación (Multi-Empresa) */}
+                {importType === "asociacion" ? (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-emerald-500/30 shadow-lg space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                        <Layers className="w-4 h-4" />
+                        <span>Destino de la Asociación Multi-Empresa</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        Cada empresa se creará o reutilizará automáticamente bajo esta asociación.
+                      </span>
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                        NIT (Opcional)
-                      </label>
-                      <input
-                        type="text"
-                        value={newEmpresaNit}
-                        onChange={(e) => setNewEmpresaNit(e.target.value)}
-                        placeholder="Ej: 1028495021"
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-[11px] font-bold text-slate-300">
-                          Asociación / Gremio
+
+                    {/* Selector o Creación de Asociación */}
+                    <div className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-slate-200">
+                          Asociación de Transporte de Destino:
                         </label>
-                        {!creatingNewAsoc && (
+                        {!creatingNewAsoc ? (
                           <button
                             type="button"
                             onClick={() => {
                               setCreatingNewAsoc(true);
                               setNewEmpresaAsocId("__create_new__");
                             }}
-                            className="text-[10px] text-amber-400 hover:text-amber-300 font-bold"
+                            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1"
                           >
-                            + Nueva Asociación
+                            + Registrar Nueva Asociación
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCreatingNewAsoc(false);
+                              setNewEmpresaAsocId(asociaciones[0]?.id || "");
+                            }}
+                            className="text-[11px] text-slate-400 hover:text-rose-400 font-semibold"
+                          >
+                            Cancelar y elegir existente
                           </button>
                         )}
                       </div>
 
                       {creatingNewAsoc ? (
-                        <div className="space-y-1.5 p-2.5 bg-slate-900 border border-amber-500/30 rounded-xl">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] text-amber-400 font-bold">Registrar Nueva Asociación:</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCreatingNewAsoc(false);
-                                setNewEmpresaAsocId("");
-                              }}
-                              className="text-[10px] text-slate-400 hover:text-rose-400"
-                            >
-                              Cancelar
-                            </button>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                              Nombre de la Nueva Asociación *
+                            </label>
+                            <input
+                              type="text"
+                              value={newAsocNombre}
+                              onChange={(e) => setNewAsocNombre(e.target.value)}
+                              placeholder="Ej: ASOCIACIÓN DE TRANSPORTE ORIENTE..."
+                              className="w-full px-3 py-2 bg-slate-950 border border-emerald-500/50 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-400"
+                            />
                           </div>
-                          <input
-                            type="text"
-                            value={newAsocNombre}
-                            onChange={(e) => setNewAsocNombre(e.target.value)}
-                            placeholder="Nombre Asociación (ej. ASOCIACIÓN ORIENTE)..."
-                            className="w-full px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
-                          />
-                          <input
-                            type="text"
-                            value={newAsocSigla}
-                            onChange={(e) => setNewAsocSigla(e.target.value)}
-                            placeholder="Sigla (ej: ATPO)..."
-                            className="w-full px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
-                          />
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                              Sigla / Abreviatura (Opcional)
+                            </label>
+                            <input
+                              type="text"
+                              value={newAsocSigla}
+                              onChange={(e) => setNewAsocSigla(e.target.value)}
+                              placeholder="Ej: ATO..."
+                              className="w-full px-3 py-2 bg-slate-950 border border-emerald-500/50 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-400 uppercase"
+                            />
+                          </div>
                         </div>
                       ) : (
                         <select
@@ -985,40 +1117,259 @@ export default function ImportExcelModal({
                               setNewEmpresaAsocId(e.target.value);
                             }
                           }}
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                          className="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-emerald-500"
                         >
-                          <option value="">Empresa Independiente</option>
-                          <option value="__create_new__" className="text-amber-400 font-bold">+ Crear Nueva Asociación</option>
-                          {asociaciones.map((a: any) => (
-                            <option key={a.id} value={a.id}>
-                              {a.sigla ? `[${a.sigla}] ` : ""}{a.name}
-                            </option>
-                          ))}
+                          {asociaciones.length === 0 ? (
+                            <option value="">No hay asociaciones registradas (Registra una nueva)</option>
+                          ) : (
+                            asociaciones.map((a: any) => (
+                              <option key={a.id} value={a.id}>
+                                {a.sigla ? `[${a.sigla}] ` : ""}{a.name}
+                              </option>
+                            ))
+                          )}
+                          <option value="__create_new__" className="text-emerald-400 font-bold">+ Registrar Nueva Asociación</option>
                         </select>
                       )}
                     </div>
+
+                    {/* Tarjeta de Empresas Detectadas en la Planilla */}
+                    <div className="space-y-2.5 pt-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Truck className="w-4 h-4 text-emerald-400" />
+                          <span className="text-xs font-black text-white uppercase tracking-tight">
+                            Empresas Detectadas en la Planilla ({dynamicEmpresasSummary.length})
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            {dynamicEmpresasSummary.filter(e => e.action === "reutilizar").length} Reutilizar
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30">
+                            {dynamicEmpresasSummary.filter(e => e.action === "crear").length} Se crearán
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                        {dynamicEmpresasSummary.map((emp, idx) => (
+                          <div
+                            key={idx}
+                            className="p-3 bg-slate-950/80 border border-slate-800 hover:border-slate-700 rounded-xl space-y-1.5 transition"
+                          >
+                            <div className="flex items-start justify-between gap-1.5">
+                              <span className="text-xs font-bold text-white truncate" title={emp.nombre}>
+                                {emp.nombre}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold flex-shrink-0 ${
+                                emp.action === "reutilizar"
+                                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                  : "bg-sky-500/20 text-sky-400 border border-sky-500/30"
+                              }`}>
+                                {emp.action === "reutilizar" ? "Reutilizar" : "Crear Empresa"}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-900">
+                              <span><b>{emp.totalViajes}</b> viajes</span>
+                              <span><b>{formatNumber(emp.totalVolumenLitros)}</b> L</span>
+                              <span className="text-emerald-400 font-mono font-bold">{formatCurrency(emp.totalFleteBs)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-slate-400 italic">
+                        * Al confirmar la importación, el sistema creará automáticamente los esquemas para las empresas nuevas y registrará cada viaje en su empresa correspondiente.
+                      </p>
+                    </div>
                   </div>
                 ) : (
-                  <div className="pt-2 border-t border-slate-800/80">
-                    <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                      Selecciona la Empresa de Destino *
-                    </label>
-                    <select
-                      value={selectedExistingSchema}
-                      onChange={(e) => setSelectedExistingSchema(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
-                    >
-                      {empresas.length === 0 ? (
-                        <option value="">No hay empresas registradas</option>
+                  /* Subzona B: Modo Empresa Individual (Modo Global) */
+                  globalMode && (
+                    <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-amber-500/30 shadow-lg space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                          <Building2 className="w-4 h-4" />
+                          <span>Paso 1: Destino de la Empresa Individual</span>
+                        </div>
+                        <span className="text-[11px] text-slate-400">
+                          Define dónde se almacenarán los viajes y camiones
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Opción A: Crear Nueva Empresa */}
+                        <div
+                          onClick={() => setImportMode("create_new")}
+                          className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                            importMode === "create_new"
+                              ? "border-amber-500 bg-amber-500/10 shadow-sm"
+                              : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <input
+                              type="radio"
+                              checked={importMode === "create_new"}
+                              onChange={() => setImportMode("create_new")}
+                              className="text-amber-500 focus:ring-amber-500 bg-slate-950"
+                            />
+                            <span className="text-xs font-bold text-white">Crear Nueva Empresa Automáticamente</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 pl-5 leading-relaxed">
+                            Se registrará en el directorio y se inicializará su esquema dedicado en la base de datos.
+                          </p>
+                        </div>
+
+                        {/* Opción B: Asignar a Empresa Existente */}
+                        <div
+                          onClick={() => setImportMode("use_existing")}
+                          className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                            importMode === "use_existing"
+                              ? "border-emerald-500 bg-emerald-500/10 shadow-sm"
+                              : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <input
+                              type="radio"
+                              checked={importMode === "use_existing"}
+                              onChange={() => setImportMode("use_existing")}
+                              className="text-emerald-500 focus:ring-emerald-500 bg-slate-950"
+                            />
+                            <span className="text-xs font-bold text-white">Asignar a Empresa Existente</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 pl-5 leading-relaxed">
+                            Incorpora estos viajes dentro de una empresa ya registrada en el sistema.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Campos según modo seleccionado */}
+                      {importMode === "create_new" ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-800/80">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                              Razón Social de la Nueva Empresa *
+                            </label>
+                            <input
+                              type="text"
+                              value={newEmpresaName}
+                              onChange={(e) => setNewEmpresaName(e.target.value)}
+                              placeholder="Ej: DRIVER S.R.L."
+                              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                              NIT (Opcional)
+                            </label>
+                            <input
+                              type="text"
+                              value={newEmpresaNit}
+                              onChange={(e) => setNewEmpresaNit(e.target.value)}
+                              placeholder="Ej: 1028495021"
+                              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                            />
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="block text-[11px] font-bold text-slate-300">
+                                Asociación / Gremio
+                              </label>
+                              {!creatingNewAsoc && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCreatingNewAsoc(true);
+                                    setNewEmpresaAsocId("__create_new__");
+                                  }}
+                                  className="text-[10px] text-amber-400 hover:text-amber-300 font-bold"
+                                >
+                                  + Nueva Asociación
+                                </button>
+                              )}
+                            </div>
+
+                            {creatingNewAsoc ? (
+                              <div className="space-y-1.5 p-2.5 bg-slate-900 border border-amber-500/30 rounded-xl">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] text-amber-400 font-bold">Registrar Nueva Asociación:</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setCreatingNewAsoc(false);
+                                      setNewEmpresaAsocId("");
+                                    }}
+                                    className="text-[10px] text-slate-400 hover:text-rose-400"
+                                  >
+                                    Cancelar
+                                  </button>
+                                </div>
+                                <input
+                                  type="text"
+                                  value={newAsocNombre}
+                                  onChange={(e) => setNewAsocNombre(e.target.value)}
+                                  placeholder="Nombre Asociación (ej. ASOCIACIÓN ORIENTE)..."
+                                  className="w-full px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
+                                />
+                                <input
+                                  type="text"
+                                  value={newAsocSigla}
+                                  onChange={(e) => setNewAsocSigla(e.target.value)}
+                                  placeholder="Sigla (ej: ATPO)..."
+                                  className="w-full px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
+                                />
+                              </div>
+                            ) : (
+                              <select
+                                value={newEmpresaAsocId}
+                                onChange={(e) => {
+                                  if (e.target.value === "__create_new__") {
+                                    setCreatingNewAsoc(true);
+                                    setNewEmpresaAsocId("__create_new__");
+                                  } else {
+                                    setNewEmpresaAsocId(e.target.value);
+                                  }
+                                }}
+                                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                              >
+                                <option value="">Empresa Independiente</option>
+                                <option value="__create_new__" className="text-amber-400 font-bold">+ Crear Nueva Asociación</option>
+                                {asociaciones.map((a: any) => (
+                                  <option key={a.id} value={a.id}>
+                                    {a.sigla ? `[${a.sigla}] ` : ""}{a.name}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        </div>
                       ) : (
-                        empresas.map((emp: any) => (
-                          <option key={emp.id} value={emp.schema_name}>
-                            {emp.name} ({emp.schema_name})
-                          </option>
-                        ))
+                        <div className="pt-2 border-t border-slate-800/80">
+                          <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                            Selecciona la Empresa de Destino *
+                          </label>
+                          <select
+                            value={selectedExistingSchema}
+                            onChange={(e) => setSelectedExistingSchema(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+                          >
+                            {empresas.length === 0 ? (
+                              <option value="">No hay empresas registradas</option>
+                            ) : (
+                              empresas.map((emp: any) => (
+                                <option key={emp.id} value={emp.schema_name}>
+                                  {emp.name} ({emp.schema_name})
+                                </option>
+                              ))
+                            )}
+                          </select>
+                        </div>
                       )}
-                    </select>
-                  </div>
+                    </div>
+                  )
                 )}
               </div>
             )}
@@ -1037,7 +1388,24 @@ export default function ImportExcelModal({
                 </div>
 
                 {/* Resumen Destino en el Sistema */}
-                {globalMode && (
+                {importType === "asociacion" ? (
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                      <span className="text-slate-300">Asociación Destino:</span>
+                      <strong className="text-emerald-400 font-black">
+                        {creatingNewAsoc ? (newAsocNombre || "Nueva Asociación") : (asociaciones.find(a => String(a.id) === String(newEmpresaAsocId))?.name || initialAsociacionName || "Asociación")}
+                      </strong>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-slate-300 text-[11px]">
+                      <span className="text-slate-400">Distribución:</span>
+                      <strong className="text-white">
+                        {dynamicEmpresasSummary.length} empresas ({dynamicEmpresasSummary.filter(e => e.action === 'crear').length} a crear, {dynamicEmpresasSummary.filter(e => e.action === 'reutilizar').length} a reutilizar)
+                      </strong>
+                    </div>
+                  </div>
+                ) : globalMode && (
                   <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div className="flex items-center gap-2">
                       <Building2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
@@ -1230,6 +1598,9 @@ export default function ImportExcelModal({
                           />
                         </th>
                         <th className="py-2.5 px-2 text-center w-12">#</th>
+                        {(importType === "asociacion" || editableRecords.some(x => x.empresa)) && (
+                          <th className="py-2.5 px-3 min-w-[160px] text-emerald-400">Empresa (Editable)</th>
+                        )}
                         <th className="py-2.5 px-3 min-w-[130px]">Placa (Editable)</th>
                         <th className="py-2.5 px-3 min-w-[180px]">Tramo</th>
                         <th className="py-2.5 px-3 min-w-[130px]">Producto / Cliente</th>
@@ -1244,7 +1615,7 @@ export default function ImportExcelModal({
                     <tbody className="divide-y divide-slate-800/60 font-medium">
                       {filteredRecords.length === 0 ? (
                         <tr>
-                          <td colSpan={11} className="py-8 text-center text-slate-500 text-xs">
+                          <td colSpan={(importType === "asociacion" || editableRecords.some(x => x.empresa)) ? 12 : 11} className="py-8 text-center text-slate-500 text-xs">
                             No hay despachos para mostrar con el filtro actual.
                           </td>
                         </tr>
@@ -1282,6 +1653,20 @@ export default function ImportExcelModal({
                               <td className="py-2 px-2 text-center text-slate-500 font-mono">
                                 {r.fila}
                               </td>
+
+                              {/* Empresa Editable */}
+                              {(importType === "asociacion" || editableRecords.some(x => x.empresa)) && (
+                                <td className="py-1.5 px-2 min-w-[150px]">
+                                  <input
+                                    type="text"
+                                    value={r.empresa || ""}
+                                    onChange={(e) => handleRecordFieldChange(originalIdx, "empresa", e.target.value)}
+                                    placeholder="Empresa..."
+                                    className="w-full px-2 py-1 bg-slate-900 border border-slate-700/80 rounded-lg text-emerald-300 font-semibold text-[11px] uppercase focus:outline-none focus:border-emerald-500 truncate"
+                                    title={r.empresa}
+                                  />
+                                </td>
+                              )}
 
                               {/* Placa Editable */}
                               <td className="py-1.5 px-2">

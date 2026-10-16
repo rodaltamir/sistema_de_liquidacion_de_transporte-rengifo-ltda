@@ -1,11 +1,28 @@
 import io
+import re
 from datetime import date, datetime
 from typing import Dict, Any, List, Optional, Tuple
 from dateutil import parser as date_parser
 import openpyxl
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.models.tenant import Viaje, ParametroLiquidacion, UnidadTransporte
 from app.services.calculation_engine import calculate_viaje_values, determine_trip_period
+
+
+def sanitize_schema_name(name: str) -> str:
+    """Sanitiza el nombre de la empresa para usarlo como esquema PostgreSQL."""
+    slug = re.sub(r'[^a-zA-Z0-9]+', '_', name).strip('_').lower()
+    return f"empresa_{slug[:30]}"
+
+
+def normalize_company_name(name: Any) -> str:
+    """Normaliza nombres de empresas (apóstrofes, espacios múltiples, mayúsculas)."""
+    if not name:
+        return ""
+    s = str(name).strip().replace("´", "").replace("`", "").replace("’", "").replace("'", "")
+    s = re.sub(r'\s+', ' ', s)
+    return s.upper()
 
 
 def get_excel_sheets(file_bytes: bytes) -> List[str]:
@@ -90,7 +107,9 @@ def detect_columns_and_header_row(rows_iter) -> Tuple[Optional[int], Dict[str, i
                     continue
                 if "PLACA" in val and "placa" not in col_map:
                     col_map["placa"] = c_idx
-                elif ("EMPRESA" in val or "CLIENTE" in val or "FACTURA EMITIDA" in val) and "cliente" not in col_map:
+                elif ("EMPRESA TRANSPORTE" in val or "TRANSPORTISTA" in val or "ASOCIADO" in val or "SOCIO" in val or "PROPIETARIO" in val or ("EMPRESA" in val and "CLIENTE" not in val and "FACTURA" not in val)) and "empresa" not in col_map:
+                    col_map["empresa"] = c_idx
+                elif ("CLIENTE" in val or "CONSIGNATARIO" in val or "REMITENTE" in val or "FACTURA EMITIDA" in val) and "cliente" not in col_map:
                     col_map["cliente"] = c_idx
                 elif "PRODUCTO" in val and "producto" not in col_map:
                     col_map["producto"] = c_idx
@@ -137,10 +156,13 @@ def parse_excel_viajes_data(
     file_bytes: bytes,
     sheet_name: Optional[str] = None,
     session: Optional[Session] = None,
+    db: Optional[Session] = None,
+    asociacion_id: Optional[int] = None,
     max_preview_records: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Lee, valida y procesa una hoja Excel de viajes.
+    Soporta formato por Empresa (individual) y formato por Asociación (multi-empresa).
     Retorna registros listos para previsualización o importación.
     """
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
@@ -179,15 +201,16 @@ def parse_excel_viajes_data(
         else:
             header_row_idx = 1
             col_map = {
-                "cliente": 0,
-                "producto": 1,
-                "planta_carga": 2,
-                "planta_descarga": 4,
-                "placa": 5,
-                "fecha_carga": 6,
-                "fecha_descarga": 7,
-                "vol_origen": 8,
-                "vol_recepcion": 9,
+                "empresa": 0,
+                "cliente": 1,
+                "producto": 2,
+                "planta_carga": 3,
+                "planta_descarga": 5,
+                "placa": 6,
+                "fecha_carga": 7,
+                "fecha_descarga": 8,
+                "vol_origen": 9,
+                "vol_recepcion": 10,
                 "vol_facturado": 15,
                 "tarifa": 16,
                 "importe_total": 17,
@@ -219,6 +242,7 @@ def parse_excel_viajes_data(
             return None
 
         placa_raw = clean_string(get_c("placa"))
+        empresa_raw = clean_string(get_c("empresa"))
         cliente_raw = clean_string(get_c("cliente"))
         producto_raw = clean_string(get_c("producto"))
         planta_c = clean_string(get_c("planta_carga"))
@@ -317,7 +341,10 @@ def parse_excel_viajes_data(
         periodos_detectados.add(periodo)
         placas_detectadas.add(clean_placa)
 
-        # 9. Validación de Completitud (Detección de Datos Faltantes)
+        # 9. Normalización de Empresa
+        clean_empresa = normalize_company_name(empresa_raw)
+
+        # 10. Validación de Completitud (Detección de Datos Faltantes)
         clean_mic = mic_raw.upper().strip() if mic_raw and mic_raw.upper().strip() not in ("FALTA MIC", "SIN MIC", "NONE", "") else None
         
         missing_fields = []
@@ -333,6 +360,7 @@ def parse_excel_viajes_data(
 
         record = {
             "fila": r_idx,
+            "empresa": clean_empresa,
             "placa": clean_placa,
             "tramo": clean_tramo,
             "cliente": clean_cliente,
@@ -362,8 +390,68 @@ def parse_excel_viajes_data(
     wb.close()
 
     preview_items = valid_records[:max_preview_records] if max_preview_records else valid_records
-
     valid_placas = [p for p in placas_detectadas if p and p not in ("SINPLACA", "FALTAPLACA", "TOTAL")]
+
+    # Agregación y detección de empresas (para importación por Asociación / multi-empresa)
+    empresas_stats: Dict[str, Dict[str, Any]] = {}
+    for r in valid_records:
+        emp = r.get("empresa")
+        if not emp:
+            continue
+        if emp not in empresas_stats:
+            empresas_stats[emp] = {
+                "nombre": emp,
+                "total_viajes": 0,
+                "viajes_listos": 0,
+                "viajes_incompletos": 0,
+                "total_volumen_litros": 0.0,
+                "total_flete_bs": 0.0,
+                "placas": set(),
+            }
+        empresas_stats[emp]["total_viajes"] += 1
+        if r.get("is_incompleto"):
+            empresas_stats[emp]["viajes_incompletos"] += 1
+        else:
+            empresas_stats[emp]["viajes_listos"] += 1
+        empresas_stats[emp]["total_volumen_litros"] += r.get("volumen_facturado", 0.0)
+        empresas_stats[emp]["total_flete_bs"] += r.get("flete_total_bs", 0.0)
+        if r.get("placa"):
+            empresas_stats[emp]["placas"].add(r["placa"])
+
+    from app.models.public import Empresa
+    existing_empresas = db.query(Empresa).all() if db else []
+    emp_lookup = {normalize_company_name(e.name): e for e in existing_empresas}
+
+    empresas_detectadas_list = []
+    for emp_name, stats in sorted(empresas_stats.items()):
+        existing = emp_lookup.get(emp_name)
+        if existing:
+            action = "reutilizar"
+            empresa_id = existing.id
+            schema_name = existing.schema_name
+            already_in_asociacion = (existing.asociacion_id == asociacion_id) if asociacion_id else False
+        else:
+            action = "crear"
+            empresa_id = None
+            schema_name = sanitize_schema_name(emp_name)
+            already_in_asociacion = False
+
+        empresas_detectadas_list.append({
+            "nombre": emp_name,
+            "action": action,
+            "empresa_id": empresa_id,
+            "schema_name": schema_name,
+            "already_in_asociacion": already_in_asociacion,
+            "total_viajes": stats["total_viajes"],
+            "viajes_listos": stats["viajes_listos"],
+            "viajes_incompletos": stats["viajes_incompletos"],
+            "total_volumen_litros": round(stats["total_volumen_litros"], 1),
+            "total_volumen_m3": round(stats["total_volumen_litros"] / 1000.0, 3),
+            "total_flete_bs": round(stats["total_flete_bs"], 2),
+            "cisternas_count": len(stats["placas"])
+        })
+
+    is_multi_empresa = len(empresas_stats) > 1
 
     return {
         "success": True,
@@ -374,6 +462,8 @@ def parse_excel_viajes_data(
         "total_skipped_rows": len(skipped_records),
         "records": preview_items,
         "skipped_details": skipped_records[:50],
+        "is_multi_empresa": is_multi_empresa,
+        "empresas_detectadas": empresas_detectadas_list,
         "summary": {
             "total_viajes": len(valid_records),
             "viajes_listos": sum(1 for r in valid_records if not r.get("is_incompleto")),
@@ -382,7 +472,8 @@ def parse_excel_viajes_data(
             "total_volumen_m3": round(total_vol_facturado_lt / 1000.0, 3),
             "total_flete_bs": round(total_flete_bs, 2),
             "periodos_detectados": sorted(list(periodos_detectados)),
-            "total_placas_unicas": len(valid_placas)
+            "total_placas_unicas": len(valid_placas),
+            "total_empresas_detectadas": len(empresas_detectadas_list)
         }
     }
 
@@ -546,3 +637,160 @@ def execute_import_viajes(
         "periodos_detectados": sorted(list(periodos_detectados)),
         "errores": errores
     }
+
+
+def execute_import_asociacion_multi_empresa(
+    records: List[Dict[str, Any]],
+    db: Session,
+    asociacion_id: Optional[int] = None,
+    nueva_asociacion_nombre: Optional[str] = None,
+    nueva_asociacion_sigla: Optional[str] = None,
+    overwrite_duplicates: bool = False
+) -> Dict[str, Any]:
+    """
+    Importa despachos distribuyéndolos entre múltiples empresas de transporte.
+    Para cada empresa identificada en los registros:
+    - Si ya existe en el sistema: la reutiliza (y la vincula a la asociación si no lo estaba).
+    - Si no existe: la crea automáticamente en public.empresas con su asociación e
+      inicializa su esquema PostgreSQL dedicado (init_tenant_schema).
+    Luego inserta o actualiza sus viajes en su esquema correspondiente.
+    """
+    from app.models.public import Asociacion, Empresa
+    from app.db.session import get_tenant_session, init_tenant_schema
+    from app.models.tenant import ParametroLiquidacion
+
+    asoc = None
+    if asociacion_id:
+        asoc = db.query(Asociacion).filter(Asociacion.id == asociacion_id).first()
+        if not asoc and not nueva_asociacion_nombre:
+            raise ValueError(f"Asociación con ID {asociacion_id} no encontrada.")
+
+    if not asoc and nueva_asociacion_nombre and nueva_asociacion_nombre.strip():
+        asoc_name_clean = nueva_asociacion_nombre.strip()
+        asoc = db.query(Asociacion).filter(Asociacion.name.ilike(asoc_name_clean)).first()
+        if not asoc:
+            asoc = Asociacion(
+                name=asoc_name_clean,
+                sigla=nueva_asociacion_sigla.strip().upper() if nueva_asociacion_sigla else None,
+                is_active=True
+            )
+            db.add(asoc)
+            db.commit()
+            db.refresh(asoc)
+
+    # Agrupar registros válidos/incluidos por empresa normalizada
+    records_by_company: Dict[str, List[Dict[str, Any]]] = {}
+    for r in records:
+        if r.get("included") is False:
+            continue
+        emp_name = normalize_company_name(r.get("empresa"))
+        if not emp_name:
+            emp_name = "EMPRESA ASOCIADA"
+        if emp_name not in records_by_company:
+            records_by_company[emp_name] = []
+        records_by_company[emp_name].append(r)
+
+    if not records_by_company:
+        return {
+            "success": False,
+            "message": "No hay registros seleccionados para importar.",
+            "total_empresas_procesadas": 0,
+            "empresas_creadas": 0,
+            "empresas_reutilizadas": 0,
+            "total_viajes_importados": 0,
+            "total_viajes_actualizados": 0,
+            "empresas_detalle": []
+        }
+
+    all_empresas = db.query(Empresa).all()
+    emp_lookup = {normalize_company_name(e.name): e for e in all_empresas}
+
+    empresas_results = []
+    total_importados_global = 0
+    total_actualizados_global = 0
+    total_creadas = 0
+    total_reutilizadas = 0
+
+    for emp_name, comp_records in records_by_company.items():
+        emp = emp_lookup.get(emp_name)
+        is_new = False
+
+        if emp:
+            total_reutilizadas += 1
+            if asoc and emp.asociacion_id != asoc.id:
+                emp.asociacion_id = asoc.id
+                db.commit()
+                db.refresh(emp)
+        else:
+            is_new = True
+            total_creadas += 1
+            base_schema = sanitize_schema_name(emp_name)
+            schema_name = base_schema
+            counter = 1
+            while db.query(Empresa).filter(Empresa.schema_name == schema_name).first():
+                schema_name = f"{base_schema}_{counter}"
+                counter += 1
+
+            emp = Empresa(
+                name=emp_name,
+                schema_name=schema_name,
+                nit=None,
+                tipo_empresa="Sociedad",
+                asociacion_id=asoc.id if asoc else None,
+                icon="Truck",
+                is_active=True
+            )
+            db.add(emp)
+            db.commit()
+            db.refresh(emp)
+            emp_lookup[emp_name] = emp
+
+            # Inicializar esquema PostgreSQL dedicado
+            init_tenant_schema(emp.schema_name)
+
+        # Importar los viajes al esquema de la empresa
+        tenant_session = get_tenant_session(emp.schema_name)
+        try:
+            params = tenant_session.query(ParametroLiquidacion).first()
+            if not params:
+                params = ParametroLiquidacion()
+                tenant_session.add(params)
+                tenant_session.commit()
+
+            res = execute_import_viajes(
+                records=comp_records,
+                session=tenant_session,
+                params=params,
+                overwrite_duplicates=overwrite_duplicates
+            )
+
+            empresas_results.append({
+                "empresa_id": emp.id,
+                "empresa_name": emp.name,
+                "schema_name": emp.schema_name,
+                "accion": "creada" if is_new else "reutilizada",
+                "total_viajes": len(comp_records),
+                "importados": res["total_importados"],
+                "actualizados": res["total_actualizados"],
+                "omitidos": res["total_omitidos"],
+                "errores": res["errores"]
+            })
+            total_importados_global += res["total_importados"]
+            total_actualizados_global += res["total_actualizados"]
+        finally:
+            tenant_session.close()
+
+    asoc_name_display = asoc.name if asoc else "Asociación"
+    return {
+        "success": True,
+        "asociacion_id": asoc.id if asoc else None,
+        "asociacion_name": asoc_name_display,
+        "total_empresas_procesadas": len(records_by_company),
+        "empresas_creadas": total_creadas,
+        "empresas_reutilizadas": total_reutilizadas,
+        "total_viajes_importados": total_importados_global,
+        "total_viajes_actualizados": total_actualizados_global,
+        "empresas_detalle": empresas_results,
+        "message": f"Se procesaron con éxito {len(records_by_company)} empresas ({total_creadas} creadas, {total_reutilizadas} reutilizadas) con un total de {total_importados_global} despachos importados en {asoc_name_display}."
+    }
+

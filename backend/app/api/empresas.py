@@ -10,7 +10,12 @@ from app.models.public import Empresa, Asociacion
 from app.models.tenant import ParametroLiquidacion
 from app.schemas.empresa import EmpresaCreate, EmpresaUpdate, EmpresaResponse
 from app.api.deps import require_admin, require_current_user
-from app.services.excel_importer import get_excel_sheets, parse_excel_viajes_data, execute_import_viajes
+from app.services.excel_importer import (
+    get_excel_sheets,
+    parse_excel_viajes_data,
+    execute_import_viajes,
+    execute_import_asociacion_multi_empresa
+)
 
 router = APIRouter(prefix="/empresas", tags=["Empresas de Transporte"])
 
@@ -250,6 +255,8 @@ async def preview_global_excel(
             file_bytes=contents,
             sheet_name=sheet_name,
             session=session,
+            db=db,
+            asociacion_id=None,
             max_preview_records=None
         )
         suggested_name = extract_suggested_company_name(file.filename)
@@ -277,6 +284,40 @@ async def importar_con_empresa(
     edited_records_json: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
+    # Modo Asociación (Multi-Empresa)
+    if mode == "asociacion":
+        records_to_import = []
+        if edited_records_json:
+            try:
+                records_to_import = json.loads(edited_records_json)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Formato JSON de registros editados inválido: {str(e)}")
+        elif file:
+            if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
+                raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
+            contents = await file.read()
+            parsed = parse_excel_viajes_data(
+                file_bytes=contents,
+                sheet_name=sheet_name,
+                db=db,
+                asociacion_id=asociacion_id
+            )
+            records_to_import = parsed["records"]
+        else:
+            raise HTTPException(status_code=400, detail="No se proporcionaron registros ni archivo Excel para importar.")
+
+        if not records_to_import:
+            raise HTTPException(status_code=400, detail="No hay registros válidos para importar.")
+
+        return execute_import_asociacion_multi_empresa(
+            records=records_to_import,
+            db=db,
+            asociacion_id=asociacion_id,
+            nueva_asociacion_nombre=nueva_asociacion_nombre,
+            nueva_asociacion_sigla=nueva_asociacion_sigla,
+            overwrite_duplicates=overwrite_duplicates
+        )
+
     if mode == "create_new":
         if not empresa_name or not empresa_name.strip():
             raise HTTPException(status_code=400, detail="Debe especificar el nombre de la nueva empresa.")
@@ -325,7 +366,7 @@ async def importar_con_empresa(
             raise HTTPException(status_code=404, detail="La empresa de destino seleccionada no existe.")
         schema_name = target_empresa.schema_name
     else:
-        raise HTTPException(status_code=400, detail="Modo de importación inválido. Use 'create_new' o 'use_existing'.")
+        raise HTTPException(status_code=400, detail="Modo de importación inválido. Use 'create_new', 'use_existing' o 'asociacion'.")
 
     tenant_session = get_tenant_session(schema_name)
     try:

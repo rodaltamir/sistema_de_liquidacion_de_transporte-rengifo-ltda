@@ -1,5 +1,6 @@
+import json
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
@@ -11,6 +12,11 @@ from app.schemas.asociacion import AsociacionCreate, AsociacionUpdate, Asociacio
 from app.api.deps import require_admin, require_current_user
 from app.services.excel_export import export_liquidacion_asociacion_excel
 from app.services.pdf_export import export_liquidacion_asociacion_pdf
+from app.services.excel_importer import (
+    get_excel_sheets,
+    parse_excel_viajes_data,
+    execute_import_asociacion_multi_empresa
+)
 
 router = APIRouter(prefix="/asociaciones", tags=["Asociaciones"])
 
@@ -454,3 +460,144 @@ def export_asociacion_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+
+
+@router.post("/preview-excel")
+async def preview_excel_asociacion_global(
+    file: UploadFile = File(...),
+    sheet_name: Optional[str] = Form(None),
+    asociacion_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db)
+):
+    if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
+        raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
+    contents = await file.read()
+    try:
+        preview_data = parse_excel_viajes_data(
+            file_bytes=contents,
+            sheet_name=sheet_name,
+            session=None,
+            db=db,
+            asociacion_id=asociacion_id,
+            max_preview_records=None
+        )
+        return preview_data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al analizar el archivo Excel: {str(e)}")
+
+
+@router.post("/{id}/preview-excel")
+async def preview_excel_asociacion(
+    id: int,
+    file: UploadFile = File(...),
+    sheet_name: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    asoc = db.query(Asociacion).filter(Asociacion.id == id).first()
+    if not asoc:
+        raise HTTPException(status_code=404, detail="Asociación no encontrada")
+
+    if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
+        raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
+    contents = await file.read()
+    try:
+        preview_data = parse_excel_viajes_data(
+            file_bytes=contents,
+            sheet_name=sheet_name,
+            session=None,
+            db=db,
+            asociacion_id=id,
+            max_preview_records=None
+        )
+        return preview_data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al analizar el archivo Excel: {str(e)}")
+
+
+@router.post("/{id}/importar-excel")
+async def importar_excel_asociacion(
+    id: int,
+    overwrite_duplicates: bool = Form(False),
+    file: Optional[UploadFile] = File(None),
+    sheet_name: Optional[str] = Form(None),
+    edited_records_json: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    asoc = db.query(Asociacion).filter(Asociacion.id == id).first()
+    if not asoc:
+        raise HTTPException(status_code=404, detail="Asociación no encontrada")
+
+    records_to_import = []
+    if edited_records_json:
+        try:
+            records_to_import = json.loads(edited_records_json)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Formato JSON inválido: {str(e)}")
+    elif file:
+        if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
+            raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
+        contents = await file.read()
+        parsed = parse_excel_viajes_data(
+            file_bytes=contents,
+            sheet_name=sheet_name,
+            db=db,
+            asociacion_id=id
+        )
+        records_to_import = parsed["records"]
+    else:
+        raise HTTPException(status_code=400, detail="No se proporcionaron registros ni archivo Excel para importar.")
+
+    if not records_to_import:
+        raise HTTPException(status_code=400, detail="No hay registros válidos para importar.")
+
+    return execute_import_asociacion_multi_empresa(
+        records=records_to_import,
+        db=db,
+        asociacion_id=id,
+        overwrite_duplicates=overwrite_duplicates
+    )
+
+
+@router.post("/importar-con-asociacion")
+async def importar_con_asociacion(
+    nueva_asociacion_nombre: Optional[str] = Form(None),
+    nueva_asociacion_sigla: Optional[str] = Form(None),
+    asociacion_id: Optional[int] = Form(None),
+    overwrite_duplicates: bool = Form(False),
+    file: Optional[UploadFile] = File(None),
+    sheet_name: Optional[str] = Form(None),
+    edited_records_json: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    records_to_import = []
+    if edited_records_json:
+        try:
+            records_to_import = json.loads(edited_records_json)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Formato JSON inválido: {str(e)}")
+    elif file:
+        if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
+            raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
+        contents = await file.read()
+        parsed = parse_excel_viajes_data(
+            file_bytes=contents,
+            sheet_name=sheet_name,
+            db=db,
+            asociacion_id=asociacion_id
+        )
+        records_to_import = parsed["records"]
+    else:
+        raise HTTPException(status_code=400, detail="No se proporcionaron registros ni archivo Excel para importar.")
+
+    if not records_to_import:
+        raise HTTPException(status_code=400, detail="No hay registros válidos para importar.")
+
+    return execute_import_asociacion_multi_empresa(
+        records=records_to_import,
+        db=db,
+        asociacion_id=asociacion_id,
+        nueva_asociacion_nombre=nueva_asociacion_nombre,
+        nueva_asociacion_sigla=nueva_asociacion_sigla,
+        overwrite_duplicates=overwrite_duplicates
+    )
+
