@@ -223,7 +223,7 @@ async def get_global_excel_info(
             "success": True,
             "filename": file.filename,
             "sheets": sheets,
-            "default_sheet": sheets[0] if sheets else "",
+            "default_sheet": "__ALL__" if len(sheets) > 1 else (sheets[0] if sheets else ""),
             "suggested_company_name": suggested_name
         }
     except Exception as e:

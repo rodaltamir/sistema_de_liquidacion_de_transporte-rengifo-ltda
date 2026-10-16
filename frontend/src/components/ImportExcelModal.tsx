@@ -74,6 +74,8 @@ export interface ImportExcelModalProps {
 
 export interface PreviewRecord {
   fila: number;
+  hoja?: string;
+  fila_hoja?: number;
   empresa?: string;
   placa: string;
   tramo: string;
@@ -101,6 +103,7 @@ export interface PreviewRecord {
 
 interface SkippedDetail {
   fila: number;
+  hoja?: string;
   motivo: string;
 }
 
@@ -108,6 +111,12 @@ interface PreviewResponse {
   success: boolean;
   sheets: string[];
   selected_sheet: string;
+  hojas_procesadas?: Array<{
+    hoja: string;
+    viajes: number;
+    anio?: number | null;
+  }>;
+  total_hojas?: number;
   header_row: number;
   total_valid_rows: number;
   total_skipped_rows: number;
@@ -126,6 +135,7 @@ interface PreviewResponse {
     periodos_detectados: string[];
     total_placas_unicas: number;
     total_empresas_detectadas?: number;
+    total_hojas_procesadas?: number;
   };
 }
 
@@ -285,11 +295,8 @@ export default function ImportExcelModal({
 
         if (infoRes?.sheets && infoRes.sheets.length > 0) {
           setSheets(infoRes.sheets);
-          const reversed = [...infoRes.sheets].reverse();
-          const preferred = reversed.find((s: string) => s.includes("2026")) ||
-                          reversed.find((s: string) => s.includes("2025")) ||
-                          infoRes.default_sheet;
-          targetSheet = preferred || infoRes.sheets[0];
+          // Si el archivo contiene múltiples hojas (ej. 2024, 2025, 2026), consolidar todas por defecto
+          targetSheet = infoRes.default_sheet || (infoRes.sheets.length > 1 ? "__ALL__" : infoRes.sheets[0]);
           setSelectedSheet(targetSheet);
         }
 
@@ -953,16 +960,19 @@ export default function ImportExcelModal({
                   {sheets.length > 1 && (
                     <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-xl px-2.5 py-1.5">
                       <Layers className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="text-[11px] text-slate-400 font-semibold">Hoja:</span>
+                      <span className="text-[11px] text-slate-400 font-semibold">Hojas:</span>
                       <select
                         value={selectedSheet}
                         onChange={(e) => handleSheetChange(e.target.value)}
                         className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer"
                         disabled={isLoadingPreview || isImporting}
                       >
+                        <option value="__ALL__" className="bg-slate-900 text-emerald-400 font-bold">
+                          📑 Todas las Hojas ({sheets.length} consolidadas)
+                        </option>
                         {sheets.map((s) => (
                           <option key={s} value={s} className="bg-slate-900 text-white">
-                            {s}
+                            📄 Hoja: {s}
                           </option>
                         ))}
                       </select>
@@ -982,6 +992,28 @@ export default function ImportExcelModal({
                   >
                     Cambiar archivo
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* Desglose de Hojas Procesadas si hay más de 1 */}
+            {previewData?.hojas_procesadas && previewData.hojas_procesadas.length > 1 && (
+              <div className="p-3 bg-sky-500/10 border border-sky-500/25 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                  <span className="text-slate-200 font-bold">Hojas y Años Consolidados:</span>
+                  <span className="text-sky-300 font-mono font-bold">
+                    {previewData.hojas_procesadas.length} hojas procesadas
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {previewData.hojas_procesadas.map((h, idx) => (
+                    <span key={idx} className="px-2.5 py-1 rounded-lg bg-slate-900/90 border border-sky-500/30 text-sky-200 text-[11px] font-medium flex items-center gap-1.5 shadow-xs">
+                      <span className="font-bold text-white">{h.hoja}</span>
+                      <span className="text-sky-400 font-black">({h.viajes} despachos)</span>
+                    </span>
+                  ))}
                 </div>
               </div>
             )}
@@ -1651,7 +1683,12 @@ export default function ImportExcelModal({
 
                               {/* Fila */}
                               <td className="py-2 px-2 text-center text-slate-500 font-mono">
-                                {r.fila}
+                                <div className="font-bold">{r.fila}</div>
+                                {r.hoja && (
+                                  <span className="inline-block text-[8px] px-1 py-0.2 rounded bg-slate-800 text-sky-300 border border-slate-700 font-mono mt-0.5 whitespace-nowrap max-w-[80px] truncate" title={`Hoja original: ${r.hoja}`}>
+                                    {r.hoja}
+                                  </span>
+                                )}
                               </td>
 
                               {/* Empresa Editable */}

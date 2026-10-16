@@ -315,7 +315,7 @@ async def get_excel_info(
             "success": True,
             "filename": file.filename,
             "sheets": sheets,
-            "default_sheet": sheets[0] if sheets else ""
+            "default_sheet": "__ALL__" if len(sheets) > 1 else (sheets[0] if sheets else "")
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"No se pudo leer el archivo Excel: {str(e)}")

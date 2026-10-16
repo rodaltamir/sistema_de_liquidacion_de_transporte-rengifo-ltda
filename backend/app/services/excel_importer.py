@@ -167,225 +167,290 @@ def parse_excel_viajes_data(
     """
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
     sheets = list(wb.sheetnames)
-    target_sheet = sheet_name if sheet_name and sheet_name in sheets else sheets[0]
-    ws = wb[target_sheet]
 
-    # Tomar primeras 15 filas para detección de encabezados
-    sample_rows = []
-    for r in ws.iter_rows(values_only=True):
-        sample_rows.append(r)
-        if len(sample_rows) >= 15:
-            break
-
-    header_row_idx, col_map = detect_columns_and_header_row(sample_rows)
-
-    if not header_row_idx or "placa" not in col_map:
-        # Fallback a posiciones estándar si no detectó por nombres
-        if ws.max_column and ws.max_column >= 18:
-            header_row_idx = 4
-            col_map = {
-                "fecha_carga": 1,
-                "fecha_descarga": 2,
-                "mic_dta": 3,
-                "placa": 4,
-                "tramo": 5,
-                "cliente": 6,
-                "nro_factura": 7,
-                "fecha_factura": 8,
-                "producto": 9,
-                "vol_origen": 10,
-                "vol_recepcion": 11,
-                "vol_facturado": 16,
-                "tarifa": 17
-            }
-        else:
-            header_row_idx = 1
-            col_map = {
-                "empresa": 0,
-                "cliente": 1,
-                "producto": 2,
-                "planta_carga": 3,
-                "planta_descarga": 5,
-                "placa": 6,
-                "fecha_carga": 7,
-                "fecha_descarga": 8,
-                "vol_origen": 9,
-                "vol_recepcion": 10,
-                "vol_facturado": 15,
-                "tarifa": 16,
-                "importe_total": 17,
-                "fecha_factura": 18,
-                "nro_factura": 19,
-                "mic_dta": 20
-            }
+    # Determinación de hojas a procesar (soporta todas las hojas consolidadas)
+    if not sheet_name or sheet_name in ("__ALL__", "ALL", "TODAS", "todas"):
+        target_sheets = sheets
+        selected_sheet_display = "__ALL__"
+    elif sheet_name in sheets:
+        target_sheets = [sheet_name]
+        selected_sheet_display = sheet_name
+    elif "," in sheet_name:
+        target_sheets = [s.strip() for s in sheet_name.split(",") if s.strip() in sheets]
+        if not target_sheets:
+            target_sheets = sheets
+        selected_sheet_display = sheet_name
+    else:
+        target_sheets = [sheets[0]]
+        selected_sheet_display = sheets[0]
 
     valid_records: List[Dict[str, Any]] = []
     skipped_records: List[Dict[str, Any]] = []
     periodos_detectados = set()
     placas_detectadas = set()
+    hojas_procesadas_stats: List[Dict[str, Any]] = []
 
     total_vol_facturado_lt = 0.0
     total_flete_bs = 0.0
+    global_fila_counter = 0
 
-    # Iterar todas las filas
-    for r_idx, row in enumerate(ws.iter_rows(values_only=True), 1):
-        if r_idx <= header_row_idx:
+    for sheet_title in target_sheets:
+        ws = wb[sheet_title]
+
+        # Extraer año si la hoja tiene el año en su nombre (ej. V-2024 DRIVER, 2025, 2026)
+        year_match = re.search(r'\b(20\d\d)\b', sheet_title)
+        sheet_year = int(year_match.group(1)) if year_match else None
+
+        # Tomar primeras 15 filas para detección de encabezados
+        sample_rows = []
+        for r in ws.iter_rows(values_only=True):
+            sample_rows.append(r)
+            if len(sample_rows) >= 15:
+                break
+
+        if not sample_rows:
             continue
 
-        if not any(row):
-            continue
+        header_row_idx, col_map = detect_columns_and_header_row(sample_rows)
 
-        def get_c(key: str) -> Any:
-            idx = col_map.get(key)
-            if idx is not None and idx < len(row):
-                return row[idx]
-            return None
+        if not header_row_idx or "placa" not in col_map:
+            # Fallback a posiciones estándar si no detectó por nombres
+            if ws.max_column and ws.max_column >= 18:
+                header_row_idx = 4
+                col_map = {
+                    "fecha_carga": 1,
+                    "fecha_descarga": 2,
+                    "mic_dta": 3,
+                    "placa": 4,
+                    "tramo": 5,
+                    "cliente": 6,
+                    "nro_factura": 7,
+                    "fecha_factura": 8,
+                    "producto": 9,
+                    "vol_origen": 10,
+                    "vol_recepcion": 11,
+                    "vol_facturado": 16,
+                    "tarifa": 17
+                }
+            elif ws.max_column and ws.max_column >= 7:
+                header_row_idx = 1
+                col_map = {
+                    "empresa": 0,
+                    "cliente": 1,
+                    "producto": 2,
+                    "planta_carga": 3,
+                    "planta_descarga": 5,
+                    "placa": 6,
+                    "fecha_carga": 7,
+                    "fecha_descarga": 8,
+                    "vol_origen": 9,
+                    "vol_recepcion": 10,
+                    "vol_facturado": 15,
+                    "tarifa": 16,
+                    "importe_total": 17,
+                    "fecha_factura": 18,
+                    "nro_factura": 19,
+                    "mic_dta": 20
+                }
+            else:
+                # No es una hoja de despachos válida, omitirla
+                continue
 
-        placa_raw = clean_string(get_c("placa"))
-        empresa_raw = clean_string(get_c("empresa"))
-        cliente_raw = clean_string(get_c("cliente"))
-        producto_raw = clean_string(get_c("producto"))
-        planta_c = clean_string(get_c("planta_carga"))
-        planta_d = clean_string(get_c("planta_descarga"))
-        tramo_raw = clean_string(get_c("tramo"))
+        sheet_valid_count = 0
+        consecutive_empty = 0
 
-        vol_o_raw = clean_float(get_c("vol_origen"), 0.0)
-        vol_r_raw = clean_float(get_c("vol_recepcion"), 0.0)
-        vol_f_raw = clean_float(get_c("vol_facturado"), 0.0)
-        tarifa_raw = clean_float(get_c("tarifa"), 0.0)
-        importe_raw = clean_float(get_c("importe_total"), 0.0)
+        # Iterar filas de esta hoja
+        for r_idx, row in enumerate(ws.iter_rows(values_only=True), 1):
+            if r_idx <= header_row_idx:
+                continue
 
-        nro_fac_raw = clean_string(get_c("nro_factura"))
-        mic_raw = clean_string(get_c("mic_dta"))
+            # Verificación rápida de fin de datos (detiene escaneo de miles de celdas vacías)
+            if not any(c is not None and str(c).strip() != "" for c in row):
+                consecutive_empty += 1
+                if consecutive_empty >= 25:
+                    break
+                continue
+            consecutive_empty = 0
 
-        f_carga_raw = get_c("fecha_carga")
-        f_descarga_raw = get_c("fecha_descarga")
-        f_fac_raw = get_c("fecha_factura")
+            def get_c(key: str) -> Any:
+                idx = col_map.get(key)
+                if idx is not None and idx < len(row):
+                    return row[idx]
+                return None
 
-        # 1. Filtro de filas de resumen / subtotales o vacías
-        placa_upper = placa_raw.upper()
-        if not placa_upper or placa_upper in ("TOTAL", "SUBTOTAL", "RESUMEN", "GENERAL", "PROMEDIO"):
-            skipped_records.append({
-                "fila": r_idx,
-                "motivo": f"Fila de resumen o total ignorada ({placa_raw or 'Fila vacía'})"
-            })
-            continue
+            placa_raw = clean_string(get_c("placa"))
+            empresa_raw = clean_string(get_c("empresa"))
+            cliente_raw = clean_string(get_c("cliente"))
+            producto_raw = clean_string(get_c("producto"))
+            planta_c = clean_string(get_c("planta_carga"))
+            planta_d = clean_string(get_c("planta_descarga"))
+            tramo_raw = clean_string(get_c("tramo"))
 
-        if placa_upper in ("SIN PLACA", "FALTA PLACA") and vol_o_raw == 0 and vol_r_raw == 0:
-            skipped_records.append({
-                "fila": r_idx,
-                "motivo": f"Fila sin placa y sin volumen asignado ('{placa_raw}')"
-            })
-            continue
+            vol_o_raw = clean_float(get_c("vol_origen"), 0.0)
+            vol_r_raw = clean_float(get_c("vol_recepcion"), 0.0)
+            vol_f_raw = clean_float(get_c("vol_facturado"), 0.0)
+            tarifa_raw = clean_float(get_c("tarifa"), 0.0)
+            importe_raw = clean_float(get_c("importe_total"), 0.0)
 
-        # Normalizar placa
-        clean_placa = placa_upper.replace(" ", "")
+            nro_fac_raw = clean_string(get_c("nro_factura"))
+            mic_raw = clean_string(get_c("mic_dta"))
 
-        # 2. Tramo
-        if planta_c or planta_d:
-            orig = planta_c if planta_c and planta_c.upper() != "FALTA MIC" else ""
-            dest = planta_d if planta_d and planta_d.upper() != "FALTA MIC" else ""
-            if orig and dest:
-                clean_tramo = f"{orig} - {dest}".upper()
-            elif orig:
-                clean_tramo = orig.upper()
-            elif dest:
-                clean_tramo = dest.upper()
+            f_carga_raw = get_c("fecha_carga")
+            f_descarga_raw = get_c("fecha_descarga")
+            f_fac_raw = get_c("fecha_factura")
+
+            # 1. Filtro de filas de resumen / subtotales o vacías
+            placa_upper = placa_raw.upper()
+            if not placa_upper or placa_upper in ("TOTAL", "SUBTOTAL", "RESUMEN", "GENERAL", "PROMEDIO"):
+                skipped_records.append({
+                    "fila": r_idx,
+                    "hoja": sheet_title,
+                    "motivo": f"Fila de resumen o total ignorada ({placa_raw or 'Fila vacía'})"
+                })
+                continue
+
+            if placa_upper in ("SIN PLACA", "FALTA PLACA") and vol_o_raw == 0 and vol_r_raw == 0:
+                skipped_records.append({
+                    "fila": r_idx,
+                    "hoja": sheet_title,
+                    "motivo": f"Fila sin placa y sin volumen asignado ('{placa_raw}')"
+                })
+                continue
+
+            # Normalizar placa
+            clean_placa = placa_upper.replace(" ", "")
+
+            # 2. Tramo
+            if planta_c or planta_d:
+                orig = planta_c if planta_c and planta_c.upper() != "FALTA MIC" else ""
+                dest = planta_d if planta_d and planta_d.upper() != "FALTA MIC" else ""
+                if orig and dest:
+                    clean_tramo = f"{orig} - {dest}".upper()
+                elif orig:
+                    clean_tramo = orig.upper()
+                elif dest:
+                    clean_tramo = dest.upper()
+                else:
+                    clean_tramo = tramo_raw.upper() if tramo_raw else "TRAMO NO ESPECIFICADO"
             else:
                 clean_tramo = tramo_raw.upper() if tramo_raw else "TRAMO NO ESPECIFICADO"
-        else:
-            clean_tramo = tramo_raw.upper() if tramo_raw else "TRAMO NO ESPECIFICADO"
 
-        # 3. Cliente
-        clean_cliente = cliente_raw.upper() if cliente_raw else "YPFB"
+            # 3. Cliente
+            clean_cliente = cliente_raw.upper() if cliente_raw else "YPFB"
 
-        # 4. Producto
-        clean_prod = producto_raw.upper() if producto_raw else "DIESEL"
+            # 4. Producto
+            clean_prod = producto_raw.upper() if producto_raw else "DIESEL"
 
-        # 5. Fechas
-        date_fac = parse_date_value(f_fac_raw)
-        date_carga = parse_date_value(f_carga_raw)
-        date_descarga = parse_date_value(f_descarga_raw)
+            # 5. Fechas con inferencia inteligente de año según la hoja
+            date_fac = parse_date_value(f_fac_raw)
+            date_carga = parse_date_value(f_carga_raw)
+            date_descarga = parse_date_value(f_descarga_raw)
 
-        if not date_carga:
-            date_carga = date_descarga or date_fac or date.today()
-        if not date_descarga:
-            date_descarga = date_carga
+            if not date_carga:
+                if date_descarga:
+                    date_carga = date_descarga
+                elif date_fac:
+                    date_carga = date_fac
+                elif sheet_year:
+                    date_carga = date(sheet_year, 1, 1)
+                else:
+                    date_carga = date.today()
 
-        # 6. Volúmenes
-        vol_o = round(vol_o_raw, 1)
-        vol_r = round(vol_r_raw, 1)
+            if not date_descarga:
+                date_descarga = date_carga
 
-        # Volumen facturado: si viene en m3 (< 1000 y > 0), convertir a Litros
-        if 0 < vol_f_raw < 1000:
-            vol_f = round(vol_f_raw * 1000.0, 1)
-        elif vol_f_raw >= 1000:
-            vol_f = round(vol_f_raw, 1)
-        else:
-            vol_f = vol_r if vol_r > 0 else (vol_o if vol_o > 0 else 0.0)
+            # 6. Volúmenes
+            vol_o = round(vol_o_raw, 1)
+            vol_r = round(vol_r_raw, 1)
 
-        # 7. Tarifa y Flete
-        tarifa = tarifa_raw
-        if tarifa <= 0:
-            if importe_raw > 0 and vol_f > 0:
-                tarifa = round(importe_raw / (vol_f / 1000.0), 2)
+            if 0 < vol_f_raw < 1000:
+                vol_f = round(vol_f_raw * 1000.0, 1)
+            elif vol_f_raw >= 1000:
+                vol_f = round(vol_f_raw, 1)
             else:
-                tarifa = 392.00  # Default general
+                vol_f = vol_r if vol_r > 0 else (vol_o if vol_o > 0 else 0.0)
 
-        flete_calculado = round((vol_f / 1000.0) * tarifa, 2)
-        if importe_raw > 0 and abs(importe_raw - flete_calculado) <= 1.0:
-            flete_calculado = importe_raw
+            # 7. Tarifa y Flete
+            tarifa = tarifa_raw
+            if tarifa <= 0:
+                if importe_raw > 0 and vol_f > 0:
+                    tarifa = round(importe_raw / (vol_f / 1000.0), 2)
+                else:
+                    tarifa = 392.00
 
-        # 8. Período
-        periodo = determine_trip_period(date_carga, date_descarga)
-        periodos_detectados.add(periodo)
-        placas_detectadas.add(clean_placa)
+            flete_calculado = round((vol_f / 1000.0) * tarifa, 2)
+            if importe_raw > 0 and abs(importe_raw - flete_calculado) <= 1.0:
+                flete_calculado = importe_raw
 
-        # 9. Normalización de Empresa
-        clean_empresa = normalize_company_name(empresa_raw)
+            # 8. Período
+            if f_carga_raw and parse_date_value(f_carga_raw):
+                periodo = determine_trip_period(date_carga, date_descarga)
+            elif f_descarga_raw and parse_date_value(f_descarga_raw):
+                periodo = determine_trip_period(date_descarga, None)
+            elif sheet_year:
+                periodo = f"{sheet_year}-01"
+            else:
+                periodo = determine_trip_period(date_carga, date_descarga)
 
-        # 10. Validación de Completitud (Detección de Datos Faltantes)
-        clean_mic = mic_raw.upper().strip() if mic_raw and mic_raw.upper().strip() not in ("FALTA MIC", "SIN MIC", "NONE", "") else None
-        
-        missing_fields = []
-        if not clean_placa or clean_placa in ("SINPLACA", "FALTAPLACA", "NONE", ""):
-            missing_fields.append("Falta Placa")
-        if vol_f <= 0:
-            missing_fields.append("Volumen en 0")
-        if not clean_tramo or clean_tramo == "TRAMO NO ESPECIFICADO":
-            missing_fields.append("Falta Tramo")
+            periodos_detectados.add(periodo)
+            placas_detectadas.add(clean_placa)
 
-        is_incompleto = len(missing_fields) > 0
-        incompleto_reason = ", ".join(missing_fields) if is_incompleto else ""
+            # 9. Normalización de Empresa
+            clean_empresa = normalize_company_name(empresa_raw)
 
-        record = {
-            "fila": r_idx,
-            "empresa": clean_empresa,
-            "placa": clean_placa,
-            "tramo": clean_tramo,
-            "cliente": clean_cliente,
-            "producto": clean_prod,
-            "fecha_carga": date_carga.isoformat(),
-            "fecha_descarga": date_descarga.isoformat(),
-            "fecha_factura": date_fac.isoformat() if date_fac else None,
-            "nro_factura": nro_fac_raw if nro_fac_raw else None,
-            "mic_dta": clean_mic,
-            "volumen_origen_litros": vol_o,
-            "volumen_recepcionado_litros": vol_r,
-            "volumen_facturado": vol_f,
-            "volumen_facturado_m3": round(vol_f / 1000.0, 3),
-            "tarifa_flete": tarifa,
-            "tipo_tarifa": "BS_POR_M3",
-            "flete_total_bs": flete_calculado,
-            "periodo_mes": periodo,
-            "is_incompleto": is_incompleto,
-            "incompleto_reason": incompleto_reason,
-            "status": "INCOMPLETO" if is_incompleto else "LISTO"
-        }
+            # 10. Validación de Completitud
+            clean_mic = mic_raw.upper().strip() if mic_raw and mic_raw.upper().strip() not in ("FALTA MIC", "SIN MIC", "NONE", "") else None
 
-        valid_records.append(record)
-        total_vol_facturado_lt += vol_f
-        total_flete_bs += flete_calculado
+            missing_fields = []
+            if not clean_placa or clean_placa in ("SINPLACA", "FALTAPLACA", "NONE", ""):
+                missing_fields.append("Falta Placa")
+            if vol_f <= 0:
+                missing_fields.append("Volumen en 0")
+            if not clean_tramo or clean_tramo == "TRAMO NO ESPECIFICADO":
+                missing_fields.append("Falta Tramo")
+
+            is_incompleto = len(missing_fields) > 0
+            incompleto_reason = ", ".join(missing_fields) if is_incompleto else ""
+
+            global_fila_counter += 1
+            sheet_valid_count += 1
+
+            record = {
+                "fila": global_fila_counter,
+                "hoja": sheet_title,
+                "fila_hoja": r_idx,
+                "empresa": clean_empresa,
+                "placa": clean_placa,
+                "tramo": clean_tramo,
+                "cliente": clean_cliente,
+                "producto": clean_prod,
+                "fecha_carga": date_carga.isoformat(),
+                "fecha_descarga": date_descarga.isoformat(),
+                "fecha_factura": date_fac.isoformat() if date_fac else None,
+                "nro_factura": nro_fac_raw if nro_fac_raw else None,
+                "mic_dta": clean_mic,
+                "volumen_origen_litros": vol_o,
+                "volumen_recepcionado_litros": vol_r,
+                "volumen_facturado": vol_f,
+                "volumen_facturado_m3": round(vol_f / 1000.0, 3),
+                "tarifa_flete": tarifa,
+                "tipo_tarifa": "BS_POR_M3",
+                "flete_total_bs": flete_calculado,
+                "periodo_mes": periodo,
+                "is_incompleto": is_incompleto,
+                "incompleto_reason": incompleto_reason,
+                "status": "INCOMPLETO" if is_incompleto else "LISTO"
+            }
+
+            valid_records.append(record)
+            total_vol_facturado_lt += vol_f
+            total_flete_bs += flete_calculado
+
+        hojas_procesadas_stats.append({
+            "hoja": sheet_title,
+            "viajes": sheet_valid_count,
+            "anio": sheet_year
+        })
 
     wb.close()
 
@@ -456,8 +521,9 @@ def parse_excel_viajes_data(
     return {
         "success": True,
         "sheets": sheets,
-        "selected_sheet": target_sheet,
-        "header_row": header_row_idx,
+        "selected_sheet": selected_sheet_display,
+        "hojas_procesadas": hojas_procesadas_stats,
+        "total_hojas": len(sheets),
         "total_valid_rows": len(valid_records),
         "total_skipped_rows": len(skipped_records),
         "records": preview_items,
@@ -473,7 +539,8 @@ def parse_excel_viajes_data(
             "total_flete_bs": round(total_flete_bs, 2),
             "periodos_detectados": sorted(list(periodos_detectados)),
             "total_placas_unicas": len(valid_placas),
-            "total_empresas_detectadas": len(empresas_detectadas_list)
+            "total_empresas_detectadas": len(empresas_detectadas_list),
+            "total_hojas_procesadas": len(hojas_procesadas_stats)
         }
     }
 
