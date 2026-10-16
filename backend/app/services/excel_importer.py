@@ -204,26 +204,6 @@ def parse_excel_viajes_data(
     total_vol_facturado_lt = 0.0
     total_flete_bs = 0.0
 
-    # Cache de viajes existentes para detección de duplicados
-    existing_mics = set()
-    existing_trips = set()
-    if session:
-        try:
-            mics_db = session.query(Viaje.mic_dta).filter(Viaje.mic_dta.isnot(None), Viaje.mic_dta != "").all()
-            existing_mics = {str(m[0]).strip().upper() for m in mics_db if m[0]}
-
-            trips_db = session.query(
-                Viaje.placa, Viaje.fecha_carga, Viaje.fecha_descarga, Viaje.volumen_recepcionado_litros
-            ).all()
-            for t in trips_db:
-                if t[0] and t[1] and t[2]:
-                    existing_trips.add((str(t[0]).strip().upper(), t[1], t[2], round(float(t[3] or 0), 1)))
-        except Exception as e:
-            print("Error cargando cache de duplicados:", e)
-
-    seen_mics_in_file = set()
-    seen_trips_in_file = set()
-
     # Iterar todas las filas
     for r_idx, row in enumerate(ws.iter_rows(values_only=True), 1):
         if r_idx <= header_row_idx:
@@ -337,32 +317,19 @@ def parse_excel_viajes_data(
         periodos_detectados.add(periodo)
         placas_detectadas.add(clean_placa)
 
-        # 9. Detección de Duplicados
+        # 9. Validación de Completitud (Detección de Datos Faltantes)
         clean_mic = mic_raw.upper().strip() if mic_raw and mic_raw.upper().strip() not in ("FALTA MIC", "SIN MIC", "NONE", "") else None
-        is_dup_system = False
-        dup_reason = ""
+        
+        missing_fields = []
+        if not clean_placa or clean_placa in ("SINPLACA", "FALTAPLACA", "NONE", ""):
+            missing_fields.append("Falta Placa")
+        if vol_f <= 0:
+            missing_fields.append("Volumen en 0")
+        if not clean_tramo or clean_tramo == "TRAMO NO ESPECIFICADO":
+            missing_fields.append("Falta Tramo")
 
-        if clean_mic and clean_mic in existing_mics:
-            is_dup_system = True
-            dup_reason = f"MIC/DTA '{clean_mic}' ya registrado en el sistema"
-        else:
-            trip_key = (clean_placa, date_carga, date_descarga, round(vol_r, 1))
-            if trip_key in existing_trips:
-                is_dup_system = True
-                dup_reason = f"Viaje de {clean_placa} del {date_carga} a {date_descarga} ({vol_r} L) ya existe en el sistema"
-
-        is_dup_in_file = False
-        if clean_mic:
-            if clean_mic in seen_mics_in_file:
-                is_dup_in_file = True
-                dup_reason = f"MIC/DTA '{clean_mic}' repetido en el archivo"
-            seen_mics_in_file.add(clean_mic)
-        else:
-            trip_file_key = (clean_placa, date_carga, date_descarga, round(vol_r, 1))
-            if trip_file_key in seen_trips_in_file:
-                is_dup_in_file = True
-                dup_reason = f"Registro idéntico repetido en el archivo ({clean_placa}, {date_carga})"
-            seen_trips_in_file.add(trip_file_key)
+        is_incompleto = len(missing_fields) > 0
+        incompleto_reason = ", ".join(missing_fields) if is_incompleto else ""
 
         record = {
             "fila": r_idx,
@@ -383,10 +350,9 @@ def parse_excel_viajes_data(
             "tipo_tarifa": "BS_POR_M3",
             "flete_total_bs": flete_calculado,
             "periodo_mes": periodo,
-            "is_duplicate_system": is_dup_system,
-            "is_duplicate_file": is_dup_in_file,
-            "duplicate_reason": dup_reason,
-            "status": "DUPLICADO" if (is_dup_system or is_dup_in_file) else "VALIDO"
+            "is_incompleto": is_incompleto,
+            "incompleto_reason": incompleto_reason,
+            "status": "INCOMPLETO" if is_incompleto else "LISTO"
         }
 
         valid_records.append(record)
@@ -396,6 +362,8 @@ def parse_excel_viajes_data(
     wb.close()
 
     preview_items = valid_records[:max_preview_records] if max_preview_records else valid_records
+
+    valid_placas = [p for p in placas_detectadas if p and p not in ("SINPLACA", "FALTAPLACA", "TOTAL")]
 
     return {
         "success": True,
@@ -408,13 +376,13 @@ def parse_excel_viajes_data(
         "skipped_details": skipped_records[:50],
         "summary": {
             "total_viajes": len(valid_records),
-            "viajes_nuevos": sum(1 for r in valid_records if not r["is_duplicate_system"] and not r["is_duplicate_file"]),
-            "viajes_duplicados": sum(1 for r in valid_records if r["is_duplicate_system"] or r["is_duplicate_file"]),
+            "viajes_listos": sum(1 for r in valid_records if not r.get("is_incompleto")),
+            "viajes_incompletos": sum(1 for r in valid_records if r.get("is_incompleto")),
             "total_volumen_litros": round(total_vol_facturado_lt, 1),
             "total_volumen_m3": round(total_vol_facturado_lt / 1000.0, 3),
             "total_flete_bs": round(total_flete_bs, 2),
             "periodos_detectados": sorted(list(periodos_detectados)),
-            "total_placas_unicas": len(placas_detectadas)
+            "total_placas_unicas": len(valid_placas)
         }
     }
 
@@ -472,53 +440,10 @@ def execute_import_viajes(
             producto = clean_string(rec.get("producto")) or "DIESEL"
             nro_fac = clean_string(rec.get("nro_factura")) or None
 
-            # Detección de duplicado existente
+            # Si el registro especifica un ID existente de viaje, se actualiza
             existing_viaje = None
-            if mic_str:
-                existing_viaje = session.query(Viaje).filter(Viaje.mic_dta == mic_str).first()
-            if not existing_viaje:
-                existing_viaje = session.query(Viaje).filter(
-                    Viaje.placa == placa,
-                    Viaje.fecha_carga == date_carga,
-                    Viaje.fecha_descarga == date_descarga,
-                    Viaje.volumen_recepcionado_litros == vol_r
-                ).first()
-
-            if existing_viaje:
-                if not overwrite_duplicates:
-                    viajes_omitidos += 1
-                    continue
-                else:
-                    calc = calculate_viaje_values(
-                        volumen_origen_litros=vol_o,
-                        volumen_recepcionado_litros=vol_r,
-                        producto=producto,
-                        tarifa_flete=tarifa,
-                        tipo_tarifa=tipo_t,
-                        params=params,
-                        volumen_facturado=vol_f
-                    )
-                    existing_viaje.tramo = tramo
-                    existing_viaje.cliente = cliente
-                    existing_viaje.producto = producto
-                    if nro_fac:
-                        existing_viaje.nro_factura = nro_fac
-                    if date_fac:
-                        existing_viaje.fecha_factura = date_fac
-                    existing_viaje.volumen_origen_litros = vol_o
-                    existing_viaje.volumen_recepcionado_litros = vol_r
-                    existing_viaje.volumen_facturado = calc["volumen_facturado"]
-                    existing_viaje.merma_real_litros = calc["merma_real_litros"]
-                    existing_viaje.tolerancia_pct = calc["tolerancia_pct"]
-                    existing_viaje.merma_tolerable_litros = calc["merma_tolerable_litros"]
-                    existing_viaje.merma_excedente_litros = calc["merma_excedente_litros"]
-                    existing_viaje.precio_merma_litro_bs = calc["precio_merma_litro_bs"]
-                    existing_viaje.merma_descontar_bs = calc["merma_descontar_bs"]
-                    existing_viaje.tarifa_flete = tarifa
-                    existing_viaje.flete_total_bs = calc["flete_total_bs"]
-                    viajes_actualizados += 1
-                    periodos_detectados.add(existing_viaje.periodo_mes)
-                    continue
+            if rec.get("id"):
+                existing_viaje = session.query(Viaje).filter(Viaje.id == rec["id"]).first()
 
             # Crear o verificar unidad
             u = unidades_cache.get(placa)
@@ -548,6 +473,35 @@ def execute_import_viajes(
 
             periodo = determine_trip_period(date_carga, date_descarga)
             periodos_detectados.add(periodo)
+
+            if existing_viaje:
+                existing_viaje.placa = placa
+                existing_viaje.unidad_id = u.id
+                existing_viaje.tramo = tramo
+                existing_viaje.cliente = cliente
+                existing_viaje.producto = producto
+                existing_viaje.fecha_carga = date_carga
+                existing_viaje.fecha_descarga = date_descarga
+                existing_viaje.periodo_mes = periodo
+                if nro_fac:
+                    existing_viaje.nro_factura = nro_fac
+                if date_fac:
+                    existing_viaje.fecha_factura = date_fac
+                if mic_str:
+                    existing_viaje.mic_dta = mic_str
+                existing_viaje.volumen_origen_litros = vol_o
+                existing_viaje.volumen_recepcionado_litros = vol_r
+                existing_viaje.volumen_facturado = calc["volumen_facturado"]
+                existing_viaje.merma_real_litros = calc["merma_real_litros"]
+                existing_viaje.tolerancia_pct = calc["tolerancia_pct"]
+                existing_viaje.merma_tolerable_litros = calc["merma_tolerable_litros"]
+                existing_viaje.merma_excedente_litros = calc["merma_excedente_litros"]
+                existing_viaje.precio_merma_litro_bs = calc["precio_merma_litro_bs"]
+                existing_viaje.merma_descontar_bs = calc["merma_descontar_bs"]
+                existing_viaje.tarifa_flete = tarifa
+                existing_viaje.flete_total_bs = calc["flete_total_bs"]
+                viajes_actualizados += 1
+                continue
 
             nuevo_viaje = Viaje(
                 mic_dta=mic_str,

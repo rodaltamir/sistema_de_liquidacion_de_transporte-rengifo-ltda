@@ -74,10 +74,9 @@ export interface PreviewRecord {
   tipo_tarifa: string;
   flete_total_bs: number;
   periodo_mes: string;
-  is_duplicate_system: boolean;
-  is_duplicate_file: boolean;
-  duplicate_reason?: string;
-  status: "VALIDO" | "DUPLICADO";
+  is_incompleto?: boolean;
+  incompleto_reason?: string;
+  status: "LISTO" | "INCOMPLETO";
   included?: boolean;
   isEdited?: boolean;
 }
@@ -99,8 +98,8 @@ interface PreviewResponse {
   suggested_company_name?: string;
   summary: {
     total_viajes: number;
-    viajes_nuevos: number;
-    viajes_duplicados: number;
+    viajes_listos: number;
+    viajes_incompletos: number;
     total_volumen_litros: number;
     total_volumen_m3: number;
     total_flete_bs: number;
@@ -134,9 +133,8 @@ export default function ImportExcelModal({
   
   // Registros interactivos editables
   const [editableRecords, setEditableRecords] = useState<PreviewRecord[]>([]);
-  const [overwriteDuplicates, setOverwriteDuplicates] = useState(false);
   const [showSkipped, setShowSkipped] = useState(false);
-  const [tableFilter, setTableFilter] = useState<"all" | "selected" | "duplicates" | "missing_placa">("all");
+  const [tableFilter, setTableFilter] = useState<"all" | "ready" | "incomplete">("all");
   const [tableSearch, setTableSearch] = useState("");
 
   // Opciones de Destino para Modo Global
@@ -382,6 +380,30 @@ export default function ImportExcelModal({
         r.included = Boolean(val);
       }
 
+      // Reevaluación inmediata de completitud en caliente
+      const cleanP = (r.placa || "").trim().toUpperCase().replace(/\s+/g, "");
+      const isMissingPlaca = !cleanP || ["SINPLACA", "FALTAPLACA", "TOTAL", "SUBTOTAL", "NONE"].includes(cleanP);
+      const isMissingVol = (r.volumen_facturado || 0) <= 0;
+      const isMissingTramo = !r.tramo || r.tramo.trim() === "";
+
+      if (isMissingPlaca) {
+        r.is_incompleto = true;
+        r.incompleto_reason = "Falta placa del camión";
+        r.status = "INCOMPLETO";
+      } else if (isMissingVol) {
+        r.is_incompleto = true;
+        r.incompleto_reason = "Volumen debe ser mayor a 0";
+        r.status = "INCOMPLETO";
+      } else if (isMissingTramo) {
+        r.is_incompleto = true;
+        r.incompleto_reason = "Falta especificar tramo";
+        r.status = "INCOMPLETO";
+      } else {
+        r.is_incompleto = false;
+        r.incompleto_reason = undefined;
+        r.status = "LISTO";
+      }
+
       r.isEdited = true;
       next[index] = r;
       return next;
@@ -392,11 +414,17 @@ export default function ImportExcelModal({
     setEditableRecords(prev => prev.map(r => ({ ...r, included })));
   };
 
-  const excludeDuplicates = () => {
-    setEditableRecords(prev => prev.map(r => ({
-      ...r,
-      included: !(r.is_duplicate_system || r.is_duplicate_file)
-    })));
+  const selectOnlyReady = () => {
+    setEditableRecords(prev => prev.map(r => {
+      const cleanP = (r.placa || "").trim().toUpperCase().replace(/\s+/g, "");
+      const isMissingPlaca = !cleanP || ["SINPLACA", "FALTAPLACA", "TOTAL", "SUBTOTAL", "NONE"].includes(cleanP);
+      const isMissingVol = (r.volumen_facturado || 0) <= 0;
+      const isIncomplete = r.is_incompleto || r.status === "INCOMPLETO" || isMissingPlaca || isMissingVol;
+      return {
+        ...r,
+        included: !isIncomplete
+      };
+    }));
   };
 
   // Cálculos dinámicos de métricas sobre despachos incluidos
@@ -409,22 +437,30 @@ export default function ImportExcelModal({
     let totalVol = 0;
     let totalFlete = 0;
     const placas = new Set<string>();
+    let incompletosCount = 0;
+    let listosCount = 0;
     let missingPlacas = 0;
-    let dupCount = 0;
     const periodos = new Set<string>();
 
     includedRecords.forEach(r => {
       totalVol += (r.volumen_facturado || 0);
       totalFlete += (r.flete_total_bs || 0);
-      const cleanP = (r.placa || "").trim().toUpperCase();
-      if (!cleanP || cleanP === "SIN PLACA" || cleanP === "FALTA PLACA" || cleanP === "TOTAL") {
+      const cleanP = (r.placa || "").trim().toUpperCase().replace(/\s+/g, "");
+      const isMissingP = !cleanP || ["SINPLACA", "FALTAPLACA", "TOTAL", "SUBTOTAL", "NONE"].includes(cleanP);
+      const isMissingVol = (r.volumen_facturado || 0) <= 0;
+
+      if (isMissingP) {
         missingPlacas++;
       } else {
         placas.add(cleanP);
       }
-      if (r.is_duplicate_system || r.is_duplicate_file) {
-        dupCount++;
+
+      if (r.is_incompleto || r.status === "INCOMPLETO" || isMissingP || isMissingVol) {
+        incompletosCount++;
+      } else {
+        listosCount++;
       }
+
       if (r.periodo_mes) {
         periodos.add(r.periodo_mes);
       }
@@ -432,26 +468,27 @@ export default function ImportExcelModal({
 
     return {
       totalViajes,
+      listosCount,
+      incompletosCount,
       totalVolumenLitros: Math.round(totalVol * 10) / 10,
       totalVolumenM3: Math.round((totalVol / 1000.0) * 1000) / 1000,
       totalFleteBs: Math.round(totalFlete * 100) / 100,
       totalPlacas: placas.size,
       missingPlacas,
-      dupCount,
       periodos: Array.from(periodos).sort()
     };
   }, [includedRecords]);
 
   // Filtro de la tabla
   const filteredRecords = useMemo(() => {
-    return editableRecords.filter((r, idx) => {
-      // Filtro de pestaña
-      if (tableFilter === "selected" && !r.included) return false;
-      if (tableFilter === "duplicates" && !(r.is_duplicate_system || r.is_duplicate_file)) return false;
-      if (tableFilter === "missing_placa") {
-        const p = (r.placa || "").trim().toUpperCase();
-        if (p && p !== "SIN PLACA" && p !== "FALTA PLACA" && p !== "TOTAL") return false;
-      }
+    return editableRecords.filter((r) => {
+      const cleanP = (r.placa || "").trim().toUpperCase().replace(/\s+/g, "");
+      const isMissingP = !cleanP || ["SINPLACA", "FALTAPLACA", "TOTAL", "SUBTOTAL", "NONE"].includes(cleanP);
+      const isMissingVol = (r.volumen_facturado || 0) <= 0;
+      const isIncomplete = r.is_incompleto || r.status === "INCOMPLETO" || isMissingP || isMissingVol;
+
+      if (tableFilter === "ready" && isIncomplete) return false;
+      if (tableFilter === "incomplete" && !isIncomplete) return false;
 
       // Buscador
       if (tableSearch.trim()) {
@@ -460,7 +497,9 @@ export default function ImportExcelModal({
         const tMatch = r.tramo?.toLowerCase().includes(q);
         const fMatch = r.nro_factura?.toLowerCase().includes(q);
         const mMatch = r.mic_dta?.toLowerCase().includes(q);
-        if (!pMatch && !tMatch && !fMatch && !mMatch) return false;
+        const cMatch = r.cliente?.toLowerCase().includes(q);
+        const prodMatch = r.producto?.toLowerCase().includes(q);
+        if (!pMatch && !tMatch && !fMatch && !mMatch && !cMatch && !prodMatch) return false;
       }
 
       return true;
@@ -481,20 +520,20 @@ export default function ImportExcelModal({
       return;
     }
 
-    if (dynamicSummary.missingPlacas > 0) {
-      const missingPrompt = await Swal.fire({
+    if (dynamicSummary.incompletosCount > 0) {
+      const incompletePrompt = await Swal.fire({
         icon: "warning",
-        title: "Despachos sin Placa Detectados",
-        html: `Hay <b>${dynamicSummary.missingPlacas}</b> despacho(s) marcados que no tienen una placa válida asignada.<br/><br/><span class="text-xs text-slate-400">Puedes escribir la placa directamente en la tabla o desmarcarlos. Si continúas, las filas sin placa serán omitidas.</span>`,
+        title: "Despachos Incompletos Detectados",
+        html: `Hay <b>${dynamicSummary.incompletosCount}</b> despacho(s) marcados con datos incompletos (como falta de placa o volumen).<br/><br/><span class="text-xs text-slate-400">Puedes completar la placa o volumen directamente en la tabla antes de importar. Las filas sin placa válida no se registrarán.</span>`,
         showCancelButton: true,
-        confirmButtonText: "Continuar de todos modos",
-        cancelButtonText: "Volver y corregir",
+        confirmButtonText: "Importar de todos modos",
+        cancelButtonText: "Volver y completar datos",
         confirmButtonColor: "#f59e0b",
         cancelButtonColor: "#334155",
         background: "#0f172a",
         color: "#f8fafc"
       });
-      if (!missingPrompt.isConfirmed) return;
+      if (!incompletePrompt.isConfirmed) return;
     }
 
     // Si está en globalMode y elige crear nueva empresa, validar nombre
@@ -531,12 +570,9 @@ export default function ImportExcelModal({
         <p>Se importarán <b>${dynamicSummary.totalViajes}</b> despachos con un flete total de <b>${formatCurrency(dynamicSummary.totalFleteBs)}</b>.</p>
         ${globalMode ? `<p class="text-amber-400 font-semibold">• Destino: ${importMode === 'create_new' ? `Crear Empresa '${targetEmpresaDisplay}'` : `Empresa existente '${targetEmpresaDisplay}'`}</p>` : ''}
         <p>• Cisternas identificadas: <b>${dynamicSummary.totalPlacas}</b></p>
+        <p>• Despachos listos: <b class="text-emerald-400">${dynamicSummary.listosCount}</b></p>
+        ${dynamicSummary.incompletosCount > 0 ? `<p class="text-amber-400">• Despachos incompletos: <b>${dynamicSummary.incompletosCount}</b></p>` : ''}
         <p>• Períodos: <b>${dynamicSummary.periodos.join(", ") || "General"}</b></p>
-        ${dynamicSummary.dupCount > 0 ? (
-          overwriteDuplicates
-            ? `<p class="text-amber-400">• ${dynamicSummary.dupCount} viajes existentes serán actualizados.</p>`
-            : `<p class="text-sky-400">• ${dynamicSummary.dupCount} viajes ya registrados serán omitidos.</p>`
-        ) : ''}
       </div>
     `;
 
@@ -558,7 +594,6 @@ export default function ImportExcelModal({
     setIsImporting(true);
     try {
       const formPayload = new FormData();
-      formPayload.append("overwrite_duplicates", overwriteDuplicates ? "true" : "false");
       formPayload.append("edited_records_json", JSON.stringify(includedRecords));
 
       let res: any;
@@ -600,12 +635,12 @@ export default function ImportExcelModal({
         title: "¡Importación Exitosa!",
         html: `
           <div class="space-y-3 text-left text-xs text-slate-300">
-            <p class="font-bold text-sm text-emerald-400">${res.message || "Despachos registrados correctamente."}</p>
+            <p class="font-bold text-sm text-emerald-400">${res.message || "Despachos registrados correctamente en el sistema."}</p>
             <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
               ${finalName ? `<div>• <b>Empresa:</b> <span class="text-amber-400">${finalName}</span></div>` : ''}
-              <div>• <b>Viajes Nuevos:</b> ${res.total_importados}</div>
-              <div>• <b>Viajes Actualizados:</b> ${res.total_actualizados}</div>
-              <div>• <b>Duplicados Omitidos:</b> ${res.total_omitidos}</div>
+              <div>• <b>Viajes Importados:</b> ${res.total_importados}</div>
+              <div>• <b>Cisternas Involucradas:</b> ${dynamicSummary.totalPlacas}</div>
+              <div>• <b>Flete Total:</b> ${formatCurrency(dynamicSummary.totalFleteBs)}</div>
               <div>• <b>Períodos:</b> ${res.periodos_detectados?.join(", ") || "General"}</div>
             </div>
           </div>
@@ -794,7 +829,7 @@ export default function ImportExcelModal({
               <div className="py-12 text-center space-y-3">
                 <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin mx-auto" />
                 <p className="text-sm font-semibold text-slate-300">
-                  Analizando estructura, conciliando volúmenes y detectando duplicados...
+                  Analizando estructura, conciliando volúmenes y verificando calidad de datos...
                 </p>
                 <p className="text-xs text-slate-500">
                   Lectura en flujo ultra-rápida sin sobrecarga de memoria.
@@ -1058,39 +1093,43 @@ export default function ImportExcelModal({
                     </p>
                   </div>
 
-                  {/* Acción 4: Duplicados */}
+                  {/* Acción 4: Validación de Calidad */}
                   <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 space-y-1">
-                    <div className="flex items-center gap-2 font-bold text-purple-400">
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Control de Duplicidad</span>
+                    <div className="flex items-center gap-2 font-bold text-emerald-400">
+                      {dynamicSummary.incompletosCount === 0 ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-amber-400" />
+                      )}
+                      <span>Validación de Calidad</span>
                     </div>
                     <p className="text-slate-300 text-[11px] leading-relaxed">
-                      {overwriteDuplicates 
-                        ? `Actualizar datos de los ${dynamicSummary.dupCount} viajes repetidos.`
-                        : `Omitir automáticamente los ${dynamicSummary.dupCount} viajes ya registrados.`
+                      {dynamicSummary.incompletosCount === 0
+                        ? "100% de datos completos. Todos los despachos cuentan con placa, volumen y tramo listos para facturar."
+                        : `${dynamicSummary.incompletosCount} despacho(s) con datos incompletos. Puedes completarlos directamente en la tabla antes de importar.`
                       }
                     </p>
                   </div>
                 </div>
 
-                {/* Control de Duplicados & Alerta de Faltantes */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-slate-800">
-                  <label className="flex items-center gap-2.5 cursor-pointer select-none text-xs">
-                    <input
-                      type="checkbox"
-                      checked={overwriteDuplicates}
-                      onChange={(e) => setOverwriteDuplicates(e.target.checked)}
-                      className="rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-amber-500 w-4 h-4"
-                    />
-                    <span className="text-slate-200 font-semibold">
-                      Sobrescribir datos de viajes duplicados (si ya figuran en la base de datos)
+                {/* Barra Informativa de Integridad de Datos */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-slate-800 text-xs">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Info className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                    <span>
+                      Todos los despachos del archivo serán importados. Puedes editar cualquier celda haciendo clic sobre ella.
                     </span>
-                  </label>
+                  </div>
 
-                  {dynamicSummary.missingPlacas > 0 && (
+                  {dynamicSummary.incompletosCount > 0 ? (
                     <span className="text-xs text-amber-400 font-bold flex items-center gap-1.5 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
                       <AlertTriangle className="w-3.5 h-3.5" />
-                      {dynamicSummary.missingPlacas} despachos sin placa (puedes editarlos en la tabla)
+                      {dynamicSummary.incompletosCount} despacho(s) incompletos detectados
+                    </span>
+                  ) : (
+                    <span className="text-xs text-emerald-400 font-bold flex items-center gap-1.5 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Todos los datos completos y listos
                     </span>
                   )}
                 </div>
@@ -1104,43 +1143,35 @@ export default function ImportExcelModal({
                 {/* Cabecera de la tabla y controles de filtro */}
                 <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
                   {/* Pestañas de estado */}
-                  <div className="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 overflow-x-auto text-xs font-bold">
+                  <div className="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 overflow-x-auto text-xs font-bold gap-1">
                     <button
                       type="button"
                       onClick={() => setTableFilter("all")}
                       className={`px-3 py-1.5 rounded-lg transition ${
-                        tableFilter === "all" ? "bg-amber-500 text-slate-950 shadow-xs" : "text-slate-400 hover:text-white"
+                        tableFilter === "all" ? "bg-amber-500 text-slate-950 shadow-xs font-black" : "text-slate-400 hover:text-white"
                       }`}
                     >
                       Todos ({editableRecords.length})
                     </button>
                     <button
                       type="button"
-                      onClick={() => setTableFilter("selected")}
+                      onClick={() => setTableFilter("ready")}
                       className={`px-3 py-1.5 rounded-lg transition ${
-                        tableFilter === "selected" ? "bg-emerald-500 text-slate-950 shadow-xs" : "text-slate-400 hover:text-white"
+                        tableFilter === "ready" ? "bg-emerald-500 text-slate-950 shadow-xs font-black" : "text-emerald-400 hover:text-emerald-300"
                       }`}
                     >
-                      Listos ({dynamicSummary.totalViajes})
+                      Listos ({dynamicSummary.listosCount})
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setTableFilter("duplicates")}
-                      className={`px-3 py-1.5 rounded-lg transition ${
-                        tableFilter === "duplicates" ? "bg-amber-500 text-slate-950 shadow-xs" : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      Duplicados ({dynamicSummary.dupCount})
-                    </button>
-                    {dynamicSummary.missingPlacas > 0 && (
+                    {dynamicSummary.incompletosCount > 0 && (
                       <button
                         type="button"
-                        onClick={() => setTableFilter("missing_placa")}
-                        className={`px-3 py-1.5 rounded-lg transition ${
-                          tableFilter === "missing_placa" ? "bg-rose-500 text-white shadow-xs" : "text-rose-400 hover:text-rose-300"
+                        onClick={() => setTableFilter("incomplete")}
+                        className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+                          tableFilter === "incomplete" ? "bg-amber-500 text-slate-950 shadow-xs font-black" : "text-amber-400 hover:text-amber-300"
                         }`}
                       >
-                        Sin Placa ({dynamicSummary.missingPlacas})
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Incompletos ({dynamicSummary.incompletosCount})
                       </button>
                     )}
                   </div>
@@ -1172,13 +1203,14 @@ export default function ImportExcelModal({
                     >
                       Desmarcar Todos
                     </button>
-                    {dynamicSummary.dupCount > 0 && (
+                    {dynamicSummary.incompletosCount > 0 && (
                       <button
                         type="button"
-                        onClick={excludeDuplicates}
-                        className="px-2.5 py-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-[11px] font-semibold transition"
+                        onClick={selectOnlyReady}
+                        className="px-2.5 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-[11px] font-semibold transition"
+                        title="Seleccionar solo los despachos con todos los datos completos"
                       >
-                        Excluir Duplicados
+                        Solo Listos
                       </button>
                     )}
                   </div>
@@ -1219,9 +1251,11 @@ export default function ImportExcelModal({
                       ) : (
                         filteredRecords.map((r) => {
                           const originalIdx = editableRecords.findIndex(x => x.fila === r.fila);
-                          const isDup = r.is_duplicate_system || r.is_duplicate_file;
-                          const cleanP = (r.placa || "").trim().toUpperCase();
-                          const isMissingPlaca = !cleanP || cleanP === "SIN PLACA" || cleanP === "FALTA PLACA" || cleanP === "TOTAL";
+                          const cleanP = (r.placa || "").trim().toUpperCase().replace(/\s+/g, "");
+                          const isMissingPlaca = !cleanP || ["SINPLACA", "FALTAPLACA", "TOTAL", "SUBTOTAL", "NONE"].includes(cleanP);
+                          const isMissingVol = (r.volumen_facturado || 0) <= 0;
+                          const isMissingTramo = !r.tramo || r.tramo.trim() === "";
+                          const isIncomplete = r.is_incompleto || r.status === "INCOMPLETO" || isMissingPlaca || isMissingVol || isMissingTramo;
 
                           return (
                             <tr
@@ -1229,7 +1263,7 @@ export default function ImportExcelModal({
                               className={`transition ${
                                 !r.included
                                   ? "opacity-40 bg-slate-950/40"
-                                  : isDup
+                                  : isIncomplete
                                   ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08]"
                                   : "hover:bg-slate-800/30"
                               }`}
@@ -1259,9 +1293,9 @@ export default function ImportExcelModal({
                                     placeholder="Placa..."
                                     className={`w-full px-2 py-1 bg-slate-900 border rounded-lg font-mono font-bold text-xs uppercase focus:outline-none transition ${
                                       isMissingPlaca
-                                        ? "border-rose-500 text-rose-300 placeholder-rose-500/50 bg-rose-500/10"
+                                        ? "border-rose-500 text-rose-300 placeholder-rose-500/50 bg-rose-500/10 focus:border-rose-400"
                                         : r.isEdited
-                                        ? "border-emerald-500 text-emerald-300"
+                                        ? "border-emerald-500 text-emerald-300 focus:border-emerald-400"
                                         : "border-slate-700 text-amber-300 focus:border-amber-400"
                                     }`}
                                   />
@@ -1353,16 +1387,23 @@ export default function ImportExcelModal({
 
                               {/* Estado */}
                               <td className="py-2 px-3 text-center whitespace-nowrap">
-                                {isDup ? (
-                                  <span
-                                    className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30"
-                                    title={r.duplicate_reason || "Ya existe en el sistema"}
-                                  >
-                                    Duplicado
-                                  </span>
+                                {isIncomplete ? (
+                                  <div className="flex flex-col items-center">
+                                    <span
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                                      title={r.incompleto_reason || (isMissingPlaca ? "Falta placa del camión" : isMissingVol ? "Volumen en 0" : "Datos incompletos")}
+                                    >
+                                      <AlertTriangle className="w-3 h-3 text-amber-400" />
+                                      Incompleto
+                                    </span>
+                                    <span className="text-[9px] text-amber-400/80 mt-0.5 font-medium">
+                                      {r.incompleto_reason || (isMissingPlaca ? "Falta Placa" : isMissingVol ? "Volumen 0" : "Dato faltante")}
+                                    </span>
+                                  </div>
                                 ) : (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                                    Válido
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                    Listo
                                   </span>
                                 )}
                               </td>

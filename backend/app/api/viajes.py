@@ -397,7 +397,7 @@ async def importar_viajes_excel(
 
         return {
             "success": True,
-            "message": f"Se procesaron {viajes_creados + viajes_actualizados} viajes ({viajes_creados} nuevos, {viajes_actualizados} actualizados, {viajes_omitidos} omitidos por duplicado).",
+            "message": f"Se importaron {viajes_creados} viajes exitosamente.",
             "total_importados": viajes_creados,
             "total_actualizados": viajes_actualizados,
             "total_omitidos": viajes_omitidos,
