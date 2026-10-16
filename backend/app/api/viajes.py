@@ -13,7 +13,7 @@ from app.models.tenant import Viaje, ParametroLiquidacion, UnidadTransporte
 from app.schemas.viaje import ViajeCreate, ViajeUpdate, ViajeResponse, ViajeCalculoPreview
 from app.services.calculation_engine import calculate_viaje_values, determine_trip_period
 from app.services.excel_export import generate_viajes_template_excel
-from app.services.excel_importer import get_excel_sheets, parse_excel_viajes_data
+from app.services.excel_importer import get_excel_sheets, parse_excel_viajes_data, execute_import_viajes
 
 from sqlalchemy import func
 
@@ -336,7 +336,7 @@ async def preview_viajes_excel(
             file_bytes=contents,
             sheet_name=sheet_name,
             session=session,
-            max_preview_records=100
+            max_preview_records=None
         )
         return preview_data
     except Exception as e:
@@ -347,160 +347,53 @@ async def preview_viajes_excel(
 @router.post("/importar-excel")
 async def importar_viajes_excel(
     schema_name: str,
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
     sheet_name: Optional[str] = Form(None),
     overwrite_duplicates: bool = Form(False),
+    edited_records_json: Optional[str] = Form(None),
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
-    if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
-        raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
-
-    contents = await file.read()
     session = get_tenant_session(schema_name)
     try:
-        parsed_data = parse_excel_viajes_data(
-            file_bytes=contents,
-            sheet_name=sheet_name,
-            session=session,
-            max_preview_records=None
-        )
+        records_to_import = []
+        if edited_records_json:
+            try:
+                records_to_import = json.loads(edited_records_json)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Formato JSON de registros editados inválido: {str(e)}")
+        elif file:
+            if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
+                raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
+            contents = await file.read()
+            parsed_data = parse_excel_viajes_data(
+                file_bytes=contents,
+                sheet_name=sheet_name,
+                session=session,
+                max_preview_records=None
+            )
+            records_to_import = parsed_data["records"]
+        else:
+            raise HTTPException(status_code=400, detail="Debe proporcionar un archivo o registros para importar.")
+
+        if not records_to_import:
+            raise HTTPException(status_code=400, detail="No hay registros válidos para importar.")
 
         params = session.query(ParametroLiquidacion).first()
         if not params:
             params = ParametroLiquidacion()
-
-        viajes_creados = 0
-        viajes_actualizados = 0
-        viajes_omitidos = 0
-        errores = []
-        periodos_detectados = set()
-
-        unidades_cache = {u.placa: u for u in session.query(UnidadTransporte).all()}
-
-        for rec in parsed_data["records"]:
-            try:
-                placa = rec["placa"]
-                date_carga = datetime.fromisoformat(rec["fecha_carga"]).date()
-                date_descarga = datetime.fromisoformat(rec["fecha_descarga"]).date()
-                date_fac = datetime.fromisoformat(rec["fecha_factura"]).date() if rec.get("fecha_factura") else None
-                mic_str = rec.get("mic_dta")
-                vol_o = rec["volumen_origen_litros"]
-                vol_r = rec["volumen_recepcionado_litros"]
-                vol_f = rec["volumen_facturado"]
-                tarifa = rec["tarifa_flete"]
-                tipo_t = rec.get("tipo_tarifa", "BS_POR_M3")
-
-                # Verificar si ya existe en la base de datos
-                existing_viaje = None
-                if mic_str:
-                    existing_viaje = session.query(Viaje).filter(Viaje.mic_dta == mic_str).first()
-                if not existing_viaje:
-                    existing_viaje = session.query(Viaje).filter(
-                        Viaje.placa == placa,
-                        Viaje.fecha_carga == date_carga,
-                        Viaje.fecha_descarga == date_descarga,
-                        Viaje.volumen_recepcionado_litros == vol_r
-                    ).first()
-
-                if existing_viaje:
-                    if not overwrite_duplicates:
-                        viajes_omitidos += 1
-                        continue
-                    else:
-                        calc = calculate_viaje_values(
-                            volumen_origen_litros=vol_o,
-                            volumen_recepcionado_litros=vol_r,
-                            producto=rec["producto"],
-                            tarifa_flete=tarifa,
-                            tipo_tarifa=tipo_t,
-                            params=params,
-                            volumen_facturado=vol_f
-                        )
-                        existing_viaje.tramo = rec["tramo"]
-                        existing_viaje.cliente = rec["cliente"]
-                        existing_viaje.producto = rec["producto"]
-                        if rec.get("nro_factura"):
-                            existing_viaje.nro_factura = str(rec["nro_factura"]).strip()
-                        if date_fac:
-                            existing_viaje.fecha_factura = date_fac
-                        existing_viaje.volumen_origen_litros = vol_o
-                        existing_viaje.volumen_recepcionado_litros = vol_r
-                        existing_viaje.volumen_facturado = calc["volumen_facturado"]
-                        existing_viaje.merma_real_litros = calc["merma_real_litros"]
-                        existing_viaje.tolerancia_pct = calc["tolerancia_pct"]
-                        existing_viaje.merma_tolerable_litros = calc["merma_tolerable_litros"]
-                        existing_viaje.merma_excedente_litros = calc["merma_excedente_litros"]
-                        existing_viaje.precio_merma_litro_bs = calc["precio_merma_litro_bs"]
-                        existing_viaje.merma_descontar_bs = calc["merma_descontar_bs"]
-                        existing_viaje.tarifa_flete = tarifa
-                        existing_viaje.flete_total_bs = calc["flete_total_bs"]
-                        viajes_actualizados += 1
-                        periodos_detectados.add(existing_viaje.periodo_mes)
-                        continue
-
-                # Asegurar que exista la unidad
-                u = unidades_cache.get(placa)
-                if not u:
-                    u = session.query(UnidadTransporte).filter(UnidadTransporte.placa == placa).first()
-                if not u:
-                    u = UnidadTransporte(
-                        placa=placa,
-                        marca="Tractocamión / Cisterna",
-                        capacidad_litros=vol_o if vol_o > 0 else 34000,
-                        estado="Activo"
-                    )
-                    session.add(u)
-                    session.commit()
-                    session.refresh(u)
-                    unidades_cache[placa] = u
-
-                calc = calculate_viaje_values(
-                    volumen_origen_litros=vol_o,
-                    volumen_recepcionado_litros=vol_r,
-                    producto=rec["producto"],
-                    tarifa_flete=tarifa,
-                    tipo_tarifa=tipo_t,
-                    params=params,
-                    volumen_facturado=vol_f
-                )
-
-                periodo = determine_trip_period(date_carga, date_descarga)
-                periodos_detectados.add(periodo)
-
-                nuevo_viaje = Viaje(
-                    mic_dta=mic_str,
-                    lote_codigo="1",
-                    unidad_id=u.id,
-                    placa=placa,
-                    tramo=rec["tramo"],
-                    cliente=rec["cliente"],
-                    nro_factura=str(rec["nro_factura"]).strip() if rec.get("nro_factura") else None,
-                    fecha_factura=date_fac,
-                    producto=rec["producto"],
-                    fecha_carga=date_carga,
-                    fecha_descarga=date_descarga,
-                    periodo_mes=periodo,
-                    volumen_origen_litros=vol_o,
-                    volumen_recepcionado_litros=vol_r,
-                    volumen_facturado=calc["volumen_facturado"],
-                    merma_real_litros=calc["merma_real_litros"],
-                    tolerancia_pct=calc["tolerancia_pct"],
-                    merma_tolerable_litros=calc["merma_tolerable_litros"],
-                    merma_excedente_litros=calc["merma_excedente_litros"],
-                    precio_merma_litro_bs=calc["precio_merma_litro_bs"],
-                    merma_descontar_bs=calc["merma_descontar_bs"],
-                    tarifa_flete=tarifa,
-                    tipo_tarifa=tipo_t,
-                    flete_total_bs=calc["flete_total_bs"],
-                    estado="Pendiente"
-                )
-                session.add(nuevo_viaje)
-                viajes_creados += 1
-            except Exception as row_ex:
-                errores.append(f"Fila {rec.get('fila')}: {str(row_ex)}")
-
-        if viajes_creados or viajes_actualizados:
+            session.add(params)
             session.commit()
+
+        result = execute_import_viajes(
+            records=records_to_import,
+            session=session,
+            params=params,
+            overwrite_duplicates=overwrite_duplicates
+        )
+
+        viajes_creados = result["total_importados"]
+        viajes_actualizados = result["total_actualizados"]
+        viajes_omitidos = result["total_omitidos"]
 
         return {
             "success": True,
@@ -508,9 +401,9 @@ async def importar_viajes_excel(
             "total_importados": viajes_creados,
             "total_actualizados": viajes_actualizados,
             "total_omitidos": viajes_omitidos,
-            "total_filas_leidas": parsed_data["total_valid_rows"],
-            "periodos_detectados": sorted(list(periodos_detectados)),
-            "errores": errores
+            "total_filas_leidas": len(records_to_import),
+            "periodos_detectados": result["periodos_detectados"],
+            "errores": result["errores"]
         }
     finally:
         session.close()

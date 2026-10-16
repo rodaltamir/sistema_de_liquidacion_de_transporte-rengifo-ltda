@@ -35,6 +35,7 @@ import { apiFetch } from "@/lib/api";
 import { getCurrentUser, clearAuth, User } from "@/lib/auth";
 import ThemeToggle from "@/components/ThemeToggle";
 import ModalPortal from "@/components/ModalPortal";
+import ImportExcelModal from "@/components/ImportExcelModal";
 
 interface Asociacion {
   id: number;
@@ -104,6 +105,7 @@ export default function SeleccionarAsociacionPage() {
   const [showEmpresaModal, setShowEmpresaModal] = useState(false);
   const [editingEmpresa, setEditingEmpresa] = useState<Empresa | null>(null);
   const [showAsocRepDetails, setShowAsocRepDetails] = useState(false);
+  const [showImportGlobalModal, setShowImportGlobalModal] = useState(false);
 
   // Formulario Asociación
   const [asocForm, setAsocForm] = useState({
@@ -658,6 +660,13 @@ export default function SeleccionarAsociacionPage() {
                   <span>Registrar Primera Empresa de Transporte</span>
                 </button>
                 <button
+                  onClick={() => setShowImportGlobalModal(true)}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/20 transition flex items-center gap-2"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-100" />
+                  <span>Importar desde Plantilla Excel</span>
+                </button>
+                <button
                   onClick={handleOpenCreateAsoc}
                   className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-white font-bold text-xs rounded-xl border border-slate-200 dark:border-slate-700 transition flex items-center gap-2"
                 >
@@ -738,7 +747,15 @@ export default function SeleccionarAsociacionPage() {
             </div>
 
             {/* Acciones de Creación Primaria */}
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={() => setShowImportGlobalModal(true)}
+                className="flex-1 sm:flex-none px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/20 transition flex items-center justify-center gap-2"
+                title="Importar viajes y crear o asignar a empresa desde plantilla Excel"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-100" />
+                <span>Importar Plantilla Excel</span>
+              </button>
               <button
                 onClick={() => handleOpenCreateEmpresa()}
                 className="flex-1 sm:flex-none px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2"
@@ -1266,6 +1283,16 @@ export default function SeleccionarAsociacionPage() {
         </div>
         </ModalPortal>
       )}
+
+      {/* Modal de Importación Global de Plantilla Excel */}
+      <ImportExcelModal
+        isOpen={showImportGlobalModal}
+        onClose={() => setShowImportGlobalModal(false)}
+        globalMode={true}
+        onSuccess={() => {
+          loadAllData();
+        }}
+      />
 
     </div>
   );

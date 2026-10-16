@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   FileSpreadsheet,
   UploadCloud,
@@ -20,7 +21,13 @@ import {
   Calendar,
   DollarSign,
   Truck,
-  Scale
+  Scale,
+  Building2,
+  Edit3,
+  Search,
+  Filter,
+  CheckSquare,
+  Square
 } from "lucide-react";
 import Swal from "sweetalert2";
 import ModalPortal from "@/components/ModalPortal";
@@ -28,19 +35,23 @@ import { apiFetch } from "@/lib/api";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
 import { downloadBlob } from "@/lib/download";
 
-interface ImportExcelModalProps {
+export interface ImportExcelModalProps {
   isOpen: boolean;
   onClose: () => void;
-  schema: string;
+  schema?: string;
+  globalMode?: boolean;
+  initialAsociacionId?: number | null;
   onSuccess: (result: {
     total_importados: number;
     total_actualizados: number;
     total_omitidos: number;
     periodos_detectados: string[];
+    target_schema?: string;
+    empresa_name?: string;
   }) => void;
 }
 
-interface PreviewRecord {
+export interface PreviewRecord {
   fila: number;
   placa: string;
   tramo: string;
@@ -63,6 +74,8 @@ interface PreviewRecord {
   is_duplicate_file: boolean;
   duplicate_reason?: string;
   status: "VALIDO" | "DUPLICADO";
+  included?: boolean;
+  isEdited?: boolean;
 }
 
 interface SkippedDetail {
@@ -79,6 +92,7 @@ interface PreviewResponse {
   total_skipped_rows: number;
   records: PreviewRecord[];
   skipped_details: SkippedDetail[];
+  suggested_company_name?: string;
   summary: {
     total_viajes: number;
     viajes_nuevos: number;
@@ -95,8 +109,11 @@ export default function ImportExcelModal({
   isOpen,
   onClose,
   schema,
+  globalMode = false,
+  initialAsociacionId = null,
   onSuccess
 }: ImportExcelModalProps) {
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [sheets, setSheets] = useState<string[]>([]);
   const [selectedSheet, setSelectedSheet] = useState<string>("");
@@ -106,23 +123,60 @@ export default function ImportExcelModal({
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [previewData, setPreviewData] = useState<PreviewResponse | null>(null);
+  
+  // Registros interactivos editables
+  const [editableRecords, setEditableRecords] = useState<PreviewRecord[]>([]);
   const [overwriteDuplicates, setOverwriteDuplicates] = useState(false);
   const [showSkipped, setShowSkipped] = useState(false);
+  const [tableFilter, setTableFilter] = useState<"all" | "selected" | "duplicates" | "missing_placa">("all");
+  const [tableSearch, setTableSearch] = useState("");
 
-  // Reset state when modal opens/closes
+  // Opciones de Destino para Modo Global
+  const [importMode, setImportMode] = useState<"create_new" | "use_existing">("create_new");
+  const [newEmpresaName, setNewEmpresaName] = useState("");
+  const [newEmpresaTipo, setNewEmpresaTipo] = useState("Sociedad");
+  const [newEmpresaNit, setNewEmpresaNit] = useState("");
+  const [newEmpresaAsocId, setNewEmpresaAsocId] = useState<string | number>(initialAsociacionId || "");
+  const [selectedExistingSchema, setSelectedExistingSchema] = useState("");
+  
+  // Listas de empresas y asociaciones para selector global
+  const [asociaciones, setAsociaciones] = useState<any[]>([]);
+  const [empresas, setEmpresas] = useState<any[]>([]);
+
+  // Cargar asociaciones y empresas si está en globalMode
+  useEffect(() => {
+    if (isOpen && globalMode) {
+      Promise.all([
+        apiFetch("/asociaciones/").catch(() => []),
+        apiFetch("/empresas/").catch(() => [])
+      ]).then(([asocData, empData]) => {
+        setAsociaciones(Array.isArray(asocData) ? asocData : []);
+        const validEmps = Array.isArray(empData) ? empData : [];
+        setEmpresas(validEmps);
+        if (validEmps.length > 0 && !selectedExistingSchema) {
+          setSelectedExistingSchema(validEmps[0].schema_name);
+        }
+      });
+    }
+  }, [isOpen, globalMode]);
+
+  // Reset state al abrir/cerrar
   useEffect(() => {
     if (!isOpen) {
       setFile(null);
       setSheets([]);
       setSelectedSheet("");
       setPreviewData(null);
+      setEditableRecords([]);
       setIsLoadingPreview(false);
       setIsImporting(false);
       setShowSkipped(false);
+      setTableFilter("all");
+      setTableSearch("");
+      setNewEmpresaName("");
+      setNewEmpresaNit("");
     }
   }, [isOpen]);
-
-  if (!isOpen) return null;
 
   // Manejo de carga y análisis del archivo Excel
   const processFile = async (selectedFile: File, sheetOverride?: string) => {
@@ -141,20 +195,27 @@ export default function ImportExcelModal({
     setFile(selectedFile);
     setIsLoadingPreview(true);
     setPreviewData(null);
+    setEditableRecords([]);
 
     try {
-      // 1. Obtener información de hojas si aún no se tienen o cambió de archivo
       let targetSheet = sheetOverride;
+      
+      // 1. Obtener información de hojas
       if (!targetSheet) {
         const infoPayload = new FormData();
         infoPayload.append("file", selectedFile);
-        const infoRes = await apiFetch(`/tenants/${schema}/viajes/excel-info`, {
+        
+        const infoEndpoint = globalMode 
+          ? "/empresas/excel-info" 
+          : `/tenants/${schema}/viajes/excel-info`;
+
+        const infoRes = await apiFetch(infoEndpoint, {
           method: "POST",
           body: infoPayload
         });
+
         if (infoRes?.sheets && infoRes.sheets.length > 0) {
           setSheets(infoRes.sheets);
-          // Preferir hojas más recientes si existen tipo V-2026 o la última
           const reversed = [...infoRes.sheets].reverse();
           const preferred = reversed.find((s: string) => s.includes("2026")) ||
                           reversed.find((s: string) => s.includes("2025")) ||
@@ -162,21 +223,44 @@ export default function ImportExcelModal({
           targetSheet = preferred || infoRes.sheets[0];
           setSelectedSheet(targetSheet);
         }
+
+        if (globalMode && infoRes?.suggested_company_name && !newEmpresaName) {
+          setNewEmpresaName(infoRes.suggested_company_name);
+        }
       }
 
-      // 2. Obtener previsualización analizada
+      // 2. Previsualización de despachos
       const previewPayload = new FormData();
       previewPayload.append("file", selectedFile);
       if (targetSheet) {
         previewPayload.append("sheet_name", targetSheet);
       }
+      if (globalMode && importMode === "use_existing" && selectedExistingSchema) {
+        previewPayload.append("target_schema", selectedExistingSchema);
+      }
 
-      const res = await apiFetch(`/tenants/${schema}/viajes/preview-excel`, {
+      const previewEndpoint = globalMode
+        ? "/empresas/preview-excel"
+        : `/tenants/${schema}/viajes/preview-excel`;
+
+      const res = await apiFetch(previewEndpoint, {
         method: "POST",
         body: previewPayload
       });
 
       setPreviewData(res);
+      if (res?.records) {
+        const mapped = res.records.map((r: PreviewRecord) => ({
+          ...r,
+          included: true,
+          isEdited: false
+        }));
+        setEditableRecords(mapped);
+      }
+
+      if (globalMode && res?.suggested_company_name && !newEmpresaName) {
+        setNewEmpresaName(res.suggested_company_name);
+      }
     } catch (err: any) {
       Swal.fire({
         icon: "error",
@@ -214,9 +298,17 @@ export default function ImportExcelModal({
 
   const downloadBaseTemplate = async () => {
     try {
-      const blob = await apiFetch(`/tenants/${schema}/viajes/plantilla-excel`);
-      const filename = `Plantilla_Oficial_Viajes_${schema}.xlsx`;
-      downloadBlob(blob, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      const endpoint = schema 
+        ? `/tenants/${schema}/viajes/plantilla-excel`
+        : `/asociaciones/plantilla-excel`;
+      const blob = await apiFetch(endpoint).catch(async () => {
+        // Fallback a primera empresa o general
+        if (empresas.length > 0) {
+          return await apiFetch(`/tenants/${empresas[0].schema_name}/viajes/plantilla-excel`);
+        }
+        throw new Error("No hay empresas disponibles para descargar la plantilla base.");
+      });
+      downloadBlob(blob, "Plantilla_Oficial_Viajes_Rengifo.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     } catch (err: any) {
       Swal.fire({
         icon: "error",
@@ -228,15 +320,123 @@ export default function ImportExcelModal({
     }
   };
 
+  // Edición interactiva de registros en tabla
+  const handleRecordFieldChange = (index: number, field: keyof PreviewRecord, val: any) => {
+    setEditableRecords(prev => {
+      const next = [...prev];
+      const r = { ...next[index] };
+
+      if (field === "placa") {
+        r.placa = String(val).toUpperCase().trim();
+      } else if (field === "tramo") {
+        r.tramo = String(val).toUpperCase();
+      } else if (field === "nro_factura") {
+        r.nro_factura = val ? String(val).trim() : null;
+      } else if (field === "volumen_facturado") {
+        const numVal = parseFloat(val) || 0;
+        r.volumen_facturado = numVal;
+        r.volumen_facturado_m3 = Math.round((numVal / 1000.0) * 1000) / 1000;
+        r.flete_total_bs = Math.round(((numVal / 1000.0) * r.tarifa_flete) * 100) / 100;
+      } else if (field === "tarifa_flete") {
+        const numTarifa = parseFloat(val) || 0;
+        r.tarifa_flete = numTarifa;
+        r.flete_total_bs = Math.round(((r.volumen_facturado / 1000.0) * numTarifa) * 100) / 100;
+      } else if (field === "included") {
+        r.included = Boolean(val);
+      }
+
+      r.isEdited = true;
+      next[index] = r;
+      return next;
+    });
+  };
+
+  const toggleAllRecords = (included: boolean) => {
+    setEditableRecords(prev => prev.map(r => ({ ...r, included })));
+  };
+
+  const excludeDuplicates = () => {
+    setEditableRecords(prev => prev.map(r => ({
+      ...r,
+      included: !(r.is_duplicate_system || r.is_duplicate_file)
+    })));
+  };
+
+  // Cálculos dinámicos de métricas sobre despachos incluidos
+  const includedRecords = useMemo(() => {
+    return editableRecords.filter(r => r.included !== false);
+  }, [editableRecords]);
+
+  const dynamicSummary = useMemo(() => {
+    const totalViajes = includedRecords.length;
+    let totalVol = 0;
+    let totalFlete = 0;
+    const placas = new Set<string>();
+    let missingPlacas = 0;
+    let dupCount = 0;
+    const periodos = new Set<string>();
+
+    includedRecords.forEach(r => {
+      totalVol += (r.volumen_facturado || 0);
+      totalFlete += (r.flete_total_bs || 0);
+      const cleanP = (r.placa || "").trim().toUpperCase();
+      if (!cleanP || cleanP === "SIN PLACA" || cleanP === "FALTA PLACA" || cleanP === "TOTAL") {
+        missingPlacas++;
+      } else {
+        placas.add(cleanP);
+      }
+      if (r.is_duplicate_system || r.is_duplicate_file) {
+        dupCount++;
+      }
+      if (r.periodo_mes) {
+        periodos.add(r.periodo_mes);
+      }
+    });
+
+    return {
+      totalViajes,
+      totalVolumenLitros: Math.round(totalVol * 10) / 10,
+      totalVolumenM3: Math.round((totalVol / 1000.0) * 1000) / 1000,
+      totalFleteBs: Math.round(totalFlete * 100) / 100,
+      totalPlacas: placas.size,
+      missingPlacas,
+      dupCount,
+      periodos: Array.from(periodos).sort()
+    };
+  }, [includedRecords]);
+
+  // Filtro de la tabla
+  const filteredRecords = useMemo(() => {
+    return editableRecords.filter((r, idx) => {
+      // Filtro de pestaña
+      if (tableFilter === "selected" && !r.included) return false;
+      if (tableFilter === "duplicates" && !(r.is_duplicate_system || r.is_duplicate_file)) return false;
+      if (tableFilter === "missing_placa") {
+        const p = (r.placa || "").trim().toUpperCase();
+        if (p && p !== "SIN PLACA" && p !== "FALTA PLACA" && p !== "TOTAL") return false;
+      }
+
+      // Buscador
+      if (tableSearch.trim()) {
+        const q = tableSearch.toLowerCase().trim();
+        const pMatch = r.placa?.toLowerCase().includes(q);
+        const tMatch = r.tramo?.toLowerCase().includes(q);
+        const fMatch = r.nro_factura?.toLowerCase().includes(q);
+        const mMatch = r.mic_dta?.toLowerCase().includes(q);
+        if (!pMatch && !tMatch && !fMatch && !mMatch) return false;
+      }
+
+      return true;
+    });
+  }, [editableRecords, tableFilter, tableSearch]);
+
   // Confirmar Importación Definitiva a la Base de Datos
   const handleConfirmImport = async () => {
-    if (!file) return;
-
-    if (!previewData || previewData.total_valid_rows === 0) {
+    if (includedRecords.length === 0) {
       Swal.fire({
         icon: "warning",
-        title: "Sin registros válidos",
-        text: "No hay despachos válidos para importar en la hoja seleccionada.",
+        title: "Sin despachos seleccionados",
+        text: "Debes marcar al menos un despacho para realizar la importación.",
         background: "#0f172a",
         color: "#f8fafc",
         confirmButtonColor: "#f59e0b"
@@ -244,24 +444,73 @@ export default function ImportExcelModal({
       return;
     }
 
-    const dupCount = previewData.summary.viajes_duplicados;
-    let confirmMsg = `Se importarán <b>${previewData.summary.total_viajes}</b> despachos a la base de datos.<br/>`;
-    if (dupCount > 0) {
-      if (overwriteDuplicates) {
-        confirmMsg += `<span class="text-amber-400 font-semibold text-xs">Atención: ${dupCount} despachos existentes serán actualizados con los datos del Excel.</span>`;
+    if (dynamicSummary.missingPlacas > 0) {
+      const missingPrompt = await Swal.fire({
+        icon: "warning",
+        title: "Despachos sin Placa Detectados",
+        html: `Hay <b>${dynamicSummary.missingPlacas}</b> despacho(s) marcados que no tienen una placa válida asignada.<br/><br/><span class="text-xs text-slate-400">Puedes escribir la placa directamente en la tabla o desmarcarlos. Si continúas, las filas sin placa serán omitidas.</span>`,
+        showCancelButton: true,
+        confirmButtonText: "Continuar de todos modos",
+        cancelButtonText: "Volver y corregir",
+        confirmButtonColor: "#f59e0b",
+        cancelButtonColor: "#334155",
+        background: "#0f172a",
+        color: "#f8fafc"
+      });
+      if (!missingPrompt.isConfirmed) return;
+    }
+
+    // Si está en globalMode y elige crear nueva empresa, validar nombre
+    let targetEmpresaDisplay = "";
+    if (globalMode) {
+      if (importMode === "create_new") {
+        if (!newEmpresaName.trim()) {
+          Swal.fire({
+            icon: "warning",
+            title: "Nombre de empresa requerido",
+            text: "Por favor ingresa la Razón Social de la empresa a crear.",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+        targetEmpresaDisplay = newEmpresaName.trim();
       } else {
-        confirmMsg += `<span class="text-sky-400 font-semibold text-xs">${dupCount} despachos ya existentes serán omitidos automáticamente para evitar duplicaciones.</span>`;
+        const found = empresas.find(e => e.schema_name === selectedExistingSchema);
+        if (!found) {
+          Swal.fire({
+            icon: "warning",
+            title: "Selecciona una empresa",
+            text: "Debes elegir una empresa de transporte existente.",
+            confirmButtonColor: "#f59e0b"
+          });
+          return;
+        }
+        targetEmpresaDisplay = found.name;
       }
     }
 
+    let confirmHtml = `
+      <div class="text-left text-xs space-y-2 text-slate-300">
+        <p>Se importarán <b>${dynamicSummary.totalViajes}</b> despachos con un flete total de <b>${formatCurrency(dynamicSummary.totalFleteBs)}</b>.</p>
+        ${globalMode ? `<p class="text-amber-400 font-semibold">• Destino: ${importMode === 'create_new' ? `Crear Empresa '${targetEmpresaDisplay}'` : `Empresa existente '${targetEmpresaDisplay}'`}</p>` : ''}
+        <p>• Cisternas identificadas: <b>${dynamicSummary.totalPlacas}</b></p>
+        <p>• Períodos: <b>${dynamicSummary.periodos.join(", ") || "General"}</b></p>
+        ${dynamicSummary.dupCount > 0 ? (
+          overwriteDuplicates
+            ? `<p class="text-amber-400">• ${dynamicSummary.dupCount} viajes existentes serán actualizados.</p>`
+            : `<p class="text-sky-400">• ${dynamicSummary.dupCount} viajes ya registrados serán omitidos.</p>`
+        ) : ''}
+      </div>
+    `;
+
     const confirmRes = await Swal.fire({
-      title: "¿Confirmar Importación?",
-      html: confirmMsg,
+      title: "¿Confirmar e Importar al Sistema?",
+      html: confirmHtml,
       icon: "question",
       showCancelButton: true,
-      confirmButtonText: "Sí, importar ahora",
-      cancelButtonText: "Revisar más",
-      confirmButtonColor: "#f59e0b",
+      confirmButtonText: "Sí, ejecutar importación",
+      cancelButtonText: "Seguir revisando",
+      confirmButtonColor: "#10b981",
       cancelButtonColor: "#334155",
       background: "#0f172a",
       color: "#f8fafc"
@@ -272,47 +521,78 @@ export default function ImportExcelModal({
     setIsImporting(true);
     try {
       const formPayload = new FormData();
-      formPayload.append("file", file);
-      if (selectedSheet) {
-        formPayload.append("sheet_name", selectedSheet);
-      }
       formPayload.append("overwrite_duplicates", overwriteDuplicates ? "true" : "false");
+      formPayload.append("edited_records_json", JSON.stringify(includedRecords));
 
-      const res = await apiFetch(`/tenants/${schema}/viajes/importar-excel`, {
-        method: "POST",
-        body: formPayload
-      });
+      let res: any;
 
-      await Swal.fire({
+      if (globalMode) {
+        formPayload.append("mode", importMode);
+        if (importMode === "create_new") {
+          formPayload.append("empresa_name", newEmpresaName.trim());
+          formPayload.append("tipo_empresa", newEmpresaTipo);
+          if (newEmpresaNit.trim()) formPayload.append("nit", newEmpresaNit.trim());
+          if (newEmpresaAsocId) formPayload.append("asociacion_id", String(newEmpresaAsocId));
+        } else {
+          formPayload.append("target_schema", selectedExistingSchema);
+        }
+
+        res = await apiFetch("/empresas/importar-con-empresa", {
+          method: "POST",
+          body: formPayload
+        });
+      } else {
+        res = await apiFetch(`/tenants/${schema}/viajes/importar-excel`, {
+          method: "POST",
+          body: formPayload
+        });
+      }
+
+      const finalSchema = res.target_schema || schema;
+      const finalName = res.empresa_name || targetEmpresaDisplay;
+
+      const successModal = await Swal.fire({
         icon: "success",
         title: "¡Importación Exitosa!",
         html: `
-          <div class="space-y-2 text-left text-xs text-slate-300">
-            <p class="font-bold text-sm text-emerald-400">${res.message}</p>
-            <div class="p-2.5 bg-slate-900/80 rounded-xl border border-slate-800 space-y-1">
-              <div>• <b>Viajes Nuevos Importados:</b> ${res.total_importados}</div>
+          <div class="space-y-3 text-left text-xs text-slate-300">
+            <p class="font-bold text-sm text-emerald-400">${res.message || "Despachos registrados correctamente."}</p>
+            <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
+              ${finalName ? `<div>• <b>Empresa:</b> <span class="text-amber-400">${finalName}</span></div>` : ''}
+              <div>• <b>Viajes Nuevos:</b> ${res.total_importados}</div>
               <div>• <b>Viajes Actualizados:</b> ${res.total_actualizados}</div>
               <div>• <b>Duplicados Omitidos:</b> ${res.total_omitidos}</div>
-              <div>• <b>Períodos Afectados:</b> ${res.periodos_detectados?.join(", ") || "N/A"}</div>
+              <div>• <b>Períodos:</b> ${res.periodos_detectados?.join(", ") || "General"}</div>
             </div>
           </div>
         `,
+        showCancelButton: Boolean(finalSchema),
+        confirmButtonText: finalSchema ? "Ir al Historial de Viajes" : "Entendido",
+        cancelButtonText: "Permanecer aquí",
+        confirmButtonColor: "#10b981",
+        cancelButtonColor: "#334155",
         background: "#0f172a",
-        color: "#f8fafc",
-        confirmButtonColor: "#f59e0b"
+        color: "#f8fafc"
       });
 
       onSuccess({
         total_importados: res.total_importados,
         total_actualizados: res.total_actualizados,
         total_omitidos: res.total_omitidos,
-        periodos_detectados: res.periodos_detectados || []
+        periodos_detectados: res.periodos_detectados || [],
+        target_schema: finalSchema,
+        empresa_name: finalName
       });
+
       onClose();
+
+      if (successModal.isConfirmed && finalSchema) {
+        router.push(`/${finalSchema}/historial`);
+      }
     } catch (err: any) {
       Swal.fire({
         icon: "error",
-        title: "Error al registrar viajes",
+        title: "Error al importar datos",
         text: err.message || "Ocurrió un error al guardar los viajes en la base de datos.",
         background: "#0f172a",
         color: "#f8fafc",
@@ -323,28 +603,30 @@ export default function ImportExcelModal({
     }
   };
 
+  if (!isOpen) return null;
+
   return (
     <ModalPortal>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-slate-100">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-6xl max-h-[94vh] flex flex-col shadow-2xl overflow-hidden text-slate-100">
           
           {/* Header del Modal */}
-          <div className="px-6 py-4.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/60 sticky top-0 z-10 backdrop-blur-md">
+          <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/80 sticky top-0 z-20 backdrop-blur-md">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-emerald-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500/20 to-amber-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0">
                 <FileSpreadsheet className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-black text-white uppercase tracking-tight">
-                    Importación Inteligente de Despachos
+                  <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-tight">
+                    Importación y Conciliación Inteligente de Despachos
                   </h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    Soporta Driver S.R.L. & Base
+                  <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    {globalMode ? "Directorio Global" : `Empresa: ${schema}`}
                   </span>
                 </div>
                 <p className="text-xs text-slate-400">
-                  Carga tus plantillas Excel con detección automática de columnas, mermas, placas y períodos.
+                  Inspección, confirmación de acciones, edición en línea y conciliación de volúmenes y fletes.
                 </p>
               </div>
             </div>
@@ -356,7 +638,7 @@ export default function ImportExcelModal({
                 className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-700 hover:border-slate-600 bg-slate-800/60 text-slate-300 hover:text-white text-xs font-semibold transition"
                 title="Descargar plantilla Excel oficial limpia"
               >
-                <Download className="w-3.5 h-3.5 text-amber-400" />
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Plantilla Base</span>
               </button>
               <button
@@ -370,7 +652,7 @@ export default function ImportExcelModal({
           </div>
 
           {/* Cuerpo del Modal con Scroll */}
-          <div className="p-6 space-y-6 overflow-y-auto flex-1">
+          <div className="p-4 sm:p-6 space-y-6 overflow-y-auto flex-1">
             
             {/* Zona 1: Subir Archivo y Dropzone */}
             {!file ? (
@@ -381,8 +663,8 @@ export default function ImportExcelModal({
                 onClick={() => fileInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-3xl p-8 sm:p-12 text-center cursor-pointer transition-all ${
                   isDragOver
-                    ? "border-amber-500 bg-amber-500/10 scale-[0.99]"
-                    : "border-slate-700 hover:border-amber-500/50 hover:bg-slate-800/40 bg-slate-900/40"
+                    ? "border-emerald-500 bg-emerald-500/10 scale-[0.99]"
+                    : "border-slate-700 hover:border-emerald-500/50 hover:bg-slate-800/40 bg-slate-900/40"
                 }`}
               >
                 <input
@@ -392,14 +674,14 @@ export default function ImportExcelModal({
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto mb-4">
+                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-4">
                   <UploadCloud className="w-8 h-8" />
                 </div>
                 <h4 className="text-base font-bold text-white mb-1">
                   Arrastra tu archivo Excel aquí o haz clic para examinar
                 </h4>
                 <p className="text-xs text-slate-400 max-w-md mx-auto mb-4">
-                  Compatible con el formato oficial de liquidación, <b>DRIVER S.R.L VENTAS.xlsx</b> y <b>PLANTILLA DE IMPORTACIÓN.xlsx</b>.
+                  Compatible con <b>DRIVER S.R.L VENTAS.xlsx</b>, <b>PLANTILLA DE IMPORTACIÓN.xlsx</b> y formato oficial de 19/20 columnas.
                 </p>
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
@@ -421,13 +703,12 @@ export default function ImportExcelModal({
                       </span>
                     </div>
                     <span className="text-[11px] text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> Archivo cargado y validado
+                      <CheckCircle2 className="w-3 h-3" /> Archivo analizado correctamente
                     </span>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                  {/* Selector de Hojas */}
                   {sheets.length > 1 && (
                     <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-xl px-2.5 py-1.5">
                       <Layers className="w-3.5 h-3.5 text-amber-400" />
@@ -452,6 +733,7 @@ export default function ImportExcelModal({
                     onClick={() => {
                       setFile(null);
                       setPreviewData(null);
+                      setEditableRecords([]);
                       setSheets([]);
                     }}
                     className="px-3 py-1.5 rounded-xl border border-slate-700 hover:border-rose-500/50 hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 text-xs font-semibold transition"
@@ -466,210 +748,479 @@ export default function ImportExcelModal({
             {/* Spinner de Análisis */}
             {isLoadingPreview && (
               <div className="py-12 text-center space-y-3">
-                <RefreshCw className="w-8 h-8 text-amber-400 animate-spin mx-auto" />
+                <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin mx-auto" />
                 <p className="text-sm font-semibold text-slate-300">
                   Analizando estructura, conciliando volúmenes y detectando duplicados...
                 </p>
                 <p className="text-xs text-slate-500">
-                  Esto toma solo un instante gracias al procesamiento optimizado de datos.
+                  Lectura en flujo ultra-rápida sin sobrecarga de memoria.
                 </p>
               </div>
             )}
 
-            {/* Zona 2: Métricas Ejecutivas del Archivo Parseado */}
-            {previewData && !isLoadingPreview && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  
-                  {/* Viajes Válidos */}
-                  <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-3.5">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Despachos Listos
-                    </span>
-                    <div className="text-xl font-black text-emerald-400 font-mono mt-0.5">
-                      {previewData.summary.total_viajes}
+            {/* ZONA 2: CONFIGURACIÓN DE DESTINO (EN MODO GLOBAL) */}
+            {previewData && !isLoadingPreview && globalMode && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-amber-500/30 shadow-lg space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                    <Building2 className="w-4 h-4" />
+                    <span>Paso 1: Destino de la Importación</span>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    Define dónde se almacenarán los viajes y camiones
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Opción A: Crear Nueva Empresa */}
+                  <div
+                    onClick={() => setImportMode("create_new")}
+                    className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                      importMode === "create_new"
+                        ? "border-amber-500 bg-amber-500/10 shadow-sm"
+                        : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="radio"
+                        checked={importMode === "create_new"}
+                        onChange={() => setImportMode("create_new")}
+                        className="text-amber-500 focus:ring-amber-500 bg-slate-950"
+                      />
+                      <span className="text-xs font-bold text-white">Crear Nueva Empresa Automáticamente</span>
                     </div>
-                    <span className="text-[10px] text-slate-500">
-                      {previewData.summary.viajes_nuevos} nuevos • {previewData.summary.total_placas_unicas} cisternas
-                    </span>
+                    <p className="text-[11px] text-slate-400 pl-5 leading-relaxed">
+                      Se registrará en el directorio y se inicializará su esquema dedicado en la base de datos.
+                    </p>
                   </div>
 
-                  {/* Duplicados detectados */}
-                  <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-3.5">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Duplicados Detectados
-                    </span>
-                    <div className={`text-xl font-black font-mono mt-0.5 ${
-                      previewData.summary.viajes_duplicados > 0 ? "text-amber-400" : "text-slate-400"
-                    }`}>
-                      {previewData.summary.viajes_duplicados}
+                  {/* Opción B: Asignar a Empresa Existente */}
+                  <div
+                    onClick={() => setImportMode("use_existing")}
+                    className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                      importMode === "use_existing"
+                        ? "border-emerald-500 bg-emerald-500/10 shadow-sm"
+                        : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="radio"
+                        checked={importMode === "use_existing"}
+                        onChange={() => setImportMode("use_existing")}
+                        className="text-emerald-500 focus:ring-emerald-500 bg-slate-950"
+                      />
+                      <span className="text-xs font-bold text-white">Asignar a Empresa Existente</span>
                     </div>
-                    <span className="text-[10px] text-slate-500">
-                      {previewData.summary.viajes_duplicados > 0 ? "Ya registrados en sistema" : "Sin duplicados"}
-                    </span>
-                  </div>
-
-                  {/* Volumen Total Facturado */}
-                  <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-3.5">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Volumen Conciliado
-                    </span>
-                    <div className="text-xl font-black text-sky-400 font-mono mt-0.5">
-                      {formatNumber(previewData.summary.total_volumen_litros, 0)} L
-                    </div>
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      {formatNumber(previewData.summary.total_volumen_m3, 2)} m³
-                    </span>
-                  </div>
-
-                  {/* Flete Total Estimado */}
-                  <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-3.5">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Flete Total Calculado
-                    </span>
-                    <div className="text-xl font-black text-amber-400 font-mono mt-0.5">
-                      {formatCurrency(previewData.summary.total_flete_bs)}
-                    </div>
-                    <span className="text-[10px] text-slate-500">
-                      Períodos: {previewData.summary.periodos_detectados.join(", ") || "General"}
-                    </span>
+                    <p className="text-[11px] text-slate-400 pl-5 leading-relaxed">
+                      Incorpora estos viajes dentro de una empresa ya registrada en el sistema.
+                    </p>
                   </div>
                 </div>
 
-                {/* Switch de control de duplicados */}
-                {previewData.summary.viajes_duplicados > 0 && (
-                  <div className="bg-amber-500/10 border border-amber-500/25 rounded-2xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-                    <div className="flex items-center gap-2 text-amber-300">
-                      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                      <span>
-                        Se detectaron <b>{previewData.summary.viajes_duplicados}</b> despachos que ya figuran en la base de datos (por MIC/DTA o placa y fecha).
-                      </span>
-                    </div>
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                {/* Campos según modo seleccionado */}
+                {importMode === "create_new" ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-800/80">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        Razón Social de la Nueva Empresa *
+                      </label>
                       <input
-                        type="checkbox"
-                        checked={overwriteDuplicates}
-                        onChange={(e) => setOverwriteDuplicates(e.target.checked)}
-                        className="rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-amber-500"
+                        type="text"
+                        value={newEmpresaName}
+                        onChange={(e) => setNewEmpresaName(e.target.value)}
+                        placeholder="Ej: DRIVER S.R.L."
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
                       />
-                      <span className="text-slate-200 font-semibold">
-                        Sobrescribir datos de existentes
-                      </span>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        NIT (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={newEmpresaNit}
+                        onChange={(e) => setNewEmpresaNit(e.target.value)}
+                        placeholder="Ej: 1028495021"
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        Asociación / Gremio (Opcional)
+                      </label>
+                      <select
+                        value={newEmpresaAsocId}
+                        onChange={(e) => setNewEmpresaAsocId(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                      >
+                        <option value="">Empresa Independiente</option>
+                        {asociaciones.map((a: any) => (
+                          <option key={a.id} value={a.id}>
+                            {a.sigla ? `[${a.sigla}] ` : ""}{a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="pt-2 border-t border-slate-800/80">
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                      Selecciona la Empresa de Destino *
                     </label>
+                    <select
+                      value={selectedExistingSchema}
+                      onChange={(e) => setSelectedExistingSchema(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+                    >
+                      {empresas.length === 0 ? (
+                        <option value="">No hay empresas registradas</option>
+                      ) : (
+                        empresas.map((emp: any) => (
+                          <option key={emp.id} value={emp.schema_name}>
+                            {emp.name} ({emp.schema_name})
+                          </option>
+                        ))
+                      )}
+                    </select>
                   </div>
                 )}
+              </div>
+            )}
 
-                {/* Filas Omitidas / Resúmenes */}
-                {previewData.total_skipped_rows > 0 && (
-                  <div>
+            {/* ZONA 3: TARJETA CONFIRMACIÓN DE ACCIONES A REALIZAR */}
+            {previewData && !isLoadingPreview && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-white font-bold text-sm">
+                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    <span>Acciones que se ejecutarán en el Sistema</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                    Conciliación Automática
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                  {/* Acción 1: Flota */}
+                  <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 space-y-1">
+                    <div className="flex items-center gap-2 font-bold text-amber-400">
+                      <Truck className="w-4 h-4" />
+                      <span>Flota de Camiones</span>
+                    </div>
+                    <p className="text-slate-300 text-[11px] leading-relaxed">
+                      Se detectaron <b>{dynamicSummary.totalPlacas} cisternas únicas</b>. Las unidades que no existan serán creadas automáticamente en estado Activo.
+                    </p>
+                  </div>
+
+                  {/* Acción 2: Despachos */}
+                  <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 space-y-1">
+                    <div className="flex items-center gap-2 font-bold text-sky-400">
+                      <Scale className="w-4 h-4" />
+                      <span>Volúmenes y Fletes</span>
+                    </div>
+                    <p className="text-slate-300 text-[11px] leading-relaxed">
+                      Se registrarán <b>{dynamicSummary.totalViajes} despachos</b> con <b>{formatNumber(dynamicSummary.totalVolumenLitros)} L</b> conciliados y <b>{formatCurrency(dynamicSummary.totalFleteBs)}</b> de flete.
+                    </p>
+                  </div>
+
+                  {/* Acción 3: Períodos */}
+                  <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 space-y-1">
+                    <div className="flex items-center gap-2 font-bold text-emerald-400">
+                      <Calendar className="w-4 h-4" />
+                      <span>Períodos Contables</span>
+                    </div>
+                    <p className="text-slate-300 text-[11px] leading-relaxed">
+                      Clasificación mensual en <b>{dynamicSummary.periodos.join(", ") || "General"}</b> para liquidaciones de flete oficiales.
+                    </p>
+                  </div>
+
+                  {/* Acción 4: Duplicados */}
+                  <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 space-y-1">
+                    <div className="flex items-center gap-2 font-bold text-purple-400">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Control de Duplicidad</span>
+                    </div>
+                    <p className="text-slate-300 text-[11px] leading-relaxed">
+                      {overwriteDuplicates 
+                        ? `Actualizar datos de los ${dynamicSummary.dupCount} viajes repetidos.`
+                        : `Omitir automáticamente los ${dynamicSummary.dupCount} viajes ya registrados.`
+                      }
+                    </p>
+                  </div>
+                </div>
+
+                {/* Control de Duplicados & Alerta de Faltantes */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-slate-800">
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none text-xs">
+                    <input
+                      type="checkbox"
+                      checked={overwriteDuplicates}
+                      onChange={(e) => setOverwriteDuplicates(e.target.checked)}
+                      className="rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-amber-500 w-4 h-4"
+                    />
+                    <span className="text-slate-200 font-semibold">
+                      Sobrescribir datos de viajes duplicados (si ya figuran en la base de datos)
+                    </span>
+                  </label>
+
+                  {dynamicSummary.missingPlacas > 0 && (
+                    <span className="text-xs text-amber-400 font-bold flex items-center gap-1.5 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      {dynamicSummary.missingPlacas} despachos sin placa (puedes editarlos en la tabla)
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ZONA 4: TABLA DE PREVISUALIZACIÓN Y EDICIÓN EN LÍNEA */}
+            {previewData && !isLoadingPreview && (
+              <div className="border border-slate-800 rounded-2xl overflow-hidden bg-slate-950/60 space-y-3 p-3 sm:p-4">
+                
+                {/* Cabecera de la tabla y controles de filtro */}
+                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                  {/* Pestañas de estado */}
+                  <div className="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 overflow-x-auto text-xs font-bold">
                     <button
                       type="button"
-                      onClick={() => setShowSkipped(!showSkipped)}
-                      className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1 font-medium transition"
+                      onClick={() => setTableFilter("all")}
+                      className={`px-3 py-1.5 rounded-lg transition ${
+                        tableFilter === "all" ? "bg-amber-500 text-slate-950 shadow-xs" : "text-slate-400 hover:text-white"
+                      }`}
                     >
-                      <Info className="w-3.5 h-3.5 text-sky-400" />
-                      <span>
-                        Se omitieron {previewData.total_skipped_rows} filas de subtotales o sin placa asignada
-                      </span>
-                      {showSkipped ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      Todos ({editableRecords.length})
                     </button>
-
-                    {showSkipped && (
-                      <div className="mt-2 p-3 bg-slate-950/70 border border-slate-800 rounded-xl max-h-36 overflow-y-auto space-y-1 text-[11px] text-slate-400">
-                        {previewData.skipped_details.map((sk, idx) => (
-                          <div key={idx} className="flex items-center gap-2">
-                            <span className="text-slate-500 font-mono">Fila {sk.fila}:</span>
-                            <span>{sk.motivo}</span>
-                          </div>
-                        ))}
-                      </div>
+                    <button
+                      type="button"
+                      onClick={() => setTableFilter("selected")}
+                      className={`px-3 py-1.5 rounded-lg transition ${
+                        tableFilter === "selected" ? "bg-emerald-500 text-slate-950 shadow-xs" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Listos ({dynamicSummary.totalViajes})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTableFilter("duplicates")}
+                      className={`px-3 py-1.5 rounded-lg transition ${
+                        tableFilter === "duplicates" ? "bg-amber-500 text-slate-950 shadow-xs" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Duplicados ({dynamicSummary.dupCount})
+                    </button>
+                    {dynamicSummary.missingPlacas > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setTableFilter("missing_placa")}
+                        className={`px-3 py-1.5 rounded-lg transition ${
+                          tableFilter === "missing_placa" ? "bg-rose-500 text-white shadow-xs" : "text-rose-400 hover:text-rose-300"
+                        }`}
+                      >
+                        Sin Placa ({dynamicSummary.missingPlacas})
+                      </button>
                     )}
                   </div>
-                )}
 
-                {/* Zona 3: Tabla de Previsualización */}
-                <div className="border border-slate-800 rounded-2xl overflow-hidden bg-slate-950/40">
-                  <div className="px-4 py-2.5 bg-slate-900/70 border-b border-slate-800 flex items-center justify-between text-xs font-bold text-slate-300">
-                    <span className="flex items-center gap-2">
-                      <Truck className="w-3.5 h-3.5 text-amber-400" />
-                      Vista previa de despachos a incorporar (Primeros {previewData.records.length} registros)
-                    </span>
-                    <span className="text-[11px] text-slate-500">
-                      Total: {previewData.total_valid_rows} filas
-                    </span>
+                  {/* Acciones Rápidas y Buscador en tabla */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative flex-1 sm:w-56">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={tableSearch}
+                        onChange={(e) => setTableSearch(e.target.value)}
+                        placeholder="Buscar placa, tramo o factura..."
+                        className="w-full pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleAllRecords(true)}
+                      className="px-2.5 py-1.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 text-[11px] font-semibold transition"
+                    >
+                      Marcar Todos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleAllRecords(false)}
+                      className="px-2.5 py-1.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-400 text-[11px] font-semibold transition"
+                    >
+                      Desmarcar Todos
+                    </button>
+                    {dynamicSummary.dupCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={excludeDuplicates}
+                        className="px-2.5 py-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-[11px] font-semibold transition"
+                      >
+                        Excluir Duplicados
+                      </button>
+                    )}
                   </div>
+                </div>
 
-                  <div className="overflow-x-auto max-h-80">
-                    <table className="w-full text-[11px] text-left">
-                      <thead className="bg-slate-900/90 text-slate-400 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-800">
+                {/* Tabla Interactiva Responsive */}
+                <div className="border border-slate-800 rounded-xl overflow-x-auto max-h-96">
+                  <table className="w-full text-[11px] text-left border-collapse">
+                    <thead className="bg-slate-900 text-slate-400 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-800">
+                      <tr>
+                        <th className="py-2.5 px-3 text-center w-10">
+                          <input
+                            type="checkbox"
+                            checked={includedRecords.length === editableRecords.length && editableRecords.length > 0}
+                            onChange={(e) => toggleAllRecords(e.target.checked)}
+                            className="rounded bg-slate-950 border-slate-700 text-emerald-500"
+                          />
+                        </th>
+                        <th className="py-2.5 px-2 text-center w-12">#</th>
+                        <th className="py-2.5 px-3 min-w-[130px]">Placa (Editable)</th>
+                        <th className="py-2.5 px-3 min-w-[180px]">Tramo</th>
+                        <th className="py-2.5 px-3">Producto</th>
+                        <th className="py-2.5 px-3 whitespace-nowrap">Fechas</th>
+                        <th className="py-2.5 px-3 text-right min-w-[120px]">Volumen (L)</th>
+                        <th className="py-2.5 px-3 text-right min-w-[110px]">Tarifa (Bs/m³)</th>
+                        <th className="py-2.5 px-3 text-right">Flete Total (Bs)</th>
+                        <th className="py-2.5 px-3 min-w-[130px]">Factura / MIC</th>
+                        <th className="py-2.5 px-3 text-center">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-medium">
+                      {filteredRecords.length === 0 ? (
                         <tr>
-                          <th className="py-2.5 px-3 text-center">#</th>
-                          <th className="py-2.5 px-3">Placa</th>
-                          <th className="py-2.5 px-3">Tramo</th>
-                          <th className="py-2.5 px-3">Cliente</th>
-                          <th className="py-2.5 px-3">Producto</th>
-                          <th className="py-2.5 px-3">Fechas</th>
-                          <th className="py-2.5 px-3 text-right">Vol. Facturado</th>
-                          <th className="py-2.5 px-3 text-right">Tarifa</th>
-                          <th className="py-2.5 px-3 text-right">Flete Total</th>
-                          <th className="py-2.5 px-3">Factura / MIC</th>
-                          <th className="py-2.5 px-3 text-center">Estado</th>
+                          <td colSpan={11} className="py-8 text-center text-slate-500 text-xs">
+                            No hay despachos para mostrar con el filtro actual.
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800/60 font-medium">
-                        {previewData.records.map((r, idx) => {
+                      ) : (
+                        filteredRecords.map((r) => {
+                          const originalIdx = editableRecords.findIndex(x => x.fila === r.fila);
                           const isDup = r.is_duplicate_system || r.is_duplicate_file;
+                          const cleanP = (r.placa || "").trim().toUpperCase();
+                          const isMissingPlaca = !cleanP || cleanP === "SIN PLACA" || cleanP === "FALTA PLACA" || cleanP === "TOTAL";
+
                           return (
                             <tr
-                              key={idx}
-                              className={`hover:bg-slate-800/40 transition ${
-                                isDup ? "bg-amber-500/[0.03]" : ""
+                              key={r.fila}
+                              className={`transition ${
+                                !r.included
+                                  ? "opacity-40 bg-slate-950/40"
+                                  : isDup
+                                  ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08]"
+                                  : "hover:bg-slate-800/30"
                               }`}
                             >
-                              <td className="py-2 px-3 text-center text-slate-500 font-mono">
+                              {/* Checkbox de Inclusión */}
+                              <td className="py-2 px-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={r.included !== false}
+                                  onChange={(e) => handleRecordFieldChange(originalIdx, "included", e.target.checked)}
+                                  className="rounded bg-slate-950 border-slate-700 text-emerald-500 cursor-pointer"
+                                />
+                              </td>
+
+                              {/* Fila */}
+                              <td className="py-2 px-2 text-center text-slate-500 font-mono">
                                 {r.fila}
                               </td>
-                              <td className="py-2 px-3 font-mono font-bold text-amber-300 whitespace-nowrap">
-                                {r.placa}
+
+                              {/* Placa Editable */}
+                              <td className="py-1.5 px-2">
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    value={r.placa || ""}
+                                    onChange={(e) => handleRecordFieldChange(originalIdx, "placa", e.target.value)}
+                                    placeholder="Placa..."
+                                    className={`w-full px-2 py-1 bg-slate-900 border rounded-lg font-mono font-bold text-xs uppercase focus:outline-none transition ${
+                                      isMissingPlaca
+                                        ? "border-rose-500 text-rose-300 placeholder-rose-500/50 bg-rose-500/10"
+                                        : r.isEdited
+                                        ? "border-emerald-500 text-emerald-300"
+                                        : "border-slate-700 text-amber-300 focus:border-amber-400"
+                                    }`}
+                                  />
+                                  {isMissingPlaca && (
+                                    <span className="block text-[9px] text-rose-400 font-bold mt-0.5">
+                                      Falta Placa
+                                    </span>
+                                  )}
+                                </div>
                               </td>
-                              <td className="py-2 px-3 text-slate-300 max-w-[180px] truncate" title={r.tramo}>
-                                {r.tramo}
+
+                              {/* Tramo Editable */}
+                              <td className="py-1.5 px-2">
+                                <input
+                                  type="text"
+                                  value={r.tramo || ""}
+                                  onChange={(e) => handleRecordFieldChange(originalIdx, "tramo", e.target.value)}
+                                  className="w-full px-2 py-1 bg-slate-900 border border-slate-700/80 rounded-lg text-slate-200 text-[11px] focus:outline-none focus:border-amber-500 truncate"
+                                  title={r.tramo}
+                                />
                               </td>
-                              <td className="py-2 px-3 text-slate-400 max-w-[140px] truncate" title={r.cliente}>
-                                {r.cliente}
-                              </td>
-                              <td className="py-2 px-3 text-slate-300">
+
+                              {/* Producto */}
+                              <td className="py-2 px-3 whitespace-nowrap">
                                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-300 border border-slate-700">
                                   {r.producto}
                                 </span>
                               </td>
-                              <td className="py-2 px-3 text-slate-400 whitespace-nowrap font-mono text-[10px]">
+
+                              {/* Fechas */}
+                              <td className="py-2 px-3 whitespace-nowrap font-mono text-[10px] text-slate-400">
                                 {r.fecha_carga} → {r.fecha_descarga}
                               </td>
-                              <td className="py-2 px-3 text-right whitespace-nowrap font-mono text-sky-400">
-                                <div className="font-bold">{formatNumber(r.volumen_facturado, 0)} L</div>
-                                <div className="text-[10px] text-slate-500">({formatNumber(r.volumen_facturado_m3, 3)} m³)</div>
+
+                              {/* Volumen Facturado Editable (Litros) */}
+                              <td className="py-1.5 px-2 text-right">
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={r.volumen_facturado || ""}
+                                  onChange={(e) => handleRecordFieldChange(originalIdx, "volumen_facturado", e.target.value)}
+                                  className="w-24 px-2 py-1 bg-slate-900 border border-slate-700/80 rounded-lg text-right font-mono font-bold text-sky-400 text-xs focus:outline-none focus:border-sky-400"
+                                />
+                                <span className="block text-[9px] text-slate-500 font-mono mt-0.5">
+                                  {formatNumber(r.volumen_facturado_m3, 3)} m³
+                                </span>
                               </td>
-                              <td className="py-2 px-3 text-right font-mono text-slate-300 whitespace-nowrap">
-                                {formatNumber(r.tarifa_flete, 2)} Bs/m³
+
+                              {/* Tarifa Editable */}
+                              <td className="py-1.5 px-2 text-right">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={r.tarifa_flete || ""}
+                                  onChange={(e) => handleRecordFieldChange(originalIdx, "tarifa_flete", e.target.value)}
+                                  className="w-20 px-2 py-1 bg-slate-900 border border-slate-700/80 rounded-lg text-right font-mono text-slate-200 text-xs focus:outline-none focus:border-amber-400"
+                                />
                               </td>
+
+                              {/* Flete Total Calculado */}
                               <td className="py-2 px-3 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
                                 {formatCurrency(r.flete_total_bs)}
                               </td>
-                              <td className="py-2 px-3 whitespace-nowrap">
-                                {r.nro_factura && (
-                                  <span className="font-mono text-amber-300 font-semibold block">
-                                    FAC: {r.nro_factura}
-                                  </span>
-                                )}
-                                {r.mic_dta ? (
-                                  <span className="font-mono text-slate-400 text-[10px]">
+
+                              {/* Factura / MIC Editable */}
+                              <td className="py-1.5 px-2 whitespace-nowrap">
+                                <input
+                                  type="text"
+                                  value={r.nro_factura || ""}
+                                  onChange={(e) => handleRecordFieldChange(originalIdx, "nro_factura", e.target.value)}
+                                  placeholder="FAC Nro..."
+                                  className="w-24 px-2 py-1 bg-slate-900 border border-slate-700/80 rounded-lg text-amber-300 font-mono text-[10px] focus:outline-none focus:border-amber-400"
+                                />
+                                {r.mic_dta && (
+                                  <span className="block font-mono text-[9px] text-slate-500 mt-0.5">
                                     MIC: {r.mic_dta}
                                   </span>
-                                ) : (
-                                  !r.nro_factura && <span className="text-slate-600">-</span>
                                 )}
                               </td>
+
+                              {/* Estado */}
                               <td className="py-2 px-3 text-center whitespace-nowrap">
                                 {isDup ? (
                                   <span
@@ -686,33 +1237,41 @@ export default function ImportExcelModal({
                               </td>
                             </tr>
                           );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                        })
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
           </div>
 
           {/* Footer con Acciones */}
-          <div className="px-6 py-4 border-t border-slate-800 bg-slate-900/80 flex items-center justify-between gap-3 sticky bottom-0 z-10 backdrop-blur-md">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 font-semibold text-xs transition"
-              disabled={isImporting}
-            >
-              Cancelar
-            </button>
+          <div className="px-5 py-4 border-t border-slate-800 bg-slate-900/90 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sticky bottom-0 z-20 backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 font-semibold text-xs transition"
+                disabled={isImporting}
+              >
+                Cancelar
+              </button>
+              
+              {editableRecords.length > 0 && (
+                <span className="text-xs text-slate-400">
+                  <b>{dynamicSummary.totalViajes}</b> de <b>{editableRecords.length}</b> despachos seleccionados
+                </span>
+              )}
+            </div>
 
             <div className="flex items-center gap-3">
               {previewData && (
                 <button
                   type="button"
                   onClick={handleConfirmImport}
-                  disabled={isImporting || previewData.total_valid_rows === 0}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  disabled={isImporting || dynamicSummary.totalViajes === 0}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {isImporting ? (
                     <>
@@ -722,7 +1281,9 @@ export default function ImportExcelModal({
                   ) : (
                     <>
                       <Check className="w-4 h-4" />
-                      <span>Confirmar e Importar {previewData.summary.total_viajes} Despachos</span>
+                      <span>
+                        Confirmar e Importar {dynamicSummary.totalViajes} Despachos
+                      </span>
                     </>
                   )}
                 </button>

@@ -1,14 +1,16 @@
 import re
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+import json
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from app.db.session import get_db, engine, get_tenant_session
 from app.db.base_class import Base
 from app.models.public import Empresa, Asociacion
 from app.models.tenant import ParametroLiquidacion
 from app.schemas.empresa import EmpresaCreate, EmpresaUpdate, EmpresaResponse
 from app.api.deps import require_admin, require_current_user
+from app.services.excel_importer import get_excel_sheets, parse_excel_viajes_data, execute_import_viajes
 
 router = APIRouter(prefix="/empresas", tags=["Empresas de Transporte"])
 
@@ -192,6 +194,171 @@ def get_resumen_global(db: Session = Depends(get_db)):
         "total_fletes_bs": round(total_fletes_bs, 2),
         "total_liquidaciones": total_liquidaciones
     }
+
+def extract_suggested_company_name(filename: str) -> str:
+    clean = re.sub(r'\.(xlsx|xlsm|xltx|xls)$', '', filename, flags=re.IGNORECASE)
+    clean = re.sub(r'(?i)\b(ventas|importacion|importación|plantilla|viajes|liquidacion|liquidaciones|datos|reporte)\b', '', clean)
+    clean = re.sub(r'[\-_]+', ' ', clean).strip()
+    clean = re.sub(r'\s+', ' ', clean)
+    if len(clean) >= 3:
+        return clean.upper()
+    return "EMPRESA DE TRANSPORTE"
+
+@router.post("/excel-info")
+async def get_global_excel_info(
+    file: UploadFile = File(...)
+):
+    if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
+        raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
+    contents = await file.read()
+    try:
+        sheets = get_excel_sheets(contents)
+        suggested_name = extract_suggested_company_name(file.filename)
+        return {
+            "success": True,
+            "filename": file.filename,
+            "sheets": sheets,
+            "default_sheet": sheets[0] if sheets else "",
+            "suggested_company_name": suggested_name
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo leer el archivo Excel: {str(e)}")
+
+@router.post("/preview-excel")
+async def preview_global_excel(
+    file: UploadFile = File(...),
+    sheet_name: Optional[str] = Form(None),
+    target_schema: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
+        raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
+    contents = await file.read()
+    
+    session = None
+    if target_schema:
+        clean_schema = target_schema.strip().lower()
+        emp = db.query(Empresa).filter(Empresa.schema_name == clean_schema).first()
+        if emp:
+            try:
+                session = get_tenant_session(clean_schema)
+            except Exception:
+                session = None
+
+    try:
+        preview_data = parse_excel_viajes_data(
+            file_bytes=contents,
+            sheet_name=sheet_name,
+            session=session,
+            max_preview_records=None
+        )
+        suggested_name = extract_suggested_company_name(file.filename)
+        preview_data["suggested_company_name"] = suggested_name
+        return preview_data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al analizar el archivo Excel: {str(e)}")
+    finally:
+        if session:
+            session.close()
+
+@router.post("/importar-con-empresa")
+async def importar_con_empresa(
+    mode: str = Form("create_new"),
+    empresa_name: Optional[str] = Form(None),
+    tipo_empresa: Optional[str] = Form("Sociedad"),
+    nit: Optional[str] = Form(None),
+    asociacion_id: Optional[int] = Form(None),
+    target_schema: Optional[str] = Form(None),
+    overwrite_duplicates: bool = Form(False),
+    file: Optional[UploadFile] = File(None),
+    sheet_name: Optional[str] = Form(None),
+    edited_records_json: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    if mode == "create_new":
+        if not empresa_name or not empresa_name.strip():
+            raise HTTPException(status_code=400, detail="Debe especificar el nombre de la nueva empresa.")
+        name_clean = empresa_name.strip()
+        base_schema = sanitize_schema_name(name_clean)
+        schema_name = base_schema
+        counter = 1
+        while db.query(Empresa).filter(Empresa.schema_name == schema_name).first():
+            schema_name = f"{base_schema}_{counter}"
+            counter += 1
+
+        nueva_empresa = Empresa(
+            name=name_clean,
+            schema_name=schema_name,
+            nit=nit.strip() if nit else None,
+            tipo_empresa=tipo_empresa or "Sociedad",
+            asociacion_id=asociacion_id if asociacion_id else None,
+            icon="Truck"
+        )
+        db.add(nueva_empresa)
+        db.commit()
+        db.refresh(nueva_empresa)
+
+        # Inicializar esquema tenant
+        init_tenant_schema(schema_name)
+        target_empresa = nueva_empresa
+    elif mode == "use_existing":
+        if not target_schema:
+            raise HTTPException(status_code=400, detail="Debe seleccionar una empresa de destino.")
+        target_empresa = db.query(Empresa).filter(Empresa.schema_name == target_schema).first()
+        if not target_empresa:
+            raise HTTPException(status_code=404, detail="La empresa de destino seleccionada no existe.")
+        schema_name = target_empresa.schema_name
+    else:
+        raise HTTPException(status_code=400, detail="Modo de importación inválido. Use 'create_new' o 'use_existing'.")
+
+    tenant_session = get_tenant_session(schema_name)
+    try:
+        records_to_import = []
+        if edited_records_json:
+            try:
+                records_to_import = json.loads(edited_records_json)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Formato JSON de registros editados inválido: {str(e)}")
+        elif file:
+            if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
+                raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
+            contents = await file.read()
+            parsed = parse_excel_viajes_data(
+                file_bytes=contents,
+                sheet_name=sheet_name,
+                session=tenant_session,
+                max_preview_records=None
+            )
+            records_to_import = parsed["records"]
+        else:
+            raise HTTPException(status_code=400, detail="No se proporcionaron registros ni archivo Excel para importar.")
+
+        if not records_to_import:
+            raise HTTPException(status_code=400, detail="No hay registros válidos para importar.")
+
+        params = tenant_session.query(ParametroLiquidacion).first()
+        if not params:
+            params = ParametroLiquidacion()
+            tenant_session.add(params)
+            tenant_session.commit()
+
+        result = execute_import_viajes(
+            records=records_to_import,
+            session=tenant_session,
+            params=params,
+            overwrite_duplicates=overwrite_duplicates
+        )
+
+        return {
+            "success": True,
+            "target_schema": schema_name,
+            "empresa_name": target_empresa.name,
+            "empresa_id": target_empresa.id,
+            "message": f"Se procesaron los despachos en {target_empresa.name} exitosamente.",
+            **result
+        }
+    finally:
+        tenant_session.close()
 
 @router.get("/{schema_name}", response_model=EmpresaResponse)
 def get_empresa(schema_name: str, db: Session = Depends(get_db)):

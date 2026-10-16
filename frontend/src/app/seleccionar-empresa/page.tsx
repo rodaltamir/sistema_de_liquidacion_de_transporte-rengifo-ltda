@@ -25,7 +25,8 @@ import {
   AlertCircle,
   ShieldCheck,
   User as UserIcon,
-  ChevronDown
+  ChevronDown,
+  FileSpreadsheet
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
@@ -33,6 +34,7 @@ import { getCurrentUser, clearAuth, User } from "@/lib/auth";
 import { formatNumber } from "@/lib/format";
 import ThemeToggle from "@/components/ThemeToggle";
 import ModalPortal from "@/components/ModalPortal";
+import ImportExcelModal from "@/components/ImportExcelModal";
 
 interface Empresa {
   id: number;
@@ -86,6 +88,7 @@ function SeleccionarEmpresaContent() {
 
   const [showModal, setShowModal] = useState(false);
   const [editingEmpresa, setEditingEmpresa] = useState<Empresa | null>(null);
+  const [showImportGlobalModal, setShowImportGlobalModal] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -539,14 +542,24 @@ function SeleccionarEmpresaContent() {
               </button>
             </div>
 
-            {/* Botón Nueva Empresa */}
-            <button
-              onClick={handleOpenCreate}
-              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg shadow-amber-500/20 transition transform active:scale-95 flex-shrink-0"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Nueva Empresa</span>
-            </button>
+            {/* Acciones: Importar y Nueva Empresa */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={() => setShowImportGlobalModal(true)}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/20 transition transform active:scale-95 flex-shrink-0"
+                title="Importar viajes y crear o asignar a empresa desde plantilla Excel"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-100" />
+                <span>Importar Plantilla Excel</span>
+              </button>
+              <button
+                onClick={handleOpenCreate}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg shadow-amber-500/20 transition transform active:scale-95 flex-shrink-0"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>Nueva Empresa</span>
+              </button>
+            </div>
           </div>
 
         </section>
@@ -854,6 +867,16 @@ function SeleccionarEmpresaContent() {
         </div>
         </ModalPortal>
       )}
+
+      {/* Modal de Importación Global de Plantilla Excel */}
+      <ImportExcelModal
+        isOpen={showImportGlobalModal}
+        onClose={() => setShowImportGlobalModal(false)}
+        globalMode={true}
+        onSuccess={() => {
+          loadData();
+        }}
+      />
 
     </div>
   );

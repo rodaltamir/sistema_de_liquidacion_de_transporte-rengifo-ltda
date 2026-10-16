@@ -417,3 +417,178 @@ def parse_excel_viajes_data(
             "total_placas_unicas": len(placas_detectadas)
         }
     }
+
+
+def execute_import_viajes(
+    records: List[Dict[str, Any]],
+    session: Session,
+    params: Optional[ParametroLiquidacion] = None,
+    overwrite_duplicates: bool = False
+) -> Dict[str, Any]:
+    """
+    Inserta o actualiza una lista de registros de viajes (procesados o editados por el usuario)
+    en la sesión de base de datos del esquema correspondiente.
+    """
+    if not params:
+        params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
+
+    viajes_creados = 0
+    viajes_actualizados = 0
+    viajes_omitidos = 0
+    errores = []
+    periodos_detectados = set()
+
+    unidades_cache = {u.placa: u for u in session.query(UnidadTransporte).all()}
+
+    for rec in records:
+        if rec.get("included") is False:
+            continue
+        try:
+            placa = clean_string(rec.get("placa")).upper().replace(" ", "")
+            if not placa or placa in ("SINPLACA", "FALTAPLACA", "TOTAL", "SUBTOTAL"):
+                continue
+
+            date_carga = parse_date_value(rec.get("fecha_carga")) or date.today()
+            date_descarga = parse_date_value(rec.get("fecha_descarga")) or date_carga
+            date_fac = parse_date_value(rec.get("fecha_factura"))
+            mic_str = clean_string(rec.get("mic_dta")).upper() or None
+            if mic_str in ("FALTA MIC", "SIN MIC", "NONE", ""):
+                mic_str = None
+
+            vol_o = clean_float(rec.get("volumen_origen_litros"), 0.0)
+            vol_r = clean_float(rec.get("volumen_recepcionado_litros"), 0.0)
+            vol_f_raw = clean_float(rec.get("volumen_facturado"), 0.0)
+            if 0 < vol_f_raw < 1000:
+                vol_f = round(vol_f_raw * 1000.0, 1)
+            elif vol_f_raw >= 1000:
+                vol_f = round(vol_f_raw, 1)
+            else:
+                vol_f = vol_r if vol_r > 0 else (vol_o if vol_o > 0 else 0.0)
+
+            tarifa = clean_float(rec.get("tarifa_flete"), 392.00)
+            tipo_t = clean_string(rec.get("tipo_tarifa")) or "BS_POR_M3"
+            tramo = clean_string(rec.get("tramo")) or "TRAMO NO ESPECIFICADO"
+            cliente = clean_string(rec.get("cliente")) or "YPFB"
+            producto = clean_string(rec.get("producto")) or "DIESEL"
+            nro_fac = clean_string(rec.get("nro_factura")) or None
+
+            # Detección de duplicado existente
+            existing_viaje = None
+            if mic_str:
+                existing_viaje = session.query(Viaje).filter(Viaje.mic_dta == mic_str).first()
+            if not existing_viaje:
+                existing_viaje = session.query(Viaje).filter(
+                    Viaje.placa == placa,
+                    Viaje.fecha_carga == date_carga,
+                    Viaje.fecha_descarga == date_descarga,
+                    Viaje.volumen_recepcionado_litros == vol_r
+                ).first()
+
+            if existing_viaje:
+                if not overwrite_duplicates:
+                    viajes_omitidos += 1
+                    continue
+                else:
+                    calc = calculate_viaje_values(
+                        volumen_origen_litros=vol_o,
+                        volumen_recepcionado_litros=vol_r,
+                        producto=producto,
+                        tarifa_flete=tarifa,
+                        tipo_tarifa=tipo_t,
+                        params=params,
+                        volumen_facturado=vol_f
+                    )
+                    existing_viaje.tramo = tramo
+                    existing_viaje.cliente = cliente
+                    existing_viaje.producto = producto
+                    if nro_fac:
+                        existing_viaje.nro_factura = nro_fac
+                    if date_fac:
+                        existing_viaje.fecha_factura = date_fac
+                    existing_viaje.volumen_origen_litros = vol_o
+                    existing_viaje.volumen_recepcionado_litros = vol_r
+                    existing_viaje.volumen_facturado = calc["volumen_facturado"]
+                    existing_viaje.merma_real_litros = calc["merma_real_litros"]
+                    existing_viaje.tolerancia_pct = calc["tolerancia_pct"]
+                    existing_viaje.merma_tolerable_litros = calc["merma_tolerable_litros"]
+                    existing_viaje.merma_excedente_litros = calc["merma_excedente_litros"]
+                    existing_viaje.precio_merma_litro_bs = calc["precio_merma_litro_bs"]
+                    existing_viaje.merma_descontar_bs = calc["merma_descontar_bs"]
+                    existing_viaje.tarifa_flete = tarifa
+                    existing_viaje.flete_total_bs = calc["flete_total_bs"]
+                    viajes_actualizados += 1
+                    periodos_detectados.add(existing_viaje.periodo_mes)
+                    continue
+
+            # Crear o verificar unidad
+            u = unidades_cache.get(placa)
+            if not u:
+                u = session.query(UnidadTransporte).filter(UnidadTransporte.placa == placa).first()
+            if not u:
+                u = UnidadTransporte(
+                    placa=placa,
+                    marca="Tractocamión / Cisterna",
+                    capacidad_litros=vol_o if vol_o > 0 else 34000,
+                    estado="Activo"
+                )
+                session.add(u)
+                session.commit()
+                session.refresh(u)
+                unidades_cache[placa] = u
+
+            calc = calculate_viaje_values(
+                volumen_origen_litros=vol_o,
+                volumen_recepcionado_litros=vol_r,
+                producto=producto,
+                tarifa_flete=tarifa,
+                tipo_tarifa=tipo_t,
+                params=params,
+                volumen_facturado=vol_f
+            )
+
+            periodo = determine_trip_period(date_carga, date_descarga)
+            periodos_detectados.add(periodo)
+
+            nuevo_viaje = Viaje(
+                mic_dta=mic_str,
+                lote_codigo="1",
+                unidad_id=u.id,
+                placa=placa,
+                tramo=tramo,
+                cliente=cliente,
+                nro_factura=nro_fac,
+                fecha_factura=date_fac,
+                producto=producto,
+                fecha_carga=date_carga,
+                fecha_descarga=date_descarga,
+                periodo_mes=periodo,
+                volumen_origen_litros=vol_o,
+                volumen_recepcionado_litros=vol_r,
+                volumen_facturado=calc["volumen_facturado"],
+                merma_real_litros=calc["merma_real_litros"],
+                tolerancia_pct=calc["tolerancia_pct"],
+                merma_tolerable_litros=calc["merma_tolerable_litros"],
+                merma_excedente_litros=calc["merma_excedente_litros"],
+                precio_merma_litro_bs=calc["precio_merma_litro_bs"],
+                merma_descontar_bs=calc["merma_descontar_bs"],
+                tarifa_flete=tarifa,
+                tipo_tarifa=tipo_t,
+                flete_total_bs=calc["flete_total_bs"],
+                estado="Pendiente"
+            )
+            session.add(nuevo_viaje)
+            viajes_creados += 1
+        except Exception as row_ex:
+            errores.append(f"Fila {rec.get('fila', '?')}: {str(row_ex)}")
+
+    if viajes_creados or viajes_actualizados:
+        session.commit()
+
+    return {
+        "success": True,
+        "total_importados": viajes_creados,
+        "total_actualizados": viajes_actualizados,
+        "total_omitidos": viajes_omitidos,
+        "periodos_detectados": sorted(list(periodos_detectados)),
+        "errores": errores
+    }
