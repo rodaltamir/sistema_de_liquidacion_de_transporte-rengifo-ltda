@@ -41,6 +41,10 @@ export interface ImportExcelModalProps {
   schema?: string;
   globalMode?: boolean;
   initialAsociacionId?: number | null;
+  initialAsociacionName?: string;
+  initialAsociacionSigla?: string;
+  initialFile?: File | null;
+  initialEmpresaName?: string;
   onSuccess: (result: {
     total_importados: number;
     total_actualizados: number;
@@ -111,6 +115,10 @@ export default function ImportExcelModal({
   schema,
   globalMode = false,
   initialAsociacionId = null,
+  initialAsociacionName = "",
+  initialAsociacionSigla = "",
+  initialFile = null,
+  initialEmpresaName = "",
   onSuccess
 }: ImportExcelModalProps) {
   const router = useRouter();
@@ -133,11 +141,16 @@ export default function ImportExcelModal({
 
   // Opciones de Destino para Modo Global
   const [importMode, setImportMode] = useState<"create_new" | "use_existing">("create_new");
-  const [newEmpresaName, setNewEmpresaName] = useState("");
+  const [newEmpresaName, setNewEmpresaName] = useState(initialEmpresaName || "");
   const [newEmpresaTipo, setNewEmpresaTipo] = useState("Sociedad");
   const [newEmpresaNit, setNewEmpresaNit] = useState("");
   const [newEmpresaAsocId, setNewEmpresaAsocId] = useState<string | number>(initialAsociacionId || "");
   const [selectedExistingSchema, setSelectedExistingSchema] = useState("");
+
+  // Creación de nueva asociación en caliente
+  const [creatingNewAsoc, setCreatingNewAsoc] = useState(Boolean(initialAsociacionName));
+  const [newAsocNombre, setNewAsocNombre] = useState(initialAsociacionName || "");
+  const [newAsocSigla, setNewAsocSigla] = useState(initialAsociacionSigla || "");
   
   // Listas de empresas y asociaciones para selector global
   const [asociaciones, setAsociaciones] = useState<any[]>([]);
@@ -160,7 +173,7 @@ export default function ImportExcelModal({
     }
   }, [isOpen, globalMode]);
 
-  // Reset state al abrir/cerrar
+  // Reset state o inicializar con props al abrir/cerrar
   useEffect(() => {
     if (!isOpen) {
       setFile(null);
@@ -175,8 +188,28 @@ export default function ImportExcelModal({
       setTableSearch("");
       setNewEmpresaName("");
       setNewEmpresaNit("");
+      setCreatingNewAsoc(false);
+      setNewAsocNombre("");
+      setNewAsocSigla("");
+    } else {
+      if (initialAsociacionId) {
+        setNewEmpresaAsocId(initialAsociacionId);
+        setCreatingNewAsoc(false);
+      } else if (initialAsociacionName) {
+        setCreatingNewAsoc(true);
+        setNewAsocNombre(initialAsociacionName);
+        if (initialAsociacionSigla) {
+          setNewAsocSigla(initialAsociacionSigla);
+        }
+      }
+      if (initialEmpresaName) {
+        setNewEmpresaName(initialEmpresaName);
+      }
+      if (initialFile) {
+        processFile(initialFile);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, initialAsociacionId, initialEmpresaName, initialAsociacionName, initialAsociacionSigla, initialFile]);
 
   // Manejo de carga y análisis del archivo Excel
   const processFile = async (selectedFile: File, sheetOverride?: string) => {
@@ -330,6 +363,10 @@ export default function ImportExcelModal({
         r.placa = String(val).toUpperCase().trim();
       } else if (field === "tramo") {
         r.tramo = String(val).toUpperCase();
+      } else if (field === "cliente") {
+        r.cliente = String(val).toUpperCase();
+      } else if (field === "producto") {
+        r.producto = String(val).toUpperCase();
       } else if (field === "nro_factura") {
         r.nro_factura = val ? String(val).trim() : null;
       } else if (field === "volumen_facturado") {
@@ -532,7 +569,14 @@ export default function ImportExcelModal({
           formPayload.append("empresa_name", newEmpresaName.trim());
           formPayload.append("tipo_empresa", newEmpresaTipo);
           if (newEmpresaNit.trim()) formPayload.append("nit", newEmpresaNit.trim());
-          if (newEmpresaAsocId) formPayload.append("asociacion_id", String(newEmpresaAsocId));
+          if (creatingNewAsoc && newAsocNombre.trim()) {
+            formPayload.append("nueva_asociacion_nombre", newAsocNombre.trim());
+            if (newAsocSigla.trim()) {
+              formPayload.append("nueva_asociacion_sigla", newAsocSigla.trim().toUpperCase());
+            }
+          } else if (newEmpresaAsocId && newEmpresaAsocId !== "__create_new__") {
+            formPayload.append("asociacion_id", String(newEmpresaAsocId));
+          }
         } else {
           formPayload.append("target_schema", selectedExistingSchema);
         }
@@ -847,21 +891,76 @@ export default function ImportExcelModal({
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                        Asociación / Gremio (Opcional)
-                      </label>
-                      <select
-                        value={newEmpresaAsocId}
-                        onChange={(e) => setNewEmpresaAsocId(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                      >
-                        <option value="">Empresa Independiente</option>
-                        {asociaciones.map((a: any) => (
-                          <option key={a.id} value={a.id}>
-                            {a.sigla ? `[${a.sigla}] ` : ""}{a.name}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-bold text-slate-300">
+                          Asociación / Gremio
+                        </label>
+                        {!creatingNewAsoc && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCreatingNewAsoc(true);
+                              setNewEmpresaAsocId("__create_new__");
+                            }}
+                            className="text-[10px] text-amber-400 hover:text-amber-300 font-bold"
+                          >
+                            + Nueva Asociación
+                          </button>
+                        )}
+                      </div>
+
+                      {creatingNewAsoc ? (
+                        <div className="space-y-1.5 p-2.5 bg-slate-900 border border-amber-500/30 rounded-xl">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-amber-400 font-bold">Registrar Nueva Asociación:</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCreatingNewAsoc(false);
+                                setNewEmpresaAsocId("");
+                              }}
+                              className="text-[10px] text-slate-400 hover:text-rose-400"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={newAsocNombre}
+                            onChange={(e) => setNewAsocNombre(e.target.value)}
+                            placeholder="Nombre Asociación (ej. ASOCIACIÓN ORIENTE)..."
+                            className="w-full px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
+                          />
+                          <input
+                            type="text"
+                            value={newAsocSigla}
+                            onChange={(e) => setNewAsocSigla(e.target.value)}
+                            placeholder="Sigla (ej: ATPO)..."
+                            className="w-full px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      ) : (
+                        <select
+                          value={newEmpresaAsocId}
+                          onChange={(e) => {
+                            if (e.target.value === "__create_new__") {
+                              setCreatingNewAsoc(true);
+                              setNewEmpresaAsocId("__create_new__");
+                            } else {
+                              setNewEmpresaAsocId(e.target.value);
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                        >
+                          <option value="">Empresa Independiente</option>
+                          <option value="__create_new__" className="text-amber-400 font-bold">+ Crear Nueva Asociación</option>
+                          {asociaciones.map((a: any) => (
+                            <option key={a.id} value={a.id}>
+                              {a.sigla ? `[${a.sigla}] ` : ""}{a.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -901,6 +1000,29 @@ export default function ImportExcelModal({
                     Conciliación Automática
                   </span>
                 </div>
+
+                {/* Resumen Destino en el Sistema */}
+                {globalMode && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                      <span className="text-slate-300">Empresa Destino:</span>
+                      <strong className="text-amber-400 font-black">
+                        {importMode === "create_new" ? (newEmpresaName || "Nueva Empresa") : (empresas.find(e => e.schema_name === selectedExistingSchema)?.name || selectedExistingSchema)}
+                      </strong>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                        {importMode === "create_new" ? "Se creará automáticamente" : "Empresa existente"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-slate-300 text-[11px]">
+                      <span className="text-slate-400">Asociación:</span>
+                      <strong className="text-white">
+                        {creatingNewAsoc ? (newAsocNombre || "Nueva Asociación") : (asociaciones.find(a => String(a.id) === String(newEmpresaAsocId))?.name || "(Empresa Independiente)")}
+                      </strong>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                   {/* Acción 1: Flota */}
@@ -1078,7 +1200,7 @@ export default function ImportExcelModal({
                         <th className="py-2.5 px-2 text-center w-12">#</th>
                         <th className="py-2.5 px-3 min-w-[130px]">Placa (Editable)</th>
                         <th className="py-2.5 px-3 min-w-[180px]">Tramo</th>
-                        <th className="py-2.5 px-3">Producto</th>
+                        <th className="py-2.5 px-3 min-w-[130px]">Producto / Cliente</th>
                         <th className="py-2.5 px-3 whitespace-nowrap">Fechas</th>
                         <th className="py-2.5 px-3 text-right min-w-[120px]">Volumen (L)</th>
                         <th className="py-2.5 px-3 text-right min-w-[110px]">Tarifa (Bs/m³)</th>
@@ -1162,11 +1284,20 @@ export default function ImportExcelModal({
                                 />
                               </td>
 
-                              {/* Producto */}
-                              <td className="py-2 px-3 whitespace-nowrap">
-                                <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-300 border border-slate-700">
-                                  {r.producto}
-                                </span>
+                              {/* Producto / Cliente Editable */}
+                              <td className="py-1.5 px-2 min-w-[130px]">
+                                <input
+                                  type="text"
+                                  value={r.producto || ""}
+                                  onChange={(e) => handleRecordFieldChange(originalIdx, "producto", e.target.value)}
+                                  placeholder="Producto..."
+                                  className="w-full px-2 py-0.5 bg-slate-900 border border-slate-700/80 rounded-lg text-slate-200 text-[10px] font-bold uppercase focus:outline-none focus:border-amber-500 truncate"
+                                />
+                                {r.cliente && (
+                                  <span className="block text-[9px] text-slate-400 font-normal truncate mt-0.5" title={r.cliente}>
+                                    {r.cliente}
+                                  </span>
+                                )}
                               </td>
 
                               {/* Fechas */}

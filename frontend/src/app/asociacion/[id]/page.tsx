@@ -31,6 +31,7 @@ import { downloadBlob } from "@/lib/download";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
 import ThemeToggle from "@/components/ThemeToggle";
 import DatePeriodFilter, { DateFilterChangeEvent, FilterMode } from "@/components/DatePeriodFilter";
+import ImportExcelModal from "@/components/ImportExcelModal";
 
 export default function AsociacionDetallePage() {
   return (
@@ -57,6 +58,7 @@ function AsociacionDetalleContent() {
   const [asociacion, setAsociacion] = useState<any>(null);
   const [resumenStats, setResumenStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Filtros unificados de periodo de tiempo (Mensual, Semestral, Anual, Personalizado, Todo)
   const currentYear = new Date().getFullYear();
@@ -410,13 +412,23 @@ function AsociacionDetalleContent() {
                 </p>
               </div>
 
-              <Link
-                href={`/seleccionar-empresa?asoc_id=${asociacion.id}`}
-                className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition transform active:scale-95"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Afiliar Nueva Empresa</span>
-              </Link>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowImportModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition transform active:scale-95"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+                  <span>Importar Empresa y Despachos (Excel)</span>
+                </button>
+                <Link
+                  href={`/seleccionar-empresa?asoc_id=${asociacion.id}`}
+                  className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition transform active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Afiliar Nueva Empresa</span>
+                </Link>
+              </div>
             </div>
 
             {asociacion.empresas?.length === 0 ? (
@@ -426,15 +438,25 @@ function AsociacionDetalleContent() {
                 </div>
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Sin empresas afiliadas</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
-                  Esta asociación aún no cuenta con empresas de transporte asociadas en su padrón. Comienza afiliando la primera empresa.
+                  Esta asociación aún no cuenta con empresas de transporte asociadas en su padrón. Comienza afiliando o importando la primera empresa desde un archivo Excel.
                 </p>
-                <Link
-                  href={`/seleccionar-empresa?asoc_id=${asociacion.id}`}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 rounded-xl text-xs font-bold transition shadow-lg shadow-amber-500/20"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Afiliar Empresa Ahora</span>
-                </Link>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowImportModal(true)}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white rounded-xl text-xs font-bold transition shadow-md shadow-emerald-600/20 active:scale-95"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+                    <span>Importar Empresa y Despachos (Excel)</span>
+                  </button>
+                  <Link
+                    href={`/seleccionar-empresa?asoc_id=${asociacion.id}`}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 rounded-xl text-xs font-bold transition shadow-lg shadow-amber-500/20"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Afiliar Manualmente</span>
+                  </Link>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -815,6 +837,20 @@ function AsociacionDetalleContent() {
         )}
 
       </main>
+
+      {/* Modal de Importación de Empresa y Despachos para esta Asociación */}
+      <ImportExcelModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        globalMode={true}
+        initialAsociacionId={Number(asocId)}
+        initialAsociacionName={asociacion?.name}
+        initialAsociacionSigla={asociacion?.sigla || ""}
+        onSuccess={() => {
+          loadAsociacion();
+          loadResumen();
+        }}
+      />
     </div>
   );
 }

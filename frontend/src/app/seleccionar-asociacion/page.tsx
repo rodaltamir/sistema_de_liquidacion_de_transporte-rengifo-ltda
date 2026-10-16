@@ -106,6 +106,31 @@ export default function SeleccionarAsociacionPage() {
   const [editingEmpresa, setEditingEmpresa] = useState<Empresa | null>(null);
   const [showAsocRepDetails, setShowAsocRepDetails] = useState(false);
   const [showImportGlobalModal, setShowImportGlobalModal] = useState(false);
+  const [importInitialFile, setImportInitialFile] = useState<File | null>(null);
+  const [importInitialEmpresaName, setImportInitialEmpresaName] = useState<string>("");
+  const [importInitialAsocId, setImportInitialAsocId] = useState<number | null>(null);
+  const [importInitialAsocName, setImportInitialAsocName] = useState<string>("");
+  const [importInitialAsocSigla, setImportInitialAsocSigla] = useState<string>("");
+
+  const handleExcelImportFromAsocModal = (selectedFile: File) => {
+    setImportInitialFile(selectedFile);
+    setImportInitialAsocName(asocForm.name || "");
+    setImportInitialAsocSigla(asocForm.sigla || "");
+    setImportInitialEmpresaName("");
+    setImportInitialAsocId(null);
+    setShowAsocModal(false);
+    setShowImportGlobalModal(true);
+  };
+
+  const handleExcelImportFromEmpresaModal = (selectedFile: File) => {
+    setImportInitialFile(selectedFile);
+    setImportInitialEmpresaName(empresaForm.name || "");
+    setImportInitialAsocId(empresaForm.asociacion_id ? Number(empresaForm.asociacion_id) : null);
+    setImportInitialAsocName("");
+    setImportInitialAsocSigla("");
+    setShowEmpresaModal(false);
+    setShowImportGlobalModal(true);
+  };
 
   // Formulario Asociación
   const [asocForm, setAsocForm] = useState({
@@ -1030,6 +1055,62 @@ export default function SeleccionarAsociacionPage() {
             </div>
 
             <form id="asoc-form" onSubmit={handleSubmitAsoc} className="p-6 space-y-4 flex-1 overflow-y-auto">
+              
+              {/* Banner de Importación Rápida con Excel */}
+              {!editingAsoc && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-amber-500/5 to-emerald-500/10 border border-emerald-500/30 shadow-xs space-y-2.5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5">
+                      <FileSpreadsheet className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black uppercase text-slate-900 dark:text-white tracking-wide">
+                          ¿Crear Asociación desde Plantilla Excel?
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-extrabold text-[9px] uppercase border border-emerald-500/30">
+                          1 Paso
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                        Carga el archivo Excel para registrar la Asociación, afiliar automáticamente su primera empresa de transporte y conciliar sus despachos con previsualización completa.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                    <label className="flex-1 cursor-pointer">
+                      <input
+                        type="file"
+                        accept=".xlsx, .xlsm, .xltx"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleExcelImportFromAsocModal(e.target.files[0]);
+                          }
+                        }}
+                      />
+                      <span className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm shadow-emerald-600/20 active:scale-95 text-center">
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        <span>Elegir Archivo Excel y Previsualizar</span>
+                      </span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportInitialAsocName(asocForm.name || "");
+                        setImportInitialAsocSigla(asocForm.sigla || "");
+                        setShowAsocModal(false);
+                        setShowImportGlobalModal(true);
+                      }}
+                      className="py-2 px-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold transition text-center"
+                    >
+                      Abrir Asistente
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
                   Nombre Completo de la Asociación *
@@ -1151,6 +1232,61 @@ export default function SeleccionarAsociacionPage() {
 
             <form id="empresa-asoc-form" onSubmit={handleSubmitEmpresa} className="p-6 space-y-4 flex-1 overflow-y-auto">
               
+              {/* Banner de Importación Rápida con Excel */}
+              {!editingEmpresa && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-amber-500/5 to-emerald-500/10 border border-emerald-500/30 shadow-xs space-y-2.5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5">
+                      <FileSpreadsheet className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black uppercase text-slate-900 dark:text-white tracking-wide">
+                          ¿Crear Empresa desde Plantilla Excel?
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-extrabold text-[9px] uppercase border border-emerald-500/30">
+                          Recomendado
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                        Carga el archivo Excel para autocompletar la empresa, crear su esquema dedicado, dar de alta las cisternas y conciliar despachos con previsualización interactiva.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                    <label className="flex-1 cursor-pointer">
+                      <input
+                        type="file"
+                        accept=".xlsx, .xlsm, .xltx"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleExcelImportFromEmpresaModal(e.target.files[0]);
+                          }
+                        }}
+                      />
+                      <span className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm shadow-emerald-600/20 active:scale-95 text-center">
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        <span>Elegir Archivo Excel y Previsualizar</span>
+                      </span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportInitialEmpresaName(empresaForm.name || "");
+                        setImportInitialAsocId(empresaForm.asociacion_id ? Number(empresaForm.asociacion_id) : null);
+                        setShowEmpresaModal(false);
+                        setShowImportGlobalModal(true);
+                      }}
+                      className="py-2 px-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold transition text-center"
+                    >
+                      Abrir Asistente
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Selector de Tipo de Empresa */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
@@ -1287,8 +1423,20 @@ export default function SeleccionarAsociacionPage() {
       {/* Modal de Importación Global de Plantilla Excel */}
       <ImportExcelModal
         isOpen={showImportGlobalModal}
-        onClose={() => setShowImportGlobalModal(false)}
+        onClose={() => {
+          setShowImportGlobalModal(false);
+          setImportInitialFile(null);
+          setImportInitialEmpresaName("");
+          setImportInitialAsocId(null);
+          setImportInitialAsocName("");
+          setImportInitialAsocSigla("");
+        }}
         globalMode={true}
+        initialFile={importInitialFile}
+        initialEmpresaName={importInitialEmpresaName}
+        initialAsociacionId={importInitialAsocId}
+        initialAsociacionName={importInitialAsocName}
+        initialAsociacionSigla={importInitialAsocSigla}
         onSuccess={() => {
           loadAllData();
         }}

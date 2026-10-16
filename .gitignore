@@ -59,3 +59,4 @@ backend/exports/samples/
 *.swo
 .DS_Store
 Thumbs.db
+*.tsbuildinfo

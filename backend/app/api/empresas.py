@@ -268,6 +268,8 @@ async def importar_con_empresa(
     tipo_empresa: Optional[str] = Form("Sociedad"),
     nit: Optional[str] = Form(None),
     asociacion_id: Optional[int] = Form(None),
+    nueva_asociacion_nombre: Optional[str] = Form(None),
+    nueva_asociacion_sigla: Optional[str] = Form(None),
     target_schema: Optional[str] = Form(None),
     overwrite_duplicates: bool = Form(False),
     file: Optional[UploadFile] = File(None),
@@ -286,12 +288,26 @@ async def importar_con_empresa(
             schema_name = f"{base_schema}_{counter}"
             counter += 1
 
+        final_asoc_id = asociacion_id
+        if nueva_asociacion_nombre and nueva_asociacion_nombre.strip():
+            asoc_name_clean = nueva_asociacion_nombre.strip()
+            asoc = db.query(Asociacion).filter(Asociacion.name.ilike(asoc_name_clean)).first()
+            if not asoc:
+                asoc = Asociacion(
+                    name=asoc_name_clean,
+                    sigla=nueva_asociacion_sigla.strip().upper() if nueva_asociacion_sigla else None
+                )
+                db.add(asoc)
+                db.commit()
+                db.refresh(asoc)
+            final_asoc_id = asoc.id
+
         nueva_empresa = Empresa(
             name=name_clean,
             schema_name=schema_name,
             nit=nit.strip() if nit else None,
             tipo_empresa=tipo_empresa or "Sociedad",
-            asociacion_id=asociacion_id if asociacion_id else None,
+            asociacion_id=final_asoc_id if final_asoc_id else None,
             icon="Truck"
         )
         db.add(nueva_empresa)

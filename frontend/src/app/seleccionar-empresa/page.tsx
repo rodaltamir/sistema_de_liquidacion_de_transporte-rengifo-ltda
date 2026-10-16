@@ -89,6 +89,17 @@ function SeleccionarEmpresaContent() {
   const [showModal, setShowModal] = useState(false);
   const [editingEmpresa, setEditingEmpresa] = useState<Empresa | null>(null);
   const [showImportGlobalModal, setShowImportGlobalModal] = useState(false);
+  const [importInitialFile, setImportInitialFile] = useState<File | null>(null);
+  const [importInitialEmpresaName, setImportInitialEmpresaName] = useState<string>("");
+  const [importInitialAsocId, setImportInitialAsocId] = useState<number | null>(null);
+
+  const handleExcelImportFromCreateModal = (selectedFile: File) => {
+    setImportInitialFile(selectedFile);
+    setImportInitialEmpresaName(formData.name || "");
+    setImportInitialAsocId(formData.asociacion_id ? Number(formData.asociacion_id) : null);
+    setShowModal(false);
+    setShowImportGlobalModal(true);
+  };
 
   const [formData, setFormData] = useState({
     name: "",
@@ -735,6 +746,61 @@ function SeleccionarEmpresaContent() {
 
             <form id="empresa-form" onSubmit={handleSubmit} className="p-6 space-y-4 flex-1 overflow-y-auto">
               
+              {/* Banner de Importación Inteligente desde Excel */}
+              {!editingEmpresa && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-amber-500/5 to-emerald-500/10 border border-emerald-500/30 shadow-xs space-y-2.5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5">
+                      <FileSpreadsheet className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black uppercase text-slate-900 dark:text-white tracking-wide">
+                          ¿Crear Empresa desde Plantilla Excel?
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-extrabold text-[9px] uppercase border border-emerald-500/30">
+                          Recomendado
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                        Carga el archivo Excel para autocompletar la empresa, aprovisionar la flota de cisternas y conciliar todos los viajes en una ventana de previsualización interactiva con confirmación de acciones.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                    <label className="flex-1 cursor-pointer">
+                      <input
+                        type="file"
+                        accept=".xlsx, .xlsm, .xltx"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleExcelImportFromCreateModal(e.target.files[0]);
+                          }
+                        }}
+                      />
+                      <span className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm shadow-emerald-600/20 active:scale-95 text-center">
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        <span>Elegir Archivo Excel y Previsualizar</span>
+                      </span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportInitialEmpresaName(formData.name || "");
+                        setImportInitialAsocId(formData.asociacion_id ? Number(formData.asociacion_id) : null);
+                        setShowModal(false);
+                        setShowImportGlobalModal(true);
+                      }}
+                      className="py-2 px-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold transition text-center"
+                    >
+                      Abrir Asistente
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Selector de Tipo de Empresa */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
@@ -871,8 +937,16 @@ function SeleccionarEmpresaContent() {
       {/* Modal de Importación Global de Plantilla Excel */}
       <ImportExcelModal
         isOpen={showImportGlobalModal}
-        onClose={() => setShowImportGlobalModal(false)}
+        onClose={() => {
+          setShowImportGlobalModal(false);
+          setImportInitialFile(null);
+          setImportInitialEmpresaName("");
+          setImportInitialAsocId(null);
+        }}
         globalMode={true}
+        initialFile={importInitialFile}
+        initialEmpresaName={importInitialEmpresaName}
+        initialAsociacionId={importInitialAsocId}
         onSuccess={() => {
           loadData();
         }}
