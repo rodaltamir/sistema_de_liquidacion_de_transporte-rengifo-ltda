@@ -78,7 +78,7 @@ def export_liquidacion_placa_pdf(liquidacion: Any, viajes: List[Any], empresa: D
             Paragraph(f"<b>{empresa_name}</b>", empresa_style)
         ],
         [
-            Paragraph(f"MES: {liquidacion.periodo_mes} &nbsp;&nbsp;|&nbsp;&nbsp; <b>PLACA: {liquidacion.placa}</b>", sub_style),
+            Paragraph(f"MES: {liquidacion.periodo_mes} &nbsp;&nbsp;|&nbsp;&nbsp; <b>PLACA: {'TODAS LAS PLACAS (CONSOLIDADO GENERAL)' if str(liquidacion.placa).upper() == 'TODAS' else liquidacion.placa}</b>", sub_style),
             Paragraph(f"TASA MERMA: <b>{getattr(params, 'precio_merma_general_bs', 7.45)} Bs</b>", sub_style)
         ]
     ]
@@ -321,7 +321,7 @@ def export_liquidacion_placa_pdf(liquidacion: Any, viajes: List[Any], empresa: D
             Paragraph(f"<b>{empresa_name}</b>", empresa_style)
         ],
         [
-            Paragraph(f"MES: {liquidacion.periodo_mes} &nbsp;&nbsp;|&nbsp;&nbsp; <b>PLACA: {liquidacion.placa}</b>", sub_style),
+            Paragraph(f"MES: {liquidacion.periodo_mes} &nbsp;&nbsp;|&nbsp;&nbsp; <b>PLACA: {'TODAS LAS PLACAS (CONSOLIDADO GENERAL)' if str(liquidacion.placa).upper() == 'TODAS' else liquidacion.placa}</b>", sub_style),
             Paragraph("<b>PÁGINA 2 DE 2</b>", sub_style)
         ]
     ]

@@ -64,3 +64,52 @@ class LiquidacionDetalleResponse(LiquidacionResponse):
     viajes: List[ViajeResponse] = []
     empresa: Optional[Dict[str, Any]] = None
     firmas: Optional[Dict[str, str]] = None
+
+class ResumenPlacaItem(BaseModel):
+    placa: str
+    tipo_flota: str  # "Propia" | "Apoyo" | "Externa"
+    viajes_count: int
+    volumen_origen_litros: float
+    volumen_recepcionado_litros: float
+    volumen_facturado_litros: float
+    flete_total_bruto_bs: float
+    desc_merma_bs: float
+    total_descuentos_bs: float
+    liquido_pagable_bs: float
+    estado: str  # "Liquidada" | "Pendiente de Generar"
+    liquidacion_id: Optional[int] = None
+    codigo: Optional[str] = None
+    fecha_emision: Optional[date] = None
+
+class ResumenFlotaPeriodoResponse(BaseModel):
+    placas: List[ResumenPlacaItem]
+    total_placas: int
+    total_viajes: int
+    total_volumen_litros: float
+    total_flete_bruto_bs: float
+    total_descuentos_bs: float
+    total_liquido_pagable_bs: float
+    placas_liquidadas: int
+    placas_pendientes: int
+    periodo_label: str
+    display_label: str
+
+class LiquidacionBatchCreate(BaseModel):
+    tipo_periodo: Optional[str] = "mes"
+    periodo_mes: Optional[str] = None
+    anio: Optional[int] = None
+    semestre: Optional[int] = None
+    fecha_desde: Optional[date] = None
+    fecha_hasta: Optional[date] = None
+    fecha_emision: Optional[date] = None
+
+class LiquidacionBatchResponse(BaseModel):
+    message: str
+    total_placas: int
+    total_viajes: int
+    placas_procesadas: List[str]
+    total_flete_bruto_bs: float
+    total_descuentos_bs: float
+    total_liquido_pagable_bs: float
+    periodo_label: str
+

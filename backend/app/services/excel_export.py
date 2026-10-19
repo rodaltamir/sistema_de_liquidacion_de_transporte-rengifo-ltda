@@ -249,7 +249,8 @@ def export_liquidacion_placa_excel(
     ws1["A3"].alignment = Alignment(horizontal="left", vertical="center")
 
     ws1.merge_cells("A4:E4")
-    ws1["A4"] = f"PLACA   {liquidacion.placa}"
+    placa_h1 = "TODAS LAS PLACAS (CONSOLIDADO GENERAL)" if str(liquidacion.placa).upper() == "TODAS" else str(liquidacion.placa)
+    ws1["A4"] = f"PLACA   {placa_h1}"
     ws1["A4"].font = FONT_TITLE_BOLD
     ws1["A4"].alignment = Alignment(horizontal="left", vertical="center")
 
@@ -627,7 +628,8 @@ def export_liquidacion_placa_excel(
     ws2["B3"].alignment = Alignment(horizontal="left", vertical="center")
 
     ws2.merge_cells("B4:C4")
-    ws2["B4"] = f"PLACA   {liquidacion.placa}"
+    placa_h2 = "TODAS LAS PLACAS (CONSOLIDADO GENERAL)" if str(liquidacion.placa).upper() == "TODAS" else str(liquidacion.placa)
+    ws2["B4"] = f"PLACA   {placa_h2}"
     ws2["B4"].font = FONT_TITLE_BOLD
     ws2["B4"].alignment = Alignment(horizontal="left", vertical="center")
 
@@ -1233,3 +1235,195 @@ def generate_viajes_template_excel(empresa_name: str = "") -> io.BytesIO:
     wb.save(output)
     output.seek(0)
     return output
+
+
+# =========================================================================
+# EXPORTACIÓN 4: RESUMEN EJECUTIVO CONSOLIDADO DE FLOTA POR PERIODO
+# =========================================================================
+def export_resumen_flota_excel(
+    empresa: Dict[str, Any],
+    periodo_label: str,
+    display_label: str,
+    placas_data: List[Any],
+    params: Any
+) -> io.BytesIO:
+    """
+    Genera un informe Excel ejecutivo con la tabla consolidada de todas las cisternas
+    y su estado de liquidación para el período seleccionado.
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Resumen de Flota"
+    ws.views.sheetView[0].showGridLines = True
+
+    empresa_nombre = empresa.get("name", "EMPRESA DE TRANSPORTE")
+    logo_b64 = empresa.get("logo_base64")
+
+    # Cabecera Superior
+    ws.merge_cells("A2:E2")
+    ws["A2"] = "CONSOLIDADO GENERAL DE LIQUIDACIONES DE FLOTA"
+    ws["A2"].font = FONT_MAIN_TITLE
+    ws["A2"].alignment = Alignment(horizontal="left", vertical="center")
+
+    ws.merge_cells("A3:E3")
+    ws["A3"] = f"PERIODO: {display_label.upper()}"
+    ws["A3"].font = FONT_TITLE_REGULAR
+    ws["A3"].alignment = Alignment(horizontal="left", vertical="center")
+
+    ws.merge_cells("G2:L3")
+    ws["G2"] = empresa_nombre.upper()
+    ws["G2"].font = Font(name=FONT_FAMILY, size=12, bold=True, color="0F172A")
+    ws["G2"].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    add_logo_to_worksheet(ws, logo_base64=logo_b64, empresa_name=empresa_nombre, cell_coord="L1", max_width=140, max_height=48)
+
+    headers = [
+        "Nº", "PLACA", "TIPO FLOTA", "VIAJES", "VOL. FACTURADO (Lt)", "VOL. FACTURADO (m³)",
+        "FLETE TOTAL BRUTO (Bs)", "DESC. MERMA (Bs)", "TOTAL DEDUCCIONES (Bs)",
+        "LÍQUIDO PAGABLE (Bs)", "ESTADO", "CÓDIGO PLANILLA"
+    ]
+
+    header_row = 5
+    ws.row_dimensions[header_row].height = 28
+    for col_idx, h_text in enumerate(headers, 1):
+        cell = ws.cell(row=header_row, column=col_idx, value=h_text)
+        cell.font = FONT_HEADER
+        cell.fill = FILL_HEADER
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = BORDER_THIN_BLACK
+
+    curr_row = header_row + 1
+    tot_viajes = 0
+    tot_vol_lt = 0.0
+    tot_vol_m3 = 0.0
+    tot_flete = 0.0
+    tot_mermas = 0.0
+    tot_desc = 0.0
+    tot_liquido = 0.0
+
+    for idx, item in enumerate(placas_data, 1):
+        p_placa = getattr(item, "placa", None) if not isinstance(item, dict) else item.get("placa", "")
+        p_tipo = getattr(item, "tipo_flota", None) if not isinstance(item, dict) else item.get("tipo_flota", "Propia")
+        p_viajes = int(getattr(item, "viajes_count", None) if not isinstance(item, dict) else item.get("viajes_count", 0))
+        p_vol_lt = float(getattr(item, "volumen_facturado_litros", None) if not isinstance(item, dict) else item.get("volumen_facturado_litros", 0.0))
+        p_vol_m3 = round(p_vol_lt / 1000.0, 3)
+        p_flete = float(getattr(item, "flete_total_bruto_bs", None) if not isinstance(item, dict) else item.get("flete_total_bruto_bs", 0.0))
+        p_merma = float(getattr(item, "desc_merma_bs", None) if not isinstance(item, dict) else item.get("desc_merma_bs", 0.0))
+        p_desc = float(getattr(item, "total_descuentos_bs", None) if not isinstance(item, dict) else item.get("total_descuentos_bs", 0.0))
+        p_liq = float(getattr(item, "liquido_pagable_bs", None) if not isinstance(item, dict) else item.get("liquido_pagable_bs", 0.0))
+        p_estado = getattr(item, "estado", None) if not isinstance(item, dict) else item.get("estado", "Pendiente")
+        p_codigo = getattr(item, "codigo", None) if not isinstance(item, dict) else (item.get("codigo") or "-")
+        if not p_codigo:
+            p_codigo = "-"
+
+        tot_viajes += p_viajes
+        tot_vol_lt += p_vol_lt
+        tot_vol_m3 += p_vol_m3
+        tot_flete += p_flete
+        tot_mermas += p_merma
+        tot_desc += p_desc
+        tot_liquido += p_liq
+
+        row_vals = [
+            (idx, "center", None),
+            (p_placa, "center", None),
+            (p_tipo, "center", None),
+            (p_viajes, "center", '#,##0'),
+            (p_vol_lt, "right", '#,##0'),
+            (p_vol_m3, "right", '#,##0.00'),
+            (p_flete, "right", '#,##0.00'),
+            (p_merma, "right", '#,##0.00'),
+            (p_desc, "right", '#,##0.00'),
+            (p_liq, "right", '#,##0.00'),
+            (p_estado, "center", None),
+            (p_codigo, "center", None)
+        ]
+
+        ws.row_dimensions[curr_row].height = 20
+        for col_idx, (v_val, a_align, n_fmt) in enumerate(row_vals, 1):
+            cell = ws.cell(row=curr_row, column=col_idx, value=v_val)
+            cell.font = FONT_DATA_REGULAR
+            cell.alignment = Alignment(horizontal=a_align, vertical="center")
+            cell.border = BORDER_THIN_BLACK
+            if n_fmt:
+                cell.number_format = n_fmt
+        curr_row += 1
+
+    # Fila de Totales
+    ws.row_dimensions[curr_row].height = 24
+    c_tot_label = ws.cell(row=curr_row, column=1, value="TOTALES")
+    c_tot_label.alignment = Alignment(horizontal="center", vertical="center")
+    ws.merge_cells(f"A{curr_row}:C{curr_row}")
+
+    ws.cell(row=curr_row, column=4, value=tot_viajes).number_format = '#,##0'
+    ws.cell(row=curr_row, column=5, value=tot_vol_lt).number_format = '#,##0'
+    ws.cell(row=curr_row, column=6, value=tot_vol_m3).number_format = '#,##0.00'
+    ws.cell(row=curr_row, column=7, value=tot_flete).number_format = '#,##0.00'
+    ws.cell(row=curr_row, column=8, value=tot_mermas).number_format = '#,##0.00'
+    ws.cell(row=curr_row, column=9, value=tot_desc).number_format = '#,##0.00'
+    ws.cell(row=curr_row, column=10, value=tot_liquido).number_format = '#,##0.00'
+    ws.cell(row=curr_row, column=11, value="")
+    ws.cell(row=curr_row, column=12, value="")
+
+    for c in range(1, 13):
+        cell_t = ws.cell(row=curr_row, column=c)
+        cell_t.font = FONT_TOTAL_MAIN
+        cell_t.fill = FILL_SHADED_GRAY
+        cell_t.border = BORDER_TOTAL_DOUBLE
+        if c in [4, 5, 6, 7, 8, 9, 10]:
+            cell_t.alignment = Alignment(horizontal="right", vertical="center")
+
+    # Firmas Oficiales
+    sign_start_row = curr_row + 4
+    ws.row_dimensions[sign_start_row].height = 17
+    ws.row_dimensions[sign_start_row + 1].height = 18
+    ws.row_dimensions[sign_start_row + 2].height = 40
+
+    realizado_nom = getattr(params, "firma_realizado_por", "JAQUELINE LOVERA TIÑINI")
+    panels = [
+        ("A", "C", realizado_nom, " REALIZADO POR:"),
+        ("D", "F", "", " REVISADO POR:"),
+        ("G", "I", "", " AUTORIZADO POR:"),
+        ("J", "L", "", " CANCELADO POR:")
+    ]
+    for col_s, col_e, n_val, l_val in panels:
+        if n_val:
+            ws.merge_cells(f"{col_s}{sign_start_row}:{col_e}{sign_start_row}")
+            ws[f"{col_s}{sign_start_row}"] = n_val
+            ws[f"{col_s}{sign_start_row}"].font = Font(name=FONT_FAMILY, size=8.5, bold=True)
+            ws[f"{col_s}{sign_start_row}"].alignment = Alignment(horizontal="center", vertical="bottom")
+
+    for col_u in range(1, 13):
+        ws.cell(row=sign_start_row + 1, column=col_u).border = Border(bottom=Side(style='thin', color='000000'))
+
+    row_tags = sign_start_row + 2
+    for col_s, col_e, _, l_val in panels:
+        ws.merge_cells(f"{col_s}{row_tags}:{col_e}{row_tags}")
+        ws[f"{col_s}{row_tags}"] = l_val
+        ws[f"{col_s}{row_tags}"].font = Font(name=FONT_FAMILY, size=8, bold=True)
+        ws[f"{col_s}{row_tags}"].alignment = Alignment(horizontal="left", vertical="top")
+
+    # Margen y tamaño
+    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+    ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.print_options.horizontalCentered = True
+
+    ws.page_margins.top = 0.8
+    ws.page_margins.bottom = 0.4
+    ws.page_margins.left = 0.4
+    ws.page_margins.right = 0.4
+
+    min_widths = {
+        "A": 6, "B": 14, "C": 14, "D": 10, "E": 18, "F": 18,
+        "G": 20, "H": 18, "I": 20, "J": 20, "K": 16, "L": 24
+    }
+    adjust_column_widths(ws, min_widths)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
+

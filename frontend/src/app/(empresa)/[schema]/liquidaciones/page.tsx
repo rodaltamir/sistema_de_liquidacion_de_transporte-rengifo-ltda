@@ -23,7 +23,12 @@ import {
   ArrowLeft,
   Eye,
   BarChart3,
-  Scale
+  Scale,
+  Search,
+  Sparkles,
+  Check,
+  AlertCircle,
+  RefreshCw
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
@@ -31,6 +36,7 @@ import { downloadBlob } from "@/lib/download";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
 import DatePeriodFilter, { DateFilterChangeEvent, FilterMode } from "@/components/DatePeriodFilter";
 import ModalPortal from "@/components/ModalPortal";
+import { useTheme } from "@/context/ThemeContext";
 
 const getVolFactLitros = (v: any) => {
   const raw = Number(v?.volumen_facturado);
@@ -47,12 +53,17 @@ const getVolFactM3 = (v: any) => {
 export default function LiquidacionesPage() {
   const routeParams = useParams();
   const schema = (routeParams?.schema as string) || "";
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme !== "light";
+  const swalBg = isDark ? "#0f172a" : "#ffffff";
+  const swalColor = isDark ? "#f8fafc" : "#0f172a";
+  const swalCancelColor = isDark ? "#475569" : "#94a3b8";
 
   const [unidades, setUnidades] = useState<any[]>([]);
   const [unidadesApoyo, setUnidadesApoyo] = useState<any[]>([]);
   const [placasViajes, setPlacasViajes] = useState<string[]>([]);
   const [manualPlaca, setManualPlaca] = useState(false);
-  const [selectedPlaca, setSelectedPlaca] = useState("");
+  const [selectedPlaca, setSelectedPlaca] = useState("__TODAS__");
   const [periodo, setPeriodo] = useState("");
   const [periodosDisponibles, setPeriodosDisponibles] = useState<any[]>([]);
 
@@ -64,7 +75,11 @@ export default function LiquidacionesPage() {
 
   const [liquidaciones, setLiquidaciones] = useState<any[]>([]);
   const [activeLiq, setActiveLiq] = useState<any>(null);
+  const [resumenFlota, setResumenFlota] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingBatch, setLoadingBatch] = useState(false);
+  const [placaFilterText, setPlacaFilterText] = useState("");
+  const [activeFleetTab, setActiveFleetTab] = useState<"resumen" | "planilla">("resumen");
   const [activeTab, setActiveTab] = useState<"hoja1" | "hoja2" | "ambas">("ambas");
 
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -121,20 +136,8 @@ export default function LiquidacionesPage() {
       setPeriodo(initPeriodo);
       setDateFilterQuery(`periodo_mes=${initPeriodo}`);
 
-      // Placa preferida inicial
-      let initPlaca = "";
-      if (validLiqs.length > 0 && validLiqs[0].placa) {
-        initPlaca = validLiqs[0].placa;
-      } else if (validUnidades.length > 0 && validUnidades[0].placa) {
-        initPlaca = validUnidades[0].placa;
-      } else if (validApoyo.length > 0 && validApoyo[0].placa) {
-        initPlaca = validApoyo[0].placa;
-      } else if (distinctTripPlacas.length > 0) {
-        initPlaca = distinctTripPlacas[0];
-      }
-      if (initPlaca) {
-        setSelectedPlaca(initPlaca);
-      }
+      // Placa preferida inicial: por defecto '__TODAS__' para permitir la visualización consolidada y matriz de validación
+      setSelectedPlaca("__TODAS__");
     } catch (err) {
       console.error(err);
     } finally {
@@ -190,14 +193,34 @@ export default function LiquidacionesPage() {
       const validList = Array.isArray(list) ? list : [];
       setRangeLiquidaciones(validList);
 
-      // Si no es vista "TODAS", obtener la planilla oficial consolidada de la cisterna para el periodo
-      if (selectedPlaca !== "__TODAS__") {
+      // Si es vista "TODAS", obtener tanto el consolidado general de fletes como la matriz de validación por placa
+      if (selectedPlaca === "__TODAS__") {
+        try {
+          const queryPart = dateFilterQuery ? `&${dateFilterQuery}` : (periodo ? `&periodo_mes=${periodo}` : "");
+          const [consolidada, resumen] = await Promise.all([
+            apiFetch(`/tenants/${schema}/liquidaciones/consolidada?placa=TODAS&tipo_periodo=${filterMode}${queryPart}`).catch(() => null),
+            apiFetch(`/tenants/${schema}/liquidaciones/resumen-placas?tipo_periodo=${filterMode}${queryPart}`).catch(() => null)
+          ]);
+
+          if (consolidada && (consolidada.total_viajes > 0 || (consolidada.viajes && consolidada.viajes.length > 0))) {
+            setActiveLiq(consolidada);
+          } else {
+            setActiveLiq(null);
+          }
+          setResumenFlota(resumen);
+        } catch (e) {
+          setActiveLiq(null);
+          setResumenFlota(null);
+        }
+      } else {
+        // Vista de cisterna individual
+        setResumenFlota(null);
         const targetPlaca = selectedPlaca || 
           (validList.length > 0 ? validList[0].placa : 
           (unidades.length > 0 ? unidades[0].placa : 
           (unidadesApoyo.length > 0 ? unidadesApoyo[0].placa : (placasViajes[0] || ""))));
 
-        if (targetPlaca) {
+        if (targetPlaca && targetPlaca !== "__TODAS__") {
           try {
             const consolidadaUrl = `/tenants/${schema}/liquidaciones/consolidada?placa=${targetPlaca}&tipo_periodo=${filterMode}${dateFilterQuery ? `&${dateFilterQuery}` : (periodo ? `&periodo_mes=${periodo}` : "")}`;
             const detalle = await apiFetch(consolidadaUrl);
@@ -213,8 +236,6 @@ export default function LiquidacionesPage() {
         } else {
           setActiveLiq(null);
         }
-      } else {
-        setActiveLiq(null);
       }
     } catch (err) {
       console.error(err);
@@ -235,8 +256,9 @@ export default function LiquidacionesPage() {
         icon: "error",
         title: "Error al cargar planilla",
         text: err.message || "No se pudo obtener el detalle de la liquidación.",
-        background: "#0f172a",
-        color: "#f8fafc"
+        background: swalBg,
+        color: swalColor,
+        confirmButtonColor: "#f59e0b"
       });
     } finally {
       setLoading(false);
@@ -246,18 +268,117 @@ export default function LiquidacionesPage() {
   const handleGenerate = async () => {
     let targetPlaca = selectedPlaca;
 
-    if (!targetPlaca || targetPlaca === "__TODAS__") {
+    if (!targetPlaca) {
       Swal.fire({
         icon: "warning",
-        title: "Selecciona una cisterna",
-        text: "Por favor selecciona una placa para generar o actualizar su liquidación oficial.",
-        background: "#0f172a",
-        color: "#f8fafc",
+        title: "Selecciona una cisterna o Todas las Placas",
+        text: "Por favor elige una placa del selector superior o selecciona 'Todas las Placas' para procesar la flota simultáneamente.",
+        background: swalBg,
+        color: swalColor,
         confirmButtonColor: "#f59e0b"
       });
       return;
     }
 
+    if (targetPlaca === "__TODAS__") {
+      // Flujo de generación en lote para toda la flota
+      const totalPlacasCount = resumenFlota?.total_placas || rangeLiquidaciones.length || "todas las";
+      const confirmResult = await Swal.fire({
+        title: "¿Generar liquidaciones para toda la flota?",
+        html: `
+          <div style="text-align: left; font-size: 0.875rem; line-height: 1.5;">
+            <p>Se procesarán y guardarán oficialmente las planillas de <strong>${totalPlacasCount} cisternas</strong> con viajes registrados en <strong>${activeFilterLabel || periodo}</strong>.</p>
+            <p style="margin-top: 8px; font-size: 0.75rem; opacity: 0.85; color: #f59e0b;">
+              ⚠️ Los despachos quedarán vinculados formalmente a sus respectivas liquidaciones y se actualizará el consolidado general de la empresa.
+            </p>
+          </div>
+        `,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonColor: "#f59e0b",
+        cancelButtonColor: swalCancelColor,
+        confirmButtonText: "⚡ Sí, procesar toda la flota",
+        cancelButtonText: "Cancelar",
+        background: swalBg,
+        color: swalColor
+      });
+
+      if (!confirmResult.isConfirmed) return;
+
+      setLoadingBatch(true);
+      try {
+        const payload: any = {
+          tipo_periodo: filterMode,
+          periodo_mes: activeLiq?.periodo_mes || periodo || "ANUAL"
+        };
+        if (filterMode === "anual") {
+          const urlParams = new URLSearchParams(dateFilterQuery);
+          const yr = urlParams.get("anio") || activeFilterLabel?.replace(/\D/g, "") || new Date().getFullYear();
+          payload.anio = Number(yr);
+          payload.periodo_mes = `ANUAL-${yr}`;
+        } else if (filterMode === "semestral") {
+          const urlParams = new URLSearchParams(dateFilterQuery);
+          payload.fecha_desde = urlParams.get("fecha_desde");
+          payload.fecha_hasta = urlParams.get("fecha_hasta");
+          if (urlParams.get("anio")) payload.anio = Number(urlParams.get("anio"));
+          if (urlParams.get("semestre")) payload.semestre = Number(urlParams.get("semestre"));
+          payload.periodo_mes = `${payload.anio || new Date().getFullYear()}-S${payload.semestre || 1}`;
+        } else if (filterMode === "personalizado") {
+          const urlParams = new URLSearchParams(dateFilterQuery);
+          payload.fecha_desde = urlParams.get("fecha_desde");
+          payload.fecha_hasta = urlParams.get("fecha_hasta");
+          payload.periodo_mes = `${payload.fecha_desde}_${payload.fecha_hasta}`;
+        }
+
+        const res = await apiFetch(`/tenants/${schema}/liquidaciones/batch`, {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+
+        await Swal.fire({
+          icon: "success",
+          title: "¡Liquidaciones de Flota Procesadas!",
+          html: `
+            <div style="text-align: left; font-size: 0.875rem; line-height: 1.6;">
+              <p>${res.message || "Se consolidaron las liquidaciones con éxito."}</p>
+              <div style="margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); font-size: 0.8rem;">
+                <div>🚛 <strong>Cisternas liquidadas:</strong> ${res.total_placas}</div>
+                <div>📦 <strong>Total despachos:</strong> ${res.total_viajes} viajes</div>
+                <div>💰 <strong>Flete Bruto Flota:</strong> ${formatCurrency(res.total_flete_bruto_bs)}</div>
+                <div>💵 <strong>Líquido Pagable Neto:</strong> ${formatCurrency(res.total_liquido_pagable_bs)}</div>
+              </div>
+            </div>
+          `,
+          background: swalBg,
+          color: swalColor,
+          confirmButtonColor: "#10b981",
+          confirmButtonText: "Aceptar"
+        });
+
+        loadLiquidacionesData();
+      } catch (err: any) {
+        Swal.fire({
+          icon: "error",
+          title: "Error al generar liquidaciones en lote",
+          html: `
+            <div style="text-align: left; font-size: 0.875rem; line-height: 1.5;">
+              <p style="color: #ef4444; font-weight: bold;">${err.message || "Ocurrió un error al procesar el lote."}</p>
+              <div style="margin-top: 8px; font-size: 0.75rem; opacity: 0.85;">
+                Verifica que existan viajes con fechas correspondientes a este período en el módulo de Despachos.
+              </div>
+            </div>
+          `,
+          background: swalBg,
+          color: swalColor,
+          confirmButtonColor: "#f59e0b"
+        });
+      } finally {
+        setLoadingBatch(false);
+      }
+      return;
+    }
+
+    // Flujo individual para una placa específica
     setLoading(true);
     try {
       const payload: any = {
@@ -292,12 +413,22 @@ export default function LiquidacionesPage() {
 
       Swal.fire({
         icon: "success",
-        title: "¡Liquidación Generada!",
-        text: `Planilla para ${targetPlaca} (${res.codigo}) procesada con éxito.`,
-        timer: 1600,
-        showConfirmButton: false,
-        background: "#0f172a",
-        color: "#f8fafc"
+        title: "¡Liquidación Generada con Éxito!",
+        html: `
+          <div style="text-align: left; font-size: 0.875rem; line-height: 1.6;">
+            <p>La planilla oficial para la cisterna <strong>${targetPlaca}</strong> ha sido consolidada.</p>
+            <div style="margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); font-size: 0.8rem;">
+              <div>📋 <strong>Código:</strong> ${res.codigo}</div>
+              <div>📅 <strong>Período:</strong> ${res.periodo_mes}</div>
+              <div>🚛 <strong>Despachos:</strong> ${res.total_viajes} viajes</div>
+              <div>💵 <strong>Líquido Pagable:</strong> ${formatCurrency(res.liquido_pagable_bs)}</div>
+            </div>
+          </div>
+        `,
+        background: swalBg,
+        color: swalColor,
+        confirmButtonColor: "#10b981",
+        confirmButtonText: "Ver Planilla"
       });
 
       const detalle = await apiFetch(`/tenants/${schema}/liquidaciones/${res.id}`);
@@ -306,10 +437,22 @@ export default function LiquidacionesPage() {
     } catch (err: any) {
       Swal.fire({
         icon: "error",
-        title: "No se pudo generar",
-        text: err.message || "Verifica que existan viajes para esta placa en el periodo.",
-        background: "#0f172a",
-        color: "#f8fafc",
+        title: "No se pudo generar la liquidación",
+        html: `
+          <div style="text-align: left; font-size: 0.875rem; line-height: 1.5;">
+            <p style="color: #ef4444; font-weight: bold;">${err.message || "Error al procesar la liquidación."}</p>
+            <div style="margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); font-size: 0.75rem;">
+              <strong>💡 Posibles causas y soluciones:</strong>
+              <ul style="list-style-type: disc; margin-left: 16px; margin-top: 4px;">
+                <li>No existen viajes registrados para la placa <strong>${targetPlaca}</strong> en ${activeFilterLabel || periodo}.</li>
+                <li>Verifica en el módulo de <strong>Viajes / Despachos</strong> que las fechas de carga pertenezcan a este período.</li>
+                <li>Prueba cambiando el mes en el selector de fecha superior o revisa si la placa fue digitada correctamente.</li>
+              </ul>
+            </div>
+          </div>
+        `,
+        background: swalBg,
+        color: swalColor,
         confirmButtonColor: "#f59e0b"
       });
     } finally {
@@ -318,24 +461,127 @@ export default function LiquidacionesPage() {
   };
 
   const downloadExcel = async () => {
-    if (!activeLiq) return;
+    if (!activeLiq) {
+      Swal.fire({
+        icon: "info",
+        title: "Liquidación requerida para exportar",
+        html: `
+          <div style="text-align: left; font-size: 0.875rem; line-height: 1.5;">
+            <p>Para exportar la planilla oficial en formato Excel (.xlsx), primero debes tener una liquidación calculada o generada en pantalla.</p>
+            <div style="margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.25); font-size: 0.75rem;">
+              <strong>📋 ¿Cómo proceder?</strong>
+              <ol style="list-style-type: decimal; margin-left: 16px; margin-top: 4px;">
+                <li>Elige una <strong>placa específica</strong> o selecciona <strong>"Todas las Placas"</strong>.</li>
+                <li>Verifica que existan viajes en el período seleccionado.</li>
+                <li>Haz clic en <strong>"Generar Liquidación"</strong> para consolidar oficialmente el registro.</li>
+                <li>Una vez visualizada, podrás descargar el archivo Excel de 19 columnas.</li>
+              </ol>
+            </div>
+          </div>
+        `,
+        background: swalBg,
+        color: swalColor,
+        confirmButtonColor: "#3b82f6",
+        confirmButtonText: "Entendido"
+      });
+      return;
+    }
+
     try {
-      const blob = await apiFetch(`/tenants/${schema}/liquidaciones/${activeLiq.id}/export/excel`);
-      const filename = `Liquidacion_${activeLiq.placa}_${activeLiq.periodo_mes}.xlsx`;
+      const q = [
+        `tipo_periodo=${filterMode}`,
+        dateFilterQuery,
+        `placa=${selectedPlaca === "__TODAS__" ? "TODAS" : (activeLiq.placa || "")}`
+      ].filter(Boolean).join("&");
+
+      const liqId = activeLiq.id || 0;
+      const blob = await apiFetch(`/tenants/${schema}/liquidaciones/${liqId}/export/excel?${q}`);
+      const safePlaca = selectedPlaca === "__TODAS__" ? "TODAS" : activeLiq.placa;
+      const filename = `Liquidacion_${safePlaca}_${activeLiq.periodo_mes}.xlsx`;
       downloadBlob(blob, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     } catch (err: any) {
-      Swal.fire({ icon: "error", title: "Error al exportar Excel", text: err.message, background: "#0f172a", color: "#f8fafc", confirmButtonColor: "#f59e0b" });
+      Swal.fire({
+        icon: "error",
+        title: "Error al exportar Excel",
+        text: err.message || "No se pudo generar el archivo Excel.",
+        background: swalBg,
+        color: swalColor,
+        confirmButtonColor: "#f59e0b"
+      });
     }
   };
 
   const downloadPDF = async () => {
-    if (!activeLiq) return;
+    if (!activeLiq) {
+      Swal.fire({
+        icon: "info",
+        title: "Liquidación requerida para exportar",
+        html: `
+          <div style="text-align: left; font-size: 0.875rem; line-height: 1.5;">
+            <p>Para exportar la planilla oficial en formato PDF, primero debes tener una liquidación calculada o generada en pantalla.</p>
+            <div style="margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.25); font-size: 0.75rem;">
+              <strong>📋 ¿Cómo proceder?</strong>
+              <ol style="list-style-type: decimal; margin-left: 16px; margin-top: 4px;">
+                <li>Elige una <strong>placa específica</strong> o selecciona <strong>"Todas las Placas"</strong>.</li>
+                <li>Verifica que existan viajes en el período seleccionado.</li>
+                <li>Haz clic en <strong>"Generar Liquidación"</strong> para consolidar el registro.</li>
+                <li>Una vez visualizada, podrás descargar el PDF oficial.</li>
+              </ol>
+            </div>
+          </div>
+        `,
+        background: swalBg,
+        color: swalColor,
+        confirmButtonColor: "#3b82f6",
+        confirmButtonText: "Entendido"
+      });
+      return;
+    }
+
     try {
-      const blob = await apiFetch(`/tenants/${schema}/liquidaciones/${activeLiq.id}/export/pdf`);
-      const filename = `Liquidacion_${activeLiq.placa}_${activeLiq.periodo_mes}.pdf`;
+      const q = [
+        `tipo_periodo=${filterMode}`,
+        dateFilterQuery,
+        `placa=${selectedPlaca === "__TODAS__" ? "TODAS" : (activeLiq.placa || "")}`
+      ].filter(Boolean).join("&");
+
+      const liqId = activeLiq.id || 0;
+      const blob = await apiFetch(`/tenants/${schema}/liquidaciones/${liqId}/export/pdf?${q}`);
+      const safePlaca = selectedPlaca === "__TODAS__" ? "TODAS" : activeLiq.placa;
+      const filename = `Liquidacion_${safePlaca}_${activeLiq.periodo_mes}.pdf`;
       downloadBlob(blob, filename, "application/pdf");
     } catch (err: any) {
-      Swal.fire({ icon: "error", title: "Error al exportar PDF", text: err.message, background: "#0f172a", color: "#f8fafc", confirmButtonColor: "#f59e0b" });
+      Swal.fire({
+        icon: "error",
+        title: "Error al exportar PDF",
+        text: err.message || "No se pudo generar el archivo PDF.",
+        background: swalBg,
+        color: swalColor,
+        confirmButtonColor: "#f59e0b"
+      });
+    }
+  };
+
+  const downloadResumenFlotaExcel = async () => {
+    try {
+      const q = [
+        `tipo_periodo=${filterMode}`,
+        dateFilterQuery || (periodo ? `periodo_mes=${periodo}` : "")
+      ].filter(Boolean).join("&");
+
+      const blob = await apiFetch(`/tenants/${schema}/liquidaciones/export/resumen-excel?${q}`);
+      const safeLabel = (activeFilterLabel || periodo || "Flota").replace(/\s+/g, "_");
+      const filename = `Resumen_Flota_${safeLabel}.xlsx`;
+      downloadBlob(blob, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Error al exportar Resumen de Flota",
+        text: err.message || "No se pudo descargar el resumen consolidado en Excel.",
+        background: swalBg,
+        color: swalColor,
+        confirmButtonColor: "#f59e0b"
+      });
     }
   };
 
@@ -382,16 +628,24 @@ export default function LiquidacionesPage() {
       Swal.fire({
         icon: "success",
         title: "Deducciones actualizadas",
-        background: "#0f172a",
-        color: "#f8fafc",
-        timer: 1500,
+        text: "Se recalcularon los descuentos y el líquido pagable satisfactoriamente.",
+        background: swalBg,
+        color: swalColor,
+        timer: 1600,
         showConfirmButton: false
       });
       setShowAdjustModal(false);
       const detalle = await apiFetch(`/tenants/${schema}/liquidaciones/${res.id}`);
       setActiveLiq(detalle);
     } catch (err: any) {
-      Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#0f172a", color: "#f8fafc", confirmButtonColor: "#f59e0b" });
+      Swal.fire({
+        icon: "error",
+        title: "Error al actualizar",
+        text: err.message || "No se pudieron guardar los ajustes.",
+        background: swalBg,
+        color: swalColor,
+        confirmButtonColor: "#f59e0b"
+      });
     }
   };
 
@@ -399,15 +653,22 @@ export default function LiquidacionesPage() {
     if (!activeLiq) return;
     const result = await Swal.fire({
       title: `¿Eliminar liquidación ${activeLiq.codigo}?`,
-      text: "Los viajes quedarán en estado Pendiente para poder volver a liquidarse.",
+      html: `
+        <div style="text-align: left; font-size: 0.875rem; line-height: 1.5;">
+          <p>Estás a punto de anular la liquidación para la cisterna <strong>${activeLiq.placa}</strong> en el período <strong>${activeLiq.periodo_mes}</strong>.</p>
+          <p style="margin-top: 8px; font-size: 0.75rem; color: #f59e0b;">
+            ⚠️ Todos los despachos vinculados quedarán liberados en estado <strong>'Pendiente'</strong> para poder volver a liquidarse cuando lo requieras.
+          </p>
+        </div>
+      `,
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#e11d48",
-      cancelButtonColor: "#334155",
-      confirmButtonText: "Sí, eliminar",
+      cancelButtonColor: swalCancelColor,
+      confirmButtonText: "Sí, anular y liberar viajes",
       cancelButtonText: "Cancelar",
-      background: "#0f172a",
-      color: "#f8fafc"
+      background: swalBg,
+      color: swalColor
     });
 
     if (result.isConfirmed) {
@@ -415,16 +676,24 @@ export default function LiquidacionesPage() {
         await apiFetch(`/tenants/${schema}/liquidaciones/${activeLiq.id}`, { method: "DELETE" });
         Swal.fire({
           icon: "success",
-          title: "Liquidación eliminada",
-          background: "#0f172a",
-          color: "#f8fafc",
-          timer: 1500,
+          title: "Liquidación Anulada",
+          text: "La liquidación fue eliminada y los viajes volvieron a estado Pendiente.",
+          background: swalBg,
+          color: swalColor,
+          timer: 1600,
           showConfirmButton: false
         });
         setActiveLiq(null);
         loadInitialData();
       } catch (err: any) {
-        Swal.fire({ icon: "error", title: "Error", text: err.message, background: "#0f172a", color: "#f8fafc", confirmButtonColor: "#f59e0b" });
+        Swal.fire({
+          icon: "error",
+          title: "Error al anular",
+          text: err.message || "No se pudo anular la liquidación.",
+          background: swalBg,
+          color: swalColor,
+          confirmButtonColor: "#f59e0b"
+        });
       }
     }
   };
@@ -441,6 +710,16 @@ export default function LiquidacionesPage() {
   const totalFleteConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.flete_total_bruto_bs || l.flete_total_bs || 0), 0);
   const totalLiquidoConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.liquido_pagable_bs || 0), 0);
   const totalDeduccionesConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.total_descuentos_bs ?? Math.max(0, (l.flete_total_bruto_bs || 0) - (l.liquido_pagable_bs || 0))), 0);
+
+  // Lista de placas filtradas para la matriz de validación de flota
+  const filteredPlacas = (resumenFlota?.placas || []).filter((item: any) => {
+    if (!placaFilterText.trim()) return true;
+    const q = placaFilterText.toLowerCase();
+    return (
+      item.placa.toLowerCase().includes(q) ||
+      (item.conductor_nombre && item.conductor_nombre.toLowerCase().includes(q))
+    );
+  });
 
   return (
     <div className="space-y-4 font-sans selection:bg-amber-500 selection:text-slate-950">
@@ -468,53 +747,68 @@ export default function LiquidacionesPage() {
           </div>
         </div>
 
-        {/* Acciones de exportación directas si hay liquidación activa */}
-        {activeLiq && (
-          <div className="flex items-center gap-2 flex-wrap">
+        {/* Acciones de exportación directas */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {selectedPlaca === "__TODAS__" && (
             <button
-              onClick={downloadExcel}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition active:scale-95"
-              title="Descargar Excel oficial (.xlsx)"
+              onClick={downloadResumenFlotaExcel}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm transition active:scale-95"
+              title="Descargar Resumen Consolidado de la Flota en Excel (.xlsx)"
             >
               <FileSpreadsheet className="w-4 h-4" />
-              <span>Excel</span>
+              <span>Resumen Flota Excel</span>
             </button>
+          )}
 
-            <button
-              onClick={downloadPDF}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-sm transition active:scale-95"
-              title="Descargar PDF"
-            >
-              <Download className="w-4 h-4" />
-              <span>PDF</span>
-            </button>
+          <button
+            onClick={downloadExcel}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition active:scale-95"
+            title="Descargar Planilla oficial en Excel (.xlsx)"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Excel</span>
+          </button>
 
-            <button
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition active:scale-95"
-              title="Imprimir"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Imprimir</span>
-            </button>
+          <button
+            onClick={downloadPDF}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-sm transition active:scale-95"
+            title="Descargar Planilla oficial en PDF"
+          >
+            <Download className="w-4 h-4" />
+            <span>PDF</span>
+          </button>
 
-            <button
-              onClick={openAdjustModal}
-              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-amber-600 dark:text-amber-400 border border-slate-200 dark:border-slate-700 transition"
-              title="Ajustar deducciones"
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-            </button>
+          {activeLiq && (
+            <>
+              <button
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition active:scale-95"
+                title="Imprimir"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Imprimir</span>
+              </button>
 
-            <button
-              onClick={handleDeleteLiquidacion}
-              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700 transition"
-              title="Eliminar liquidación"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+              <button
+                onClick={openAdjustModal}
+                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-amber-600 dark:text-amber-400 border border-slate-200 dark:border-slate-700 transition"
+                title="Ajustar deducciones"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+              </button>
+
+              {activeLiq.id && activeLiq.id > 0 && (
+                <button
+                  onClick={handleDeleteLiquidacion}
+                  className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700 transition"
+                  title="Eliminar liquidación"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Visualizador de Meses y Filtros de Fechas */}
@@ -557,11 +851,9 @@ export default function LiquidacionesPage() {
                 }}
                 className="bg-transparent text-slate-900 dark:text-white font-bold focus:outline-none cursor-pointer text-xs"
               >
-                {filterMode !== "mes" ? (
-                  <option value="__TODAS__" className="bg-white dark:bg-slate-900">Todas las Placas</option>
-                ) : (
-                  <option value="" className="bg-white dark:bg-slate-900">-- Seleccionar Placa --</option>
-                )}
+                <option value="__TODAS__" className="bg-white dark:bg-slate-900 font-bold text-amber-600 dark:text-amber-400">
+                  📋 Todas las Placas (Consolidado General)
+                </option>
                 {unidades.length > 0 && (
                   <optgroup label="Flota Propia" className="bg-white dark:bg-slate-900">
                     {unidades.map((u) => (
@@ -581,7 +873,7 @@ export default function LiquidacionesPage() {
                   </optgroup>
                 )}
                 {placasViajes.filter(p => !unidades.some(u => u.placa === p) && !unidadesApoyo.some(u => u.placa === p)).length > 0 && (
-                  <optgroup label="Otras Placas" className="bg-white dark:bg-slate-900">
+                  <optgroup label="Otras Placas con Despachos" className="bg-white dark:bg-slate-900">
                     {placasViajes
                       .filter(p => !unidades.some(u => u.placa === p) && !unidadesApoyo.some(u => u.placa === p))
                       .map((p) => (
@@ -618,15 +910,55 @@ export default function LiquidacionesPage() {
 
           <button
             onClick={handleGenerate}
-            className="px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-lg shadow-sm flex items-center gap-1.5 transition active:scale-95"
+            disabled={loadingBatch}
+            className={`px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-lg shadow-sm flex items-center gap-1.5 transition active:scale-95 ${loadingBatch ? "opacity-60 cursor-not-allowed" : ""}`}
           >
-            <Plus className="w-3.5 h-3.5 stroke-[3]" />
-            <span>Generar Liquidación</span>
+            {loadingBatch ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>Generando Lote...</span>
+              </>
+            ) : selectedPlaca === "__TODAS__" ? (
+              <>
+                <Layers className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Liquidar Toda la Flota</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Generar Liquidación</span>
+              </>
+            )}
           </button>
         </div>
 
         {/* Pestañas de Visualización */}
-        {activeLiq && (
+        {selectedPlaca === "__TODAS__" ? (
+          <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold">
+            <button
+              onClick={() => setActiveFleetTab("resumen")}
+              className={`px-3 py-1 rounded-md transition text-[11px] flex items-center gap-1.5 ${
+                activeFleetTab === "resumen" 
+                  ? "bg-amber-500 text-slate-950 font-bold shadow-xs" 
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>Matriz por Cisterna</span>
+            </button>
+            <button
+              onClick={() => setActiveFleetTab("planilla")}
+              className={`px-3 py-1 rounded-md transition text-[11px] flex items-center gap-1.5 ${
+                activeFleetTab === "planilla" 
+                  ? "bg-amber-500 text-slate-950 font-bold shadow-xs" 
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Planilla Consolidada</span>
+            </button>
+          </div>
+        ) : activeLiq && (
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold">
             <button
               onClick={() => setActiveTab("ambas")}
@@ -662,8 +994,67 @@ export default function LiquidacionesPage() {
         )}
       </div>
 
-      {/* Resumen Ejecutivo de la Liquidación Activa (3 Tarjetas Claras) */}
-      {activeLiq && (
+      {/* Resumen Ejecutivo de la Flota (cuando está en __TODAS__) */}
+      {selectedPlaca === "__TODAS__" && (resumenFlota || activeLiq) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 no-print">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Cisternas Activas</span>
+              <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono mt-0.5">
+                {resumenFlota?.placas_con_viajes ?? (rangeLiquidaciones.length || 0)} <span className="text-xs font-normal text-slate-400">/ {resumenFlota?.total_placas ?? (unidades.length + unidadesApoyo.length)}</span>
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {resumenFlota?.placas_liquidadas ?? rangeLiquidaciones.length} liquidadas • {resumenFlota?.total_viajes ?? activeLiq?.total_viajes ?? 0} viajes
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 flex-shrink-0">
+              <Truck className="w-4.5 h-4.5" />
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Flete Bruto Flota</span>
+              <div className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 font-mono mt-0.5">
+                {formatCurrency(resumenFlota?.total_flete_bruto_bs ?? activeLiq?.flete_total_bruto_bs ?? totalFleteConsolidado)}
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">Facturación global acumulada</span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 flex-shrink-0">
+              <DollarSign className="w-4.5 h-4.5" />
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Deducciones Flota</span>
+              <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 font-mono mt-0.5">
+                {formatCurrency(resumenFlota?.total_deducciones_bs ?? activeLiq?.total_descuentos_bs ?? totalDeduccionesConsolidado)}
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">Mermas y comisiones globales</span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 flex-shrink-0">
+              <Scale className="w-4.5 h-4.5" />
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-emerald-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-emerald-50/10">
+            <div>
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Líquido Pagable Flota</span>
+              <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
+                {formatCurrency(resumenFlota?.total_liquido_pagable_bs ?? activeLiq?.liquido_pagable_bs ?? totalLiquidoConsolidado)}
+              </div>
+              <span className="text-[10px] text-emerald-600/80 font-medium">Monto neto oficial a percibir</span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-500 flex-shrink-0">
+              <CheckCircle2 className="w-4.5 h-4.5" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resumen Ejecutivo de Cisterna Individual */}
+      {selectedPlaca !== "__TODAS__" && activeLiq && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 no-print">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
             <div>
@@ -712,160 +1103,179 @@ export default function LiquidacionesPage() {
           <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
           <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider">Procesando liquidación...</span>
         </div>
-      ) : (selectedPlaca === "__TODAS__" || (!selectedPlaca && filterMode !== "mes")) && !activeLiq ? (
+      ) : selectedPlaca === "__TODAS__" && activeFleetTab === "resumen" ? (
         /* ============================================================== */
-        /* VISTA CONSOLIDADA DEL PERÍODO (ANUAL, SEMESTRAL, RANGO, TODO) */
+        /* MATRIZ DE VALIDACIÓN DE LA FLOTA COMPLETA                     */
         /* ============================================================== */
-        <div className="space-y-6">
-          {/* Tarjeta Banner de Rango */}
-          <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm dark:shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/25 flex items-center justify-center flex-shrink-0">
-                <BarChart3 className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                  Consolidado de Liquidaciones: {activeFilterLabel || "Período Seleccionado"}
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Muestra todas las planillas generadas en el rango, acumulando fletes, mermas y líquido pagable.
-                </p>
+        <div className="space-y-4">
+          {/* Barra de Filtro y Acciones Rápidas de la Matriz */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-1 max-w-md">
+              <div className="relative w-full">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={placaFilterText}
+                  onChange={(e) => setPlacaFilterText(e.target.value)}
+                  placeholder="Filtrar por placa o conductor..."
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-amber-500"
+                />
+                {placaFilterText && (
+                  <button
+                    onClick={() => setPlacaFilterText("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                {rangeLiquidaciones.length} {rangeLiquidaciones.length === 1 ? "planilla generada" : "planillas generadas"}
-              </span>
-            </div>
-          </div>
-
-          {/* KPIs del Rango */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
-                Flete Bruto Acumulado
-              </span>
-              <div className="text-2xl font-black text-amber-600 dark:text-amber-400 font-mono">
-                {formatCurrency(totalFleteConsolidado)}
-              </div>
-              <span className="text-[11px] text-slate-400 mt-1 block">Base de facturación</span>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
-                Deducciones Totales
-              </span>
-              <div className="text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
-                {formatCurrency(totalDeduccionesConsolidado)}
-              </div>
-              <span className="text-[11px] text-slate-400 mt-1 block">Mermas y comisiones</span>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
-                Líquido Pagable Final
-              </span>
-              <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                {formatCurrency(totalLiquidoConsolidado)}
-              </div>
-              <span className="text-[11px] text-slate-400 mt-1 block">Neto a percibir</span>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
-                Planillas Emitidas
-              </span>
-              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-                {rangeLiquidaciones.length}
-              </div>
-              <span className="text-[11px] text-slate-400 mt-1 block">Cisternas conciliadas</span>
-            </div>
-          </div>
-
-          {/* Tabla Consolidada de Liquidaciones */}
-          {rangeLiquidaciones.length === 0 ? (
-            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 mx-auto mb-3">
-                <FileSpreadsheet className="w-8 h-8" />
-              </div>
-              <h4 className="text-base font-bold text-slate-900 dark:text-white mb-1">
-                No se encontraron liquidaciones para este período
-              </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-5">
-                No hay planillas de liquidación registradas en {activeFilterLabel || "este rango"}. Puedes seleccionar el modo Mensual en el filtro superior para generar una planilla o revisar otros periodos.
-              </p>
+            <div className="flex items-center gap-2 flex-wrap">
               <button
-                type="button"
-                onClick={() => {
-                  setFilterMode("mes");
-                  setDateFilterQuery(`periodo_mes=${periodo}`);
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-md"
+                onClick={downloadResumenFlotaExcel}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm transition active:scale-95"
+                title="Descargar matriz en Excel (.xlsx)"
               >
-                <span>Cambiar a Vista Mensual ({periodo})</span>
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Exportar Resumen Excel</span>
+              </button>
+
+              <button
+                onClick={handleGenerate}
+                disabled={loadingBatch}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm transition active:scale-95"
+                title="Generar liquidaciones para todas las cisternas con viajes"
+              >
+                <Layers className="w-4 h-4" />
+                <span>Liquidar Toda la Flota</span>
               </button>
             </div>
-          ) : (
-            <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl overflow-hidden">
-              <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <h4 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-amber-500" />
-                  <span>Detalle de Planillas Oficiales en el Período</span>
-                </h4>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  Haz clic en &ldquo;Ver Planilla&rdquo; para inspeccionar las Hojas 2 y 3 completas
-                </span>
-              </div>
+          </div>
 
+          {/* Tabla de Matriz de Validación */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-amber-500" />
+                  <span>Matriz de Validación por Cisterna ({activeFilterLabel || periodo})</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Inspección integral de despachos, cálculo de fletes y estado de conciliación de cada unidad.
+                </p>
+              </div>
+              <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                {filteredPlacas.length} de {resumenFlota?.placas?.length || 0} unidades
+              </span>
+            </div>
+
+            {filteredPlacas.length === 0 ? (
+              <div className="p-10 text-center text-slate-500 dark:text-slate-400">
+                <Truck className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No se encontraron cisternas que coincidan</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Prueba cambiando el término de búsqueda o selecciona otro período en el filtro superior.
+                </p>
+              </div>
+            ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-950/70 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                      <th className="py-3 px-4">Código</th>
-                      <th className="py-3 px-4">Mes</th>
-                      <th className="py-3 px-4">Placa</th>
-                      <th className="py-3 px-4 text-right">Flete Total</th>
-                      <th className="py-3 px-4 text-right">Deducciones</th>
-                      <th className="py-3 px-4 text-right">Líquido Pagable</th>
-                      <th className="py-3 px-4 text-center">Acciones</th>
+                    <tr className="bg-slate-50 dark:bg-slate-950/70 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      <th className="py-3 px-3">Cisterna / Placa</th>
+                      <th className="py-3 px-3">Tipo</th>
+                      <th className="py-3 px-3">Conductor Principal</th>
+                      <th className="py-3 px-2 text-center">Viajes</th>
+                      <th className="py-3 px-2 text-right">Vol. Cargado (L)</th>
+                      <th className="py-3 px-2 text-right">Vol. Recibido (L)</th>
+                      <th className="py-3 px-3 text-right">Flete Bruto (Bs.)</th>
+                      <th className="py-3 px-3 text-right">Deducciones (Bs.)</th>
+                      <th className="py-3 px-3 text-right">Líquido Pagable (Bs.)</th>
+                      <th className="py-3 px-3 text-center">Estado</th>
+                      <th className="py-3 px-3 text-center">Acciones</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                    {rangeLiquidaciones.map((liq) => {
-                      const fleteBruto = liq.flete_total_bruto_bs || liq.flete_total_bs || 0;
-                      const totalDed = liq.total_descuentos_bs ?? Math.max(0, fleteBruto - (liq.liquido_pagable_bs || 0));
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {filteredPlacas.map((item: any) => {
+                      const isLiquidada = item.estado_liquidacion === "liquidada";
+                      const isPendiente = item.estado_liquidacion === "pendiente";
+                      const hasTrips = item.total_viajes > 0;
+
                       return (
-                        <tr key={liq.id} className="hover:bg-amber-500/5 transition">
-                          <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
-                            {liq.codigo}
-                          </td>
-                          <td className="py-3 px-4 font-bold text-slate-600 dark:text-slate-300">
-                            {liq.periodo_mes}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="font-mono font-black px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700">
-                              {liq.placa}
+                        <tr key={item.placa} className="hover:bg-amber-500/5 transition">
+                          <td className="py-3 px-3">
+                            <span className="font-mono font-black text-slate-900 dark:text-white px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                              {item.placa}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-right font-mono font-bold text-amber-600 dark:text-amber-400">
-                            {formatCurrency(fleteBruto)}
+                          <td className="py-3 px-3">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              item.tipo_unidad === "propia"
+                                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+                                : "bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
+                            }`}>
+                              {item.tipo_unidad === "propia" ? "Propia" : "Apoyo"}
+                            </span>
                           </td>
-                          <td className="py-3 px-4 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
-                            {formatCurrency(totalDed)}
+                          <td className="py-3 px-3 font-medium text-slate-700 dark:text-slate-300">
+                            {item.conductor_nombre || "—"}
                           </td>
-                          <td className="py-3 px-4 text-right font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm">
-                            {formatCurrency(liq.liquido_pagable_bs)}
+                          <td className="py-3 px-2 text-center font-mono font-bold">
+                            <span className={`px-2 py-0.5 rounded-full text-xs ${hasTrips ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 font-black" : "text-slate-400"}`}>
+                              {item.total_viajes}
+                            </span>
                           </td>
-                          <td className="py-3 px-4 text-center">
-                            <button
-                              onClick={() => handleViewPlanilla(liq.id)}
-                              className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-sm inline-flex items-center gap-1 transition active:scale-95"
-                              title="Ver planilla oficial de 19 columnas"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>Ver Planilla</span>
-                            </button>
+                          <td className="py-3 px-2 text-right font-mono text-slate-600 dark:text-slate-300">
+                            {formatNumber(item.volumen_cargado_litros, 0)}
+                          </td>
+                          <td className="py-3 px-2 text-right font-mono text-slate-600 dark:text-slate-300">
+                            {formatNumber(item.volumen_recepcionado_litros, 0)}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-amber-600 dark:text-amber-400">
+                            {formatCurrency(item.flete_total_bruto_bs)}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
+                            {formatCurrency(item.total_deducciones_bs)}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                            {formatCurrency(item.liquido_pagable_bs)}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            {isLiquidada ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                                <Check className="w-3 h-3 stroke-[3]" />
+                                <span>{item.liquidacion_codigo || "Liquidada"}</span>
+                              </span>
+                            ) : isPendiente ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+                                <AlertCircle className="w-3 h-3" />
+                                <span>Pendiente</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700">
+                                Sin viajes
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {hasTrips ? (
+                                <button
+                                  onClick={() => {
+                                    setSelectedPlaca(item.placa);
+                                    setActiveTab("ambas");
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs inline-flex items-center gap-1 transition shadow-xs active:scale-95"
+                                  title="Ver planilla oficial de 19 columnas de esta cisterna"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>Ver Planilla</span>
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400">—</span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -873,8 +1283,8 @@ export default function LiquidacionesPage() {
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       ) : !activeLiq ? (
         <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-10 sm:p-14 text-center max-w-2xl mx-auto shadow-sm dark:shadow-2xl">
@@ -882,23 +1292,33 @@ export default function LiquidacionesPage() {
             <FileSpreadsheet className="w-10 h-10" />
           </div>
           <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-            Planilla Oficial por Cisterna
+            {selectedPlaca === "__TODAS__" ? "Planilla Consolidada de la Flota" : `Planilla Oficial Cisterna ${selectedPlaca}`}
           </h3>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto mb-6 leading-relaxed">
-            {selectedPlaca 
-              ? `No se encontraron despachos registrados para la cisterna ${selectedPlaca} en el período ${activeFilterLabel || periodo}. Selecciona otra cisterna con viajes o ajusta el rango de fechas en los controles superiores.`
-              : `Selecciona una placa de la flota y el período en los controles superiores para emitir las Hojas 2 y 3 oficiales conforme al formato de auditoría.`
+            {selectedPlaca === "__TODAS__"
+              ? `No se encontraron despachos registrados en el período ${activeFilterLabel || periodo}. Puedes seleccionar otro mes en el filtro superior, revisar la Matriz por Cisterna, o verificar la carga de viajes en el módulo de Despachos.`
+              : `No se encontraron despachos registrados para la cisterna ${selectedPlaca} en el período ${activeFilterLabel || periodo}. Selecciona otra cisterna con viajes, pasa a "Todas las Placas" o ajusta el rango de fechas en los controles superiores.`
             }
           </p>
-          {selectedPlaca && (
+          <div className="flex items-center justify-center gap-3 flex-wrap mb-8">
             <button
               onClick={handleGenerate}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs sm:text-sm font-black rounded-xl shadow-xl shadow-amber-500/25 transition transform hover:scale-105 active:scale-95 mb-8"
+              disabled={loadingBatch}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs sm:text-sm font-black rounded-xl shadow-xl shadow-amber-500/25 transition transform hover:scale-105 active:scale-95"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Consolidar Liquidación ({activeFilterLabel || periodo})</span>
+              <span>{selectedPlaca === "__TODAS__" ? "Consolidar Liquidaciones en Lote" : "Generar Liquidación"}</span>
             </button>
-          )}
+            {selectedPlaca !== "__TODAS__" && (
+              <button
+                onClick={() => setSelectedPlaca("__TODAS__")}
+                className="inline-flex items-center gap-2 px-5 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-bold rounded-xl transition"
+              >
+                <Layers className="w-4 h-4" />
+                <span>Ver Todas las Placas</span>
+              </button>
+            )}
+          </div>
 
           {/* Tarjetas de Guía */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-left">

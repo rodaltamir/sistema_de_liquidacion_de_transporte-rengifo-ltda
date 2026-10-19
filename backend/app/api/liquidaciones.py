@@ -7,11 +7,19 @@ from sqlalchemy import func, or_
 from app.db.session import get_tenant_session
 from app.api.deps import verify_tenant_exists
 from app.models.public import Empresa
-from app.models.tenant import Liquidacion, Viaje, ParametroLiquidacion, UnidadTransporte
-from app.schemas.liquidacion import LiquidacionCreate, LiquidacionResponse, LiquidacionDetalleResponse
+from app.models.tenant import Liquidacion, Viaje, ParametroLiquidacion, UnidadTransporte, UnidadApoyo
+from app.schemas.liquidacion import (
+    LiquidacionCreate,
+    LiquidacionResponse,
+    LiquidacionDetalleResponse,
+    ResumenPlacaItem,
+    ResumenFlotaPeriodoResponse,
+    LiquidacionBatchCreate,
+    LiquidacionBatchResponse
+)
 from app.schemas.viaje import ViajeResponse
 from app.services.calculation_engine import calculate_liquidacion_resumen
-from app.services.excel_export import export_liquidacion_placa_excel
+from app.services.excel_export import export_liquidacion_placa_excel, export_resumen_flota_excel
 from app.services.pdf_export import export_liquidacion_placa_pdf
 
 router = APIRouter(prefix="/tenants/{schema_name}/liquidaciones", tags=["Liquidaciones de Fletes"])
@@ -32,8 +40,15 @@ def resolve_period_and_trips(
     - Semestral: Todos los viajes del 1er (ene-jun) o 2do (jul-dic) semestre
     - Personalizado: Todos los viajes dentro del rango fecha_desde a fecha_hasta
     - Mensual: Todos los viajes del mes específico (YYYY-MM)
+    Si placa_clean es '__TODAS__', 'TODAS' o vacía, resuelve para todas las placas.
     """
-    query_viajes = session.query(Viaje).filter(Viaje.placa == placa_clean)
+    p_clean = (placa_clean or "").upper().strip()
+    is_todas = not p_clean or p_clean in ["TODAS", "__TODAS__", "ALL", "TODAS LAS PLACAS", "CONSOLIDADO"]
+    target_placa_code = "TODAS" if is_todas else p_clean
+
+    query_viajes = session.query(Viaje)
+    if not is_todas:
+        query_viajes = query_viajes.filter(Viaje.placa == p_clean)
 
     # 1. Modo Anual
     if tipo_periodo == "anual" or (anio and not semestre and not fecha_desde and (not periodo_mes or periodo_mes.startswith("ANUAL-") or len(periodo_mes) == 4)):
@@ -45,8 +60,8 @@ def resolve_period_and_trips(
             )
         )
         periodo_label = f"ANUAL-{target_year}"
-        codigo_periodo = f"LIQ-ANUAL-{target_year}-{placa_clean}"
-        display_label = f"Gestión {target_year} (Anual)"
+        codigo_periodo = f"LIQ-ANUAL-{target_year}-{target_placa_code}"
+        display_label = f"Gestión {target_year} (Todas las Placas)" if is_todas else f"Gestión {target_year} (Anual)"
 
     # 2. Modo Semestral
     elif tipo_periodo == "semestral" or semestre or (periodo_mes and ("-S1" in periodo_mes or "-S2" in periodo_mes)):
@@ -62,8 +77,8 @@ def resolve_period_and_trips(
             )
         )
         periodo_label = f"{target_year}-S{sem_num}"
-        codigo_periodo = f"LIQ-SEM-{target_year}-S{sem_num}-{placa_clean}"
-        display_label = f"{'1er' if sem_num == 1 else '2do'} Semestre {target_year}"
+        codigo_periodo = f"LIQ-SEM-{target_year}-S{sem_num}-{target_placa_code}"
+        display_label = f"{'1er' if sem_num == 1 else '2do'} Semestre {target_year} (Todas las Placas)" if is_todas else f"{'1er' if sem_num == 1 else '2do'} Semestre {target_year}"
 
     # 3. Modo Personalizado / Rango
     elif tipo_periodo == "personalizado" or (fecha_desde and fecha_hasta):
@@ -76,16 +91,16 @@ def resolve_period_and_trips(
         d_str = fecha_desde.strftime("%Y-%m-%d") if fecha_desde else ""
         h_str = fecha_hasta.strftime("%Y-%m-%d") if fecha_hasta else ""
         periodo_label = f"{d_str}_{h_str}"
-        codigo_periodo = f"LIQ-RANGO-{d_str}_{h_str}-{placa_clean}"
-        display_label = f"Del {d_str} al {h_str}"
+        codigo_periodo = f"LIQ-RANGO-{d_str}_{h_str}-{target_placa_code}"
+        display_label = f"Del {d_str} al {h_str} (Todas las Placas)" if is_todas else f"Del {d_str} al {h_str}"
 
     # 4. Modo Mensual (por defecto)
     else:
         target_period = periodo_mes or date.today().strftime("%Y-%m")
         query_viajes = query_viajes.filter(Viaje.periodo_mes == target_period)
         periodo_label = target_period
-        codigo_periodo = f"LIQ-{target_period}-{placa_clean}"
-        display_label = target_period
+        codigo_periodo = f"LIQ-{target_period}-{target_placa_code}"
+        display_label = f"{target_period} (Todas las Placas)" if is_todas else target_period
 
     viajes = query_viajes.order_by(Viaje.fecha_carga.asc()).all()
     return viajes, periodo_label, codigo_periodo, display_label
@@ -131,7 +146,9 @@ def list_liquidaciones(
                 (Liquidacion.periodo_mes.between(desde_str, hasta_str))
             )
         if placa:
-            query = query.filter(Liquidacion.placa == placa.upper().strip())
+            p_upper = placa.upper().strip()
+            if p_upper not in ["TODAS", "__TODAS__", "ALL", "TODAS LAS PLACAS", "CONSOLIDADO"]:
+                query = query.filter(Liquidacion.placa == p_upper)
         return query.order_by(Liquidacion.periodo_mes.desc(), Liquidacion.created_at.desc()).all()
     finally:
         session.close()
@@ -152,13 +169,17 @@ def get_liquidacion_consolidada(
     Retorna la planilla oficial consolidada (Hojas 2 y 3) para cualquier periodo (Anual, Semestral, Personalizado o Mensual).
     Si ya fue guardada en base de datos la retorna. Si no, calcula dinámicamente en tiempo real
     todos los fletes, mermas, deducciones y líquido pagable basándose en los viajes del periodo.
+    Si placa es '__TODAS__' o 'TODAS', consolida todos los camiones de la flota.
     """
     session = get_tenant_session(schema_name)
     try:
-        placa_clean = placa.upper().strip()
+        placa_clean = (placa or "").upper().strip()
+        is_todas = not placa_clean or placa_clean in ["TODAS", "__TODAS__", "ALL", "TODAS LAS PLACAS", "CONSOLIDADO"]
+        target_placa = "TODAS" if is_todas else placa_clean
+
         viajes, periodo_label, codigo_periodo, display_label = resolve_period_and_trips(
             session=session,
-            placa_clean=placa_clean,
+            placa_clean=target_placa,
             periodo_mes=periodo_mes,
             tipo_periodo=tipo_periodo,
             anio=anio,
@@ -185,12 +206,20 @@ def get_liquidacion_consolidada(
         }
 
         # Verificar si ya existe una liquidación guardada en DB para este código o periodo exacto
-        liq_saved = session.query(Liquidacion).filter(
-            or_(
-                Liquidacion.codigo == codigo_periodo,
-                (Liquidacion.periodo_mes == periodo_label) & (Liquidacion.placa == placa_clean)
-            )
-        ).first()
+        if is_todas:
+            liq_saved = session.query(Liquidacion).filter(
+                or_(
+                    Liquidacion.codigo == codigo_periodo,
+                    (Liquidacion.periodo_mes == periodo_label) & (Liquidacion.placa == "TODAS")
+                )
+            ).first()
+        else:
+            liq_saved = session.query(Liquidacion).filter(
+                or_(
+                    Liquidacion.codigo == codigo_periodo,
+                    (Liquidacion.periodo_mes == periodo_label) & (Liquidacion.placa == target_placa)
+                )
+            ).first()
 
         viajes_res = [ViajeResponse.model_validate(v) for v in viajes]
 
@@ -238,7 +267,7 @@ def get_liquidacion_consolidada(
                 id=0,
                 codigo=codigo_periodo,
                 periodo_mes=periodo_label,
-                placa=placa_clean,
+                placa=target_placa,
                 fecha_emision=date.today(),
                 total_viajes=0,
                 total_volumen_origen_litros=0.0,
@@ -259,7 +288,7 @@ def get_liquidacion_consolidada(
                 liquido_pagable_bs=0.0,
                 firmas_json=json.dumps(firmas_default),
                 estado="Sin Despachos",
-                notas=f"No se encontraron viajes registrados para {placa_clean} en {display_label}",
+                notas=f"No se encontraron viajes registrados para {target_placa} en {display_label}",
                 created_at=datetime.now(),
                 viajes=[],
                 empresa=empresa_dict,
@@ -272,16 +301,336 @@ def get_liquidacion_consolidada(
             id=0,
             codigo=codigo_periodo,
             periodo_mes=periodo_label,
-            placa=placa_clean,
+            placa=target_placa,
             fecha_emision=date.today(),
             **resumen,
             firmas_json=json.dumps(firmas_default),
-            estado="Calculada (Pendiente de Guardar)",
-            notas=f"Consolidado calculado automáticamente para {display_label}",
+            estado="Consolidado General (En vivo)" if is_todas else "Calculada (Pendiente de Guardar)",
+            notas=f"Consolidado general de la flota para {display_label}" if is_todas else f"Consolidado calculado automáticamente para {display_label}",
             created_at=datetime.now(),
             viajes=viajes_res,
             empresa=empresa_dict,
             firmas=firmas_default
+        )
+    finally:
+        session.close()
+
+@router.get("/resumen-placas", response_model=ResumenFlotaPeriodoResponse)
+def get_resumen_placas(
+    schema_name: str,
+    tipo_periodo: Optional[str] = "mes",
+    periodo_mes: Optional[str] = None,
+    anio: Optional[int] = None,
+    semestre: Optional[int] = None,
+    fecha_desde: Optional[date] = None,
+    fecha_hasta: Optional[date] = None,
+    empresa: Empresa = Depends(verify_tenant_exists)
+):
+    """
+    Retorna la tabla resumen por cisterna para validación previa o posterior a la liquidación:
+    - Lista de placas con viajes en el período
+    - Tipo de flota (Propia vs Apoyo)
+    - Conteo de viajes, volúmenes, flete bruto, descuentos y líquido pagable
+    - Estado (Liquidada vs Pendiente de Generar)
+    - Totales generales de la flota
+    """
+    session = get_tenant_session(schema_name)
+    try:
+        viajes_todos, periodo_label, _, display_label = resolve_period_and_trips(
+            session=session,
+            placa_clean="TODAS",
+            periodo_mes=periodo_mes,
+            tipo_periodo=tipo_periodo,
+            anio=anio,
+            semestre=semestre,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta
+        )
+
+        params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
+
+        # Identificar tipos de unidades
+        propias = {u.placa.upper().strip() for u in session.query(UnidadTransporte).all() if u.placa}
+        apoyo = {u.placa.upper().strip() for u in session.query(UnidadApoyo).all() if u.placa}
+
+        # Liquidaciones ya guardadas en DB para este periodo
+        liqs_db = session.query(Liquidacion).filter(
+            or_(
+                Liquidacion.periodo_mes == periodo_label,
+                Liquidacion.codigo.contains(periodo_label)
+            )
+        ).all()
+        db_by_placa = {l.placa.upper().strip(): l for l in liqs_db if l.placa}
+
+        trips_by_placa = {}
+        for v in viajes_todos:
+            p = (v.placa or "DESCONOCIDA").upper().strip()
+            if p not in trips_by_placa:
+                trips_by_placa[p] = []
+            trips_by_placa[p].append(v)
+
+        items: List[ResumenPlacaItem] = []
+        tot_vol = 0.0
+        tot_flete = 0.0
+        tot_desc = 0.0
+        tot_liquido = 0.0
+        placas_liq = 0
+        placas_pend = 0
+
+        for p_placa, p_viajes in sorted(trips_by_placa.items(), key=lambda x: x[0]):
+            v_orig = sum(float(v.volumen_origen_litros or 0) for v in p_viajes)
+            v_rec = sum(float(v.volumen_recepcionado_litros or 0) for v in p_viajes)
+            v_fact = sum(
+                (float(v.volumen_facturado) if float(v.volumen_facturado or 0) > 1000 else float(v.volumen_facturado or 0) * 1000)
+                if getattr(v, "volumen_facturado", None) and float(v.volumen_facturado) > 0
+                else float(v.volumen_recepcionado_litros or 0)
+                for v in p_viajes
+            )
+            tot_vol += v_rec
+
+            if p_placa in propias:
+                t_flota = "Propia"
+            elif p_placa in apoyo:
+                t_flota = "Apoyo"
+            else:
+                t_flota = "Externa"
+
+            saved_liq = db_by_placa.get(p_placa)
+            if saved_liq:
+                placas_liq += 1
+                f_bruto = float(saved_liq.flete_total_bruto_bs or 0)
+                d_merma = float(saved_liq.desc_merma_bs or 0)
+                t_desc = float(saved_liq.total_descuentos_bs or 0)
+                l_pagable = float(saved_liq.liquido_pagable_bs or 0)
+                estado = "Liquidada"
+                liq_id = saved_liq.id
+                codigo = saved_liq.codigo
+                fecha_em = saved_liq.fecha_emision
+            else:
+                placas_pend += 1
+                p_res = calculate_liquidacion_resumen(p_viajes, params)
+                f_bruto = p_res["flete_total_bruto_bs"]
+                d_merma = p_res["desc_merma_bs"]
+                t_desc = p_res["total_descuentos_bs"]
+                l_pagable = p_res["liquido_pagable_bs"]
+                estado = "Pendiente de Generar"
+                liq_id = None
+                codigo = None
+                fecha_em = None
+
+            tot_flete += f_bruto
+            tot_desc += t_desc
+            tot_liquido += l_pagable
+
+            items.append(ResumenPlacaItem(
+                placa=p_placa,
+                tipo_flota=t_flota,
+                viajes_count=len(p_viajes),
+                volumen_origen_litros=round(v_orig, 2),
+                volumen_recepcionado_litros=round(v_rec, 2),
+                volumen_facturado_litros=round(v_fact, 2),
+                flete_total_bruto_bs=round(f_bruto, 2),
+                desc_merma_bs=round(d_merma, 2),
+                total_descuentos_bs=round(t_desc, 2),
+                liquido_pagable_bs=round(l_pagable, 2),
+                estado=estado,
+                liquidacion_id=liq_id,
+                codigo=codigo,
+                fecha_emision=fecha_em
+            ))
+
+        return ResumenFlotaPeriodoResponse(
+            placas=items,
+            total_placas=len(trips_by_placa),
+            total_viajes=len(viajes_todos),
+            total_volumen_litros=round(tot_vol, 2),
+            total_flete_bruto_bs=round(tot_flete, 2),
+            total_descuentos_bs=round(tot_desc, 2),
+            total_liquido_pagable_bs=round(tot_liquido, 2),
+            placas_liquidadas=placas_liq,
+            placas_pendientes=placas_pend,
+            periodo_label=periodo_label,
+            display_label=display_label
+        )
+    finally:
+        session.close()
+
+@router.post("/batch", response_model=LiquidacionBatchResponse)
+def generate_liquidaciones_batch(
+    schema_name: str,
+    batch_in: LiquidacionBatchCreate,
+    empresa: Empresa = Depends(verify_tenant_exists)
+):
+    """
+    Genera y guarda en lote las liquidaciones oficiales individuales de todas las cisternas
+    con viajes registrados en el período, vincula sus despachos y actualiza el consolidado general.
+    """
+    session = get_tenant_session(schema_name)
+    try:
+        viajes_todos, periodo_label, codigo_consolidado, display_label = resolve_period_and_trips(
+            session=session,
+            placa_clean="TODAS",
+            periodo_mes=batch_in.periodo_mes,
+            tipo_periodo=batch_in.tipo_periodo,
+            anio=batch_in.anio,
+            semestre=batch_in.semestre,
+            fecha_desde=batch_in.fecha_desde,
+            fecha_hasta=batch_in.fecha_hasta
+        )
+
+        if not viajes_todos:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No se encontraron despachos registrados para la flota en el período {display_label}."
+            )
+
+        params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
+        fecha_emision = batch_in.fecha_emision or date.today()
+
+        firmas_dict = {
+            "realizado_por": getattr(params, "firma_realizado_por", "JAQUELINE LOVERA TIÑINI"),
+            "revisado_por": getattr(params, "firma_revisado_por", "JOSE LOVERA TIÑINI / GERENTE GENERAL"),
+            "autorizado_por": getattr(params, "firma_autorizado_por", "DIRECTORIO"),
+            "cancelado_por": getattr(params, "firma_cancelado_por", "TOMASA TIÑINI MITA / APOYO")
+        }
+
+        # Agrupar viajes por placa
+        trips_by_placa = {}
+        for v in viajes_todos:
+            p = (v.placa or "DESCONOCIDA").upper().strip()
+            if p not in trips_by_placa:
+                trips_by_placa[p] = []
+            trips_by_placa[p].append(v)
+
+        placas_procesadas = sorted(list(trips_by_placa.keys()))
+        tot_flete = 0.0
+        tot_desc = 0.0
+        tot_liq = 0.0
+
+        for p_placa in placas_procesadas:
+            p_viajes = trips_by_placa[p_placa]
+            p_codigo = f"LIQ-{periodo_label}-{p_placa}"
+            p_resumen = calculate_liquidacion_resumen(p_viajes, params)
+
+            tot_flete += p_resumen["flete_total_bruto_bs"]
+            tot_desc += p_resumen["total_descuentos_bs"]
+            tot_liq += p_resumen["liquido_pagable_bs"]
+
+            liq = session.query(Liquidacion).filter(
+                or_(
+                    Liquidacion.codigo == p_codigo,
+                    (Liquidacion.periodo_mes == periodo_label) & (Liquidacion.placa == p_placa)
+                )
+            ).first()
+
+            if not liq:
+                liq = Liquidacion(
+                    codigo=p_codigo,
+                    periodo_mes=periodo_label,
+                    placa=p_placa,
+                    fecha_emision=fecha_emision,
+                    firmas_json=json.dumps(firmas_dict),
+                    estado="Generada",
+                    notas=f"Generada en lote para {display_label}",
+                    **p_resumen
+                )
+                session.add(liq)
+                session.flush()
+            else:
+                liq.fecha_emision = fecha_emision
+                liq.estado = "Generada"
+                for k, val in p_resumen.items():
+                    setattr(liq, k, val)
+                session.flush()
+
+            for v in p_viajes:
+                v.liquidacion_id = liq.id
+                v.estado = "Liquidado"
+
+        # Actualizar o crear también el registro consolidado "TODAS"
+        resumen_consolidado = calculate_liquidacion_resumen(viajes_todos, params)
+        liq_todas = session.query(Liquidacion).filter(
+            or_(
+                Liquidacion.codigo == codigo_consolidado,
+                (Liquidacion.periodo_mes == periodo_label) & (Liquidacion.placa == "TODAS")
+            )
+        ).first()
+
+        if not liq_todas:
+            liq_todas = Liquidacion(
+                codigo=codigo_consolidado,
+                periodo_mes=periodo_label,
+                placa="TODAS",
+                fecha_emision=fecha_emision,
+                firmas_json=json.dumps(firmas_dict),
+                estado="Consolidado General",
+                notas=f"Consolidado general de la flota para {display_label}",
+                **resumen_consolidado
+            )
+            session.add(liq_todas)
+        else:
+            liq_todas.fecha_emision = fecha_emision
+            liq_todas.estado = "Consolidado General"
+            for k, val in resumen_consolidado.items():
+                setattr(liq_todas, k, val)
+
+        session.commit()
+
+        return LiquidacionBatchResponse(
+            message=f"Se procesaron exitosamente las liquidaciones para {len(placas_procesadas)} cisternas ({len(viajes_todos)} despachos).",
+            total_placas=len(placas_procesadas),
+            total_viajes=len(viajes_todos),
+            placas_procesadas=placas_procesadas,
+            total_flete_bruto_bs=round(tot_flete, 2),
+            total_descuentos_bs=round(tot_desc, 2),
+            total_liquido_pagable_bs=round(tot_liq, 2),
+            periodo_label=periodo_label
+        )
+    finally:
+        session.close()
+
+@router.get("/export/resumen-excel")
+def export_resumen_flota_periodo_excel(
+    schema_name: str,
+    tipo_periodo: Optional[str] = "mes",
+    periodo_mes: Optional[str] = None,
+    anio: Optional[int] = None,
+    semestre: Optional[int] = None,
+    fecha_desde: Optional[date] = None,
+    fecha_hasta: Optional[date] = None,
+    empresa: Empresa = Depends(verify_tenant_exists)
+):
+    session = get_tenant_session(schema_name)
+    try:
+        resumen_data = get_resumen_placas(
+            schema_name=schema_name,
+            tipo_periodo=tipo_periodo,
+            periodo_mes=periodo_mes,
+            anio=anio,
+            semestre=semestre,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            empresa=empresa
+        )
+        params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
+        empresa_dict = {
+            "name": empresa.name,
+            "nit": empresa.nit,
+            "logo_base64": empresa.logo_base64
+        }
+        excel_buffer = export_resumen_flota_excel(
+            empresa=empresa_dict,
+            periodo_label=resumen_data.periodo_label,
+            display_label=resumen_data.display_label,
+            placas_data=resumen_data.placas,
+            params=params
+        )
+        safe_label = resumen_data.periodo_label.replace("/", "-").replace(" ", "_")
+        filename = f"Resumen_Flota_{safe_label}.xlsx"
+        return Response(
+            content=excel_buffer.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
         )
     finally:
         session.close()
@@ -294,10 +643,13 @@ def generate_liquidacion(
 ):
     session = get_tenant_session(schema_name)
     try:
-        placa_clean = liq_in.placa.upper().strip()
+        placa_clean = (liq_in.placa or "").upper().strip()
+        is_todas = not placa_clean or placa_clean in ["TODAS", "__TODAS__", "ALL", "TODAS LAS PLACAS", "CONSOLIDADO"]
+        target_placa = "TODAS" if is_todas else placa_clean
+
         viajes, periodo_label, codigo_periodo, display_label = resolve_period_and_trips(
             session=session,
-            placa_clean=placa_clean,
+            placa_clean=target_placa,
             periodo_mes=liq_in.periodo_mes,
             tipo_periodo=liq_in.tipo_periodo,
             anio=liq_in.anio,
@@ -309,7 +661,7 @@ def generate_liquidacion(
         if not viajes:
             raise HTTPException(
                 status_code=400,
-                detail=f"No se encontraron viajes para la placa {placa_clean} en el periodo {display_label}"
+                detail=f"No se encontraron viajes para {target_placa} en el periodo {display_label}"
             )
 
         params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
@@ -346,12 +698,20 @@ def generate_liquidacion(
         }
 
         # Verificar si ya existe una liquidación para ese código o período y placa
-        liq = session.query(Liquidacion).filter(
-            or_(
-                Liquidacion.codigo == codigo_periodo,
-                (Liquidacion.periodo_mes == periodo_label) & (Liquidacion.placa == placa_clean)
-            )
-        ).first()
+        if is_todas:
+            liq = session.query(Liquidacion).filter(
+                or_(
+                    Liquidacion.codigo == codigo_periodo,
+                    (Liquidacion.periodo_mes == periodo_label) & (Liquidacion.placa == "TODAS")
+                )
+            ).first()
+        else:
+            liq = session.query(Liquidacion).filter(
+                or_(
+                    Liquidacion.codigo == codigo_periodo,
+                    (Liquidacion.periodo_mes == periodo_label) & (Liquidacion.placa == target_placa)
+                )
+            ).first()
 
         fecha_emision = liq_in.fecha_emision or date.today()
 
@@ -359,12 +719,12 @@ def generate_liquidacion(
             liq = Liquidacion(
                 codigo=codigo_periodo,
                 periodo_mes=periodo_label,
-                placa=placa_clean,
+                placa=target_placa,
                 fecha_emision=fecha_emision,
                 **resumen,
                 firmas_json=json.dumps(firmas_dict),
-                estado="Generada",
-                notas=liq_in.notas or f"Planilla oficial {display_label}"
+                estado="Consolidado General" if is_todas else "Generada",
+                notas=liq_in.notas or (f"Consolidado general {display_label}" if is_todas else f"Planilla oficial {display_label}")
             )
             session.add(liq)
             session.commit()
@@ -378,10 +738,11 @@ def generate_liquidacion(
             session.commit()
             session.refresh(liq)
 
-        # Asociar los viajes a esta liquidación
+        # Asociar los viajes a esta liquidación (si no es TODAS o si no tienen liq_id)
         for v in viajes:
-            v.liquidacion_id = liq.id
-            v.estado = "Liquidado"
+            if not is_todas or v.liquidacion_id is None:
+                v.liquidacion_id = liq.id
+                v.estado = "Liquidado"
         session.commit()
         session.refresh(liq)
 
@@ -462,16 +823,58 @@ def get_liquidacion_detalle(schema_name: str, id: int, empresa: Empresa = Depend
         session.close()
 
 @router.get("/{id}/export/excel")
-def export_liquidacion_excel(schema_name: str, id: int, empresa: Empresa = Depends(verify_tenant_exists)):
+def export_liquidacion_excel(
+    schema_name: str,
+    id: int,
+    tipo_periodo: Optional[str] = "mes",
+    periodo_mes: Optional[str] = None,
+    placa: Optional[str] = None,
+    anio: Optional[int] = None,
+    semestre: Optional[int] = None,
+    fecha_desde: Optional[date] = None,
+    fecha_hasta: Optional[date] = None,
+    empresa: Empresa = Depends(verify_tenant_exists)
+):
     session = get_tenant_session(schema_name)
     try:
-        liq = session.query(Liquidacion).filter(Liquidacion.id == id).first()
-        if not liq:
-            raise HTTPException(status_code=404, detail="Liquidación no encontrada")
+        if id > 0:
+            liq = session.query(Liquidacion).filter(Liquidacion.id == id).first()
+            if not liq:
+                raise HTTPException(status_code=404, detail="Liquidación no encontrada")
 
-        viajes = session.query(Viaje).filter(Viaje.liquidacion_id == id).order_by(Viaje.fecha_carga.asc()).all()
-        if not viajes:
-            viajes = resolve_period_and_trips(session, liq.placa, liq.periodo_mes)[0]
+            viajes = session.query(Viaje).filter(Viaje.liquidacion_id == id).order_by(Viaje.fecha_carga.asc()).all()
+            if not viajes:
+                viajes = resolve_period_and_trips(session, liq.placa, liq.periodo_mes)[0]
+        else:
+            target_p = placa or "TODAS"
+            viajes, periodo_label, codigo_periodo, display_label = resolve_period_and_trips(
+                session=session,
+                placa_clean=target_p,
+                periodo_mes=periodo_mes,
+                tipo_periodo=tipo_periodo,
+                anio=anio,
+                semestre=semestre,
+                fecha_desde=fecha_desde,
+                fecha_hasta=fecha_hasta
+            )
+            if not viajes:
+                raise HTTPException(status_code=400, detail="No se encontraron viajes para exportar en este período")
+
+            params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
+            resumen = calculate_liquidacion_resumen(viajes, params)
+
+            class DummyLiq:
+                pass
+            liq = DummyLiq()
+            liq.id = 0
+            liq.codigo = codigo_periodo
+            liq.periodo_mes = periodo_label
+            liq.placa = "TODAS" if target_p in ["TODAS", "__TODAS__", "ALL", "TODAS LAS PLACAS", "CONSOLIDADO"] else target_p
+            liq.fecha_emision = date.today()
+            liq.firmas_json = None
+            for k, val in resumen.items():
+                setattr(liq, k, val)
+
         params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
 
         empresa_dict = {
@@ -481,7 +884,9 @@ def export_liquidacion_excel(schema_name: str, id: int, empresa: Empresa = Depen
         }
 
         excel_buffer = export_liquidacion_placa_excel(liq, viajes, empresa_dict, params)
-        filename = f"Liquidacion_{liq.placa}_{liq.periodo_mes}.xlsx"
+        safe_placa = str(liq.placa).replace(" ", "_")
+        safe_periodo = str(liq.periodo_mes).replace("/", "-").replace(" ", "_")
+        filename = f"Liquidacion_{safe_placa}_{safe_periodo}.xlsx"
 
         return Response(
             content=excel_buffer.getvalue(),
@@ -492,16 +897,58 @@ def export_liquidacion_excel(schema_name: str, id: int, empresa: Empresa = Depen
         session.close()
 
 @router.get("/{id}/export/pdf")
-def export_liquidacion_pdf(schema_name: str, id: int, empresa: Empresa = Depends(verify_tenant_exists)):
+def export_liquidacion_pdf(
+    schema_name: str,
+    id: int,
+    tipo_periodo: Optional[str] = "mes",
+    periodo_mes: Optional[str] = None,
+    placa: Optional[str] = None,
+    anio: Optional[int] = None,
+    semestre: Optional[int] = None,
+    fecha_desde: Optional[date] = None,
+    fecha_hasta: Optional[date] = None,
+    empresa: Empresa = Depends(verify_tenant_exists)
+):
     session = get_tenant_session(schema_name)
     try:
-        liq = session.query(Liquidacion).filter(Liquidacion.id == id).first()
-        if not liq:
-            raise HTTPException(status_code=404, detail="Liquidación no encontrada")
+        if id > 0:
+            liq = session.query(Liquidacion).filter(Liquidacion.id == id).first()
+            if not liq:
+                raise HTTPException(status_code=404, detail="Liquidación no encontrada")
 
-        viajes = session.query(Viaje).filter(Viaje.liquidacion_id == id).order_by(Viaje.fecha_carga.asc()).all()
-        if not viajes:
-            viajes = resolve_period_and_trips(session, liq.placa, liq.periodo_mes)[0]
+            viajes = session.query(Viaje).filter(Viaje.liquidacion_id == id).order_by(Viaje.fecha_carga.asc()).all()
+            if not viajes:
+                viajes = resolve_period_and_trips(session, liq.placa, liq.periodo_mes)[0]
+        else:
+            target_p = placa or "TODAS"
+            viajes, periodo_label, codigo_periodo, display_label = resolve_period_and_trips(
+                session=session,
+                placa_clean=target_p,
+                periodo_mes=periodo_mes,
+                tipo_periodo=tipo_periodo,
+                anio=anio,
+                semestre=semestre,
+                fecha_desde=fecha_desde,
+                fecha_hasta=fecha_hasta
+            )
+            if not viajes:
+                raise HTTPException(status_code=400, detail="No se encontraron viajes para exportar en este período")
+
+            params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
+            resumen = calculate_liquidacion_resumen(viajes, params)
+
+            class DummyLiq:
+                pass
+            liq = DummyLiq()
+            liq.id = 0
+            liq.codigo = codigo_periodo
+            liq.periodo_mes = periodo_label
+            liq.placa = "TODAS" if target_p in ["TODAS", "__TODAS__", "ALL", "TODAS LAS PLACAS", "CONSOLIDADO"] else target_p
+            liq.fecha_emision = date.today()
+            liq.firmas_json = None
+            for k, val in resumen.items():
+                setattr(liq, k, val)
+
         params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
 
         empresa_dict = {
@@ -511,7 +958,9 @@ def export_liquidacion_pdf(schema_name: str, id: int, empresa: Empresa = Depends
         }
 
         pdf_buffer = export_liquidacion_placa_pdf(liq, viajes, empresa_dict, params)
-        filename = f"Liquidacion_{liq.placa}_{liq.periodo_mes}.pdf"
+        safe_placa = str(liq.placa).replace(" ", "_")
+        safe_periodo = str(liq.periodo_mes).replace("/", "-").replace(" ", "_")
+        filename = f"Liquidacion_{safe_placa}_{safe_periodo}.pdf"
 
         return Response(
             content=pdf_buffer.getvalue(),
