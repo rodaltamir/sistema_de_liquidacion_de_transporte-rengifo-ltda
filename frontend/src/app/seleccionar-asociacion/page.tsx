@@ -112,26 +112,6 @@ export default function SeleccionarAsociacionPage() {
   const [importInitialAsocName, setImportInitialAsocName] = useState<string>("");
   const [importInitialAsocSigla, setImportInitialAsocSigla] = useState<string>("");
 
-  const handleExcelImportFromAsocModal = (selectedFile: File) => {
-    setImportInitialFile(selectedFile);
-    setImportInitialAsocName(asocForm.name || "");
-    setImportInitialAsocSigla(asocForm.sigla || "");
-    setImportInitialEmpresaName("");
-    setImportInitialAsocId(null);
-    setShowAsocModal(false);
-    setShowImportGlobalModal(true);
-  };
-
-  const handleExcelImportFromEmpresaModal = (selectedFile: File) => {
-    setImportInitialFile(selectedFile);
-    setImportInitialEmpresaName(empresaForm.name || "");
-    setImportInitialAsocId(empresaForm.asociacion_id ? Number(empresaForm.asociacion_id) : null);
-    setImportInitialAsocName("");
-    setImportInitialAsocSigla("");
-    setShowEmpresaModal(false);
-    setShowImportGlobalModal(true);
-  };
-
   // Formulario Asociación
   const [asocForm, setAsocForm] = useState({
     name: "",
@@ -154,6 +134,26 @@ export default function SeleccionarAsociacionPage() {
     telefono: "",
     email: ""
   });
+
+  const handleExcelImportFromAsocModal = (selectedFile: File) => {
+    setImportInitialFile(selectedFile);
+    setImportInitialAsocName(asocForm.name || "");
+    setImportInitialAsocSigla(asocForm.sigla || "");
+    setImportInitialEmpresaName("");
+    setImportInitialAsocId(null);
+    setShowAsocModal(false);
+    setShowImportGlobalModal(true);
+  };
+
+  const handleExcelImportFromEmpresaModal = (selectedFile: File) => {
+    setImportInitialFile(selectedFile);
+    setImportInitialEmpresaName(empresaForm.name || "");
+    setImportInitialAsocId(empresaForm.asociacion_id ? Number(empresaForm.asociacion_id) : null);
+    setImportInitialAsocName("");
+    setImportInitialAsocSigla("");
+    setShowEmpresaModal(false);
+    setShowImportGlobalModal(true);
+  };
 
   useEffect(() => {
     const user = getCurrentUser();

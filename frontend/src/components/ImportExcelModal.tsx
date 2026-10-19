@@ -902,6 +902,30 @@ export default function ImportExcelModal({
           {/* Cuerpo del Modal con Scroll */}
           <div className="p-4 sm:p-6 space-y-6 overflow-y-auto flex-1">
             
+            {/* Stepper Visual de 3 Pasos */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 text-xs font-semibold">
+              <div className={`flex items-center gap-2 ${file ? "text-emerald-400 font-bold" : "text-amber-400 font-bold"}`}>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${file ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" : "bg-amber-500/20 text-amber-400 border border-amber-500/40"}`}>
+                  {file ? "✓" : "1"}
+                </span>
+                <span>1. Archivo y Hojas</span>
+              </div>
+              <div className="w-8 h-px bg-slate-800 hidden sm:block" />
+              <div className={`flex items-center gap-2 ${previewData ? "text-emerald-400 font-bold" : file ? "text-amber-400 font-bold" : "text-slate-500"}`}>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${previewData ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+                  {previewData ? "✓" : "2"}
+                </span>
+                <span>2. Modalidad y Destino</span>
+              </div>
+              <div className="w-8 h-px bg-slate-800 hidden sm:block" />
+              <div className={`flex items-center gap-2 ${previewData ? "text-sky-400 font-bold" : "text-slate-500"}`}>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${previewData ? "bg-sky-500/20 text-sky-400 border border-sky-500/40" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+                  3
+                </span>
+                <span>3. Revisión de Despachos</span>
+              </div>
+            </div>
+
             {/* Zona 1: Subir Archivo y Dropzone */}
             {!file ? (
               <div
@@ -1031,7 +1055,7 @@ export default function ImportExcelModal({
               </div>
             )}
 
-            {/* ZONA 2: SELECTOR DE MODALIDAD Y CONFIGURACIÓN DE DESTINO */}
+            {/* PASO 2: MODALIDAD Y DESTINO DE IMPORTACIÓN */}
             {previewData && !isLoadingPreview && (
               <div className="space-y-4">
                 {/* Selector de Modalidad de Importación */}
@@ -1061,30 +1085,30 @@ export default function ImportExcelModal({
                     <span>Importación por Asociación (Multi-Empresa)</span>
                     {previewData?.is_multi_empresa && (
                       <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-900 text-emerald-300 border border-emerald-500/30 font-black uppercase">
-                        Detectado ({previewData.empresas_detectadas?.length || dynamicEmpresasSummary.length})
+                        {previewData.empresas_detectadas?.length || dynamicEmpresasSummary.length} Detectadas
                       </span>
                     )}
                   </button>
                 </div>
 
-                {/* Subzona A: Modo Asociación (Multi-Empresa) */}
+                {/* Subzona A: Destino Modo Asociación (Multi-Empresa) */}
                 {importType === "asociacion" ? (
-                  <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-emerald-500/30 shadow-lg space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                  <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-emerald-500/30 shadow-lg space-y-3.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                      <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs sm:text-sm">
                         <Layers className="w-4 h-4" />
-                        <span>Destino de la Asociación Multi-Empresa</span>
+                        <span>Asociación de Destino (Multi-Empresa)</span>
                       </div>
                       <span className="text-[11px] text-slate-400">
-                        Cada empresa se creará o reutilizará automáticamente bajo esta asociación.
+                        Cada empresa se creará o reutilizará automáticamente bajo esta asociación gremial.
                       </span>
                     </div>
 
-                    {/* Selector o Creación de Asociación */}
-                    <div className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl space-y-3">
+                    {/* Selector / Creación de Asociación */}
+                    <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-2.5">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-bold text-slate-200">
-                          Asociación de Transporte de Destino:
+                          Asociación Matriz:
                         </label>
                         {!creatingNewAsoc ? (
                           <button
@@ -1112,28 +1136,22 @@ export default function ImportExcelModal({
                       </div>
 
                       {creatingNewAsoc ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                           <div>
-                            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                              Nombre de la Nueva Asociación *
-                            </label>
                             <input
                               type="text"
                               value={newAsocNombre}
                               onChange={(e) => setNewAsocNombre(e.target.value)}
-                              placeholder="Ej: ASOCIACIÓN DE TRANSPORTE ORIENTE..."
+                              placeholder="Nombre de la Nueva Asociación..."
                               className="w-full px-3 py-2 bg-slate-950 border border-emerald-500/50 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-400"
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                              Sigla / Abreviatura (Opcional)
-                            </label>
                             <input
                               type="text"
                               value={newAsocSigla}
                               onChange={(e) => setNewAsocSigla(e.target.value)}
-                              placeholder="Ej: ATO..."
+                              placeholder="Sigla (Opcional, ej: ATO)..."
                               className="w-full px-3 py-2 bg-slate-950 border border-emerald-500/50 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-400 uppercase"
                             />
                           </div>
@@ -1149,7 +1167,7 @@ export default function ImportExcelModal({
                               setNewEmpresaAsocId(e.target.value);
                             }
                           }}
-                          className="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-emerald-500"
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-emerald-500"
                         >
                           {asociaciones.length === 0 ? (
                             <option value="">No hay asociaciones registradas (Registra una nueva)</option>
@@ -1165,15 +1183,13 @@ export default function ImportExcelModal({
                       )}
                     </div>
 
-                    {/* Tarjeta de Empresas Detectadas en la Planilla */}
-                    <div className="space-y-2.5 pt-1">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <Truck className="w-4 h-4 text-emerald-400" />
-                          <span className="text-xs font-black text-white uppercase tracking-tight">
-                            Empresas Detectadas en la Planilla ({dynamicEmpresasSummary.length})
-                          </span>
-                        </div>
+                    {/* Empresas detectadas en formato compacto */}
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                          Empresas detectadas en la planilla ({dynamicEmpresasSummary.length}):
+                        </span>
                         <div className="flex items-center gap-2 text-[10px] font-bold">
                           <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                             {dynamicEmpresasSummary.filter(e => e.action === "reutilizar").length} Reutilizar
@@ -1184,63 +1200,57 @@ export default function ImportExcelModal({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
                         {dynamicEmpresasSummary.map((emp, idx) => (
                           <div
                             key={idx}
-                            className="p-3 bg-slate-950/80 border border-slate-800 hover:border-slate-700 rounded-xl space-y-1.5 transition"
+                            className="p-2.5 bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl flex flex-col justify-between text-xs space-y-1"
                           >
-                            <div className="flex items-start justify-between gap-1.5">
-                              <span className="text-xs font-bold text-white truncate" title={emp.nombre}>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-bold text-white truncate text-[11px]" title={emp.nombre}>
                                 {emp.nombre}
                               </span>
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold flex-shrink-0 ${
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase flex-shrink-0 ${
                                 emp.action === "reutilizar"
                                   ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                                   : "bg-sky-500/20 text-sky-400 border border-sky-500/30"
                               }`}>
-                                {emp.action === "reutilizar" ? "Reutilizar" : "Crear Empresa"}
+                                {emp.action === "reutilizar" ? "Existente" : "+ Crear"}
                               </span>
                             </div>
-
-                            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-900">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-900">
                               <span><b>{emp.totalViajes}</b> viajes</span>
-                              <span><b>{formatNumber(emp.totalVolumenLitros)}</b> L</span>
                               <span className="text-emerald-400 font-mono font-bold">{formatCurrency(emp.totalFleteBs)}</span>
                             </div>
                           </div>
                         ))}
                       </div>
-                      <p className="text-[11px] text-slate-400 italic">
-                        * Al confirmar la importación, el sistema creará automáticamente los esquemas para las empresas nuevas y registrará cada viaje en su empresa correspondiente.
-                      </p>
                     </div>
                   </div>
                 ) : (
-                  /* Subzona B: Modo Empresa Individual (Modo Global) */
+                  /* Subzona B: Destino Modo Empresa Individual (Modo Global) */
                   globalMode && (
-                    <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-amber-500/30 shadow-lg space-y-4">
+                    <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-amber-500/30 shadow-lg space-y-3.5">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                        <div className="flex items-center gap-2 text-amber-400 font-bold text-xs sm:text-sm">
                           <Building2 className="w-4 h-4" />
-                          <span>Paso 1: Destino de la Empresa Individual</span>
+                          <span>Destino de la Empresa Individual</span>
                         </div>
                         <span className="text-[11px] text-slate-400">
-                          Define dónde se almacenarán los viajes y camiones
+                          Define dónde se almacenarán los despachos y unidades
                         </span>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {/* Opción A: Crear Nueva Empresa */}
                         <div
                           onClick={() => setImportMode("create_new")}
-                          className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                          className={`p-3 rounded-xl border cursor-pointer transition ${
                             importMode === "create_new"
-                              ? "border-amber-500 bg-amber-500/10 shadow-sm"
+                              ? "border-amber-500 bg-amber-500/10 shadow-xs"
                               : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
                           }`}
                         >
-                          <div className="flex items-center gap-2 mb-2">
+                          <div className="flex items-center gap-2 mb-1">
                             <input
                               type="radio"
                               checked={importMode === "create_new"}
@@ -1249,21 +1259,20 @@ export default function ImportExcelModal({
                             />
                             <span className="text-xs font-bold text-white">Crear Nueva Empresa Automáticamente</span>
                           </div>
-                          <p className="text-[11px] text-slate-400 pl-5 leading-relaxed">
-                            Se registrará en el directorio y se inicializará su esquema dedicado en la base de datos.
+                          <p className="text-[10px] text-slate-400 pl-5">
+                            Se registrará en el directorio y se inicializará su esquema en la base de datos.
                           </p>
                         </div>
 
-                        {/* Opción B: Asignar a Empresa Existente */}
                         <div
                           onClick={() => setImportMode("use_existing")}
-                          className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                          className={`p-3 rounded-xl border cursor-pointer transition ${
                             importMode === "use_existing"
-                              ? "border-emerald-500 bg-emerald-500/10 shadow-sm"
+                              ? "border-emerald-500 bg-emerald-500/10 shadow-xs"
                               : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
                           }`}
                         >
-                          <div className="flex items-center gap-2 mb-2">
+                          <div className="flex items-center gap-2 mb-1">
                             <input
                               type="radio"
                               checked={importMode === "use_existing"}
@@ -1272,18 +1281,17 @@ export default function ImportExcelModal({
                             />
                             <span className="text-xs font-bold text-white">Asignar a Empresa Existente</span>
                           </div>
-                          <p className="text-[11px] text-slate-400 pl-5 leading-relaxed">
+                          <p className="text-[10px] text-slate-400 pl-5">
                             Incorpora estos viajes dentro de una empresa ya registrada en el sistema.
                           </p>
                         </div>
                       </div>
 
-                      {/* Campos según modo seleccionado */}
                       {importMode === "create_new" ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-800/80">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 border-t border-slate-800/80">
                           <div>
                             <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                              Razón Social de la Nueva Empresa *
+                              Razón Social *
                             </label>
                             <input
                               type="text"
@@ -1319,67 +1327,34 @@ export default function ImportExcelModal({
                                   }}
                                   className="text-[10px] text-amber-400 hover:text-amber-300 font-bold"
                                 >
-                                  + Nueva Asociación
+                                  + Nueva Asoc.
                                 </button>
                               )}
                             </div>
-
-                            {creatingNewAsoc ? (
-                              <div className="space-y-1.5 p-2.5 bg-slate-900 border border-amber-500/30 rounded-xl">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[10px] text-amber-400 font-bold">Registrar Nueva Asociación:</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setCreatingNewAsoc(false);
-                                      setNewEmpresaAsocId("");
-                                    }}
-                                    className="text-[10px] text-slate-400 hover:text-rose-400"
-                                  >
-                                    Cancelar
-                                  </button>
-                                </div>
-                                <input
-                                  type="text"
-                                  value={newAsocNombre}
-                                  onChange={(e) => setNewAsocNombre(e.target.value)}
-                                  placeholder="Nombre Asociación (ej. ASOCIACIÓN ORIENTE)..."
-                                  className="w-full px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
-                                />
-                                <input
-                                  type="text"
-                                  value={newAsocSigla}
-                                  onChange={(e) => setNewAsocSigla(e.target.value)}
-                                  placeholder="Sigla (ej: ATPO)..."
-                                  className="w-full px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
-                                />
-                              </div>
-                            ) : (
-                              <select
-                                value={newEmpresaAsocId}
-                                onChange={(e) => {
-                                  if (e.target.value === "__create_new__") {
-                                    setCreatingNewAsoc(true);
-                                    setNewEmpresaAsocId("__create_new__");
-                                  } else {
-                                    setNewEmpresaAsocId(e.target.value);
-                                  }
-                                }}
-                                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                              >
-                                <option value="">Empresa Independiente</option>
-                                <option value="__create_new__" className="text-amber-400 font-bold">+ Crear Nueva Asociación</option>
-                                {asociaciones.map((a: any) => (
-                                  <option key={a.id} value={a.id}>
-                                    {a.sigla ? `[${a.sigla}] ` : ""}{a.name}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
+                            <select
+                              value={newEmpresaAsocId}
+                              onChange={(e) => {
+                                if (e.target.value === "__create_new__") {
+                                  setCreatingNewAsoc(true);
+                                  setNewEmpresaAsocId("__create_new__");
+                                } else {
+                                  setNewEmpresaAsocId(e.target.value);
+                                }
+                              }}
+                              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                            >
+                              <option value="">Empresa Independiente</option>
+                              <option value="__create_new__" className="text-amber-400 font-bold">+ Crear Nueva Asociación</option>
+                              {asociaciones.map((a: any) => (
+                                <option key={a.id} value={a.id}>
+                                  {a.sigla ? `[${a.sigla}] ` : ""}{a.name}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                         </div>
                       ) : (
-                        <div className="pt-2 border-t border-slate-800/80">
+                        <div className="pt-1 border-t border-slate-800/80">
                           <label className="block text-[11px] font-bold text-slate-300 mb-1">
                             Selecciona la Empresa de Destino *
                           </label>
@@ -1403,135 +1378,83 @@ export default function ImportExcelModal({
                     </div>
                   )
                 )}
-              </div>
-            )}
 
-            {/* ZONA 3: TARJETA CONFIRMACIÓN DE ACCIONES A REALIZAR */}
-            {previewData && !isLoadingPreview && (
-              <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-white font-bold text-sm">
-                    <Sparkles className="w-4 h-4 text-emerald-400" />
-                    <span>Acciones que se ejecutarán en el Sistema</span>
-                  </div>
-                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                    Conciliación Automática
-                  </span>
-                </div>
-
-                {/* Resumen Destino en el Sistema */}
-                {importType === "asociacion" ? (
-                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-2">
-                      <Layers className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                      <span className="text-slate-300">Asociación Destino:</span>
-                      <strong className="text-emerald-400 font-black">
-                        {creatingNewAsoc ? (newAsocNombre || "Nueva Asociación") : (asociaciones.find(a => String(a.id) === String(newEmpresaAsocId))?.name || initialAsociacionName || "Asociación")}
-                      </strong>
+                {/* PASO 3: RESUMEN DE MÉTRICAS CLAVE (KPI STRIP) */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 p-3 bg-slate-950/80 border border-slate-800 rounded-2xl">
+                  {/* KPI 1: Despachos */}
+                  <div className="p-2.5 bg-slate-900/70 border border-slate-800/80 rounded-xl space-y-0.5">
+                    <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                      <span>Despachos</span>
+                      <Layers className="w-3.5 h-3.5 text-sky-400" />
                     </div>
-
-                    <div className="flex items-center gap-2 text-slate-300 text-[11px]">
-                      <span className="text-slate-400">Distribución:</span>
-                      <strong className="text-white">
-                        {dynamicEmpresasSummary.length} empresas ({dynamicEmpresasSummary.filter(e => e.action === 'crear').length} a crear, {dynamicEmpresasSummary.filter(e => e.action === 'reutilizar').length} a reutilizar)
-                      </strong>
+                    <div className="text-lg font-black text-white">
+                      {dynamicSummary.totalViajes}
                     </div>
-                  </div>
-                ) : globalMode && (
-                  <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                      <span className="text-slate-300">Empresa Destino:</span>
-                      <strong className="text-amber-400 font-black">
-                        {importMode === "create_new" ? (newEmpresaName || "Nueva Empresa") : (empresas.find(e => e.schema_name === selectedExistingSchema)?.name || selectedExistingSchema)}
-                      </strong>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
-                        {importMode === "create_new" ? "Se creará automáticamente" : "Empresa existente"}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-slate-300 text-[11px]">
-                      <span className="text-slate-400">Asociación:</span>
-                      <strong className="text-white">
-                        {creatingNewAsoc ? (newAsocNombre || "Nueva Asociación") : (asociaciones.find(a => String(a.id) === String(newEmpresaAsocId))?.name || "(Empresa Independiente)")}
-                      </strong>
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                  {/* Acción 1: Flota */}
-                  <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 space-y-1">
-                    <div className="flex items-center gap-2 font-bold text-amber-400">
-                      <Truck className="w-4 h-4" />
-                      <span>Flota de Camiones</span>
-                    </div>
-                    <p className="text-slate-300 text-[11px] leading-relaxed">
-                      Se detectaron <b>{dynamicSummary.totalPlacas} cisternas únicas</b>. Las unidades que no existan serán creadas automáticamente en estado Activo.
-                    </p>
-                  </div>
-
-                  {/* Acción 2: Despachos */}
-                  <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 space-y-1">
-                    <div className="flex items-center gap-2 font-bold text-sky-400">
-                      <Scale className="w-4 h-4" />
-                      <span>Volúmenes y Fletes</span>
-                    </div>
-                    <p className="text-slate-300 text-[11px] leading-relaxed">
-                      Se registrarán <b>{dynamicSummary.totalViajes} despachos</b> con <b>{formatNumber(dynamicSummary.totalVolumenLitros)} L</b> conciliados y <b>{formatCurrency(dynamicSummary.totalFleteBs)}</b> de flete.
-                    </p>
-                  </div>
-
-                  {/* Acción 3: Períodos */}
-                  <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 space-y-1">
-                    <div className="flex items-center gap-2 font-bold text-emerald-400">
-                      <Calendar className="w-4 h-4" />
-                      <span>Períodos Contables</span>
-                    </div>
-                    <p className="text-slate-300 text-[11px] leading-relaxed">
-                      Clasificación mensual en <b>{dynamicSummary.periodos.join(", ") || "General"}</b> para liquidaciones de flete oficiales.
-                    </p>
-                  </div>
-
-                  {/* Acción 4: Validación de Calidad */}
-                  <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 space-y-1">
-                    <div className="flex items-center gap-2 font-bold text-emerald-400">
-                      {dynamicSummary.incompletosCount === 0 ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      ) : (
-                        <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <span className="text-emerald-400 font-bold">{dynamicSummary.listosCount} listos</span>
+                      {dynamicSummary.incompletosCount > 0 && (
+                        <span className="text-amber-400 font-bold">• {dynamicSummary.incompletosCount} incompletos</span>
                       )}
-                      <span>Validación de Calidad</span>
                     </div>
-                    <p className="text-slate-300 text-[11px] leading-relaxed">
-                      {dynamicSummary.incompletosCount === 0
-                        ? "100% de datos completos. Todos los despachos cuentan con placa, volumen y tramo listos para facturar."
-                        : `${dynamicSummary.incompletosCount} despacho(s) con datos incompletos. Puedes completarlos directamente en la tabla antes de importar.`
-                      }
-                    </p>
-                  </div>
-                </div>
-
-                {/* Barra Informativa de Integridad de Datos */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-slate-800 text-xs">
-                  <div className="flex items-center gap-2 text-slate-300">
-                    <Info className="w-4 h-4 text-sky-400 flex-shrink-0" />
-                    <span>
-                      Todos los despachos del archivo serán importados. Puedes editar cualquier celda haciendo clic sobre ella.
-                    </span>
                   </div>
 
-                  {dynamicSummary.incompletosCount > 0 ? (
-                    <span className="text-xs text-amber-400 font-bold flex items-center gap-1.5 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      {dynamicSummary.incompletosCount} despacho(s) incompletos detectados
+                  {/* KPI 2: Destino */}
+                  <div className="p-2.5 bg-slate-900/70 border border-slate-800/80 rounded-xl space-y-0.5">
+                    <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                      <span>Destino</span>
+                      {importType === "asociacion" ? <Building2 className="w-3.5 h-3.5 text-emerald-400" /> : <Truck className="w-3.5 h-3.5 text-amber-400" />}
+                    </div>
+                    <div className="text-xs font-black text-white truncate" title={importType === "asociacion" ? (creatingNewAsoc ? newAsocNombre : "Asociación") : (importMode === "create_new" ? newEmpresaName : selectedExistingSchema)}>
+                      {importType === "asociacion" 
+                        ? (creatingNewAsoc ? (newAsocNombre || "Nueva Asociación") : (asociaciones.find(a => String(a.id) === String(newEmpresaAsocId))?.name || initialAsociacionName || "Asociación"))
+                        : (globalMode ? (importMode === "create_new" ? (newEmpresaName || "Nueva Empresa") : (empresas.find(e => e.schema_name === selectedExistingSchema)?.name || selectedExistingSchema)) : (schema || "Empresa Actual"))}
+                    </div>
+                    <span className="text-[10px] text-slate-400 block truncate">
+                      {importType === "asociacion" ? `${dynamicEmpresasSummary.length} empresas vinculadas` : (importMode === "create_new" ? "Se creará automáticamente" : "Empresa existente")}
                     </span>
-                  ) : (
-                    <span className="text-xs text-emerald-400 font-bold flex items-center gap-1.5 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Todos los datos completos y listos
+                  </div>
+
+                  {/* KPI 3: Cisternas */}
+                  <div className="p-2.5 bg-slate-900/70 border border-slate-800/80 rounded-xl space-y-0.5">
+                    <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                      <span>Cisternas</span>
+                      <Truck className="w-3.5 h-3.5 text-indigo-400" />
+                    </div>
+                    <div className="text-lg font-black text-white">
+                      {dynamicSummary.totalPlacas}
+                    </div>
+                    <span className="text-[10px] text-slate-400 block truncate">
+                      Placas únicas detectadas
                     </span>
-                  )}
+                  </div>
+
+                  {/* KPI 4: Volumen */}
+                  <div className="p-2.5 bg-slate-900/70 border border-slate-800/80 rounded-xl space-y-0.5">
+                    <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                      <span>Volumen Facturado</span>
+                      <Scale className="w-3.5 h-3.5 text-sky-400" />
+                    </div>
+                    <div className="text-base font-black text-sky-400 font-mono">
+                      {formatNumber(dynamicSummary.totalVolumenLitros)} L
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-mono block">
+                      {formatNumber(dynamicSummary.totalVolumenM3, 3)} m³
+                    </span>
+                  </div>
+
+                  {/* KPI 5: Flete Total */}
+                  <div className="p-2.5 bg-slate-900/70 border border-slate-800/80 rounded-xl space-y-0.5 col-span-2 sm:col-span-1">
+                    <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                      <span>Flete Total</span>
+                      <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                    </div>
+                    <div className="text-base font-black text-emerald-400 font-mono truncate">
+                      {formatCurrency(dynamicSummary.totalFleteBs)}
+                    </div>
+                    <span className="text-[10px] text-emerald-400/80 block truncate">
+                      {dynamicSummary.periodos.join(", ") || "Período general"}
+                    </span>
+                  </div>
                 </div>
               </div>
             )}

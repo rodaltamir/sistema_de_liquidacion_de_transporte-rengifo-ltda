@@ -93,14 +93,6 @@ function SeleccionarEmpresaContent() {
   const [importInitialEmpresaName, setImportInitialEmpresaName] = useState<string>("");
   const [importInitialAsocId, setImportInitialAsocId] = useState<number | null>(null);
 
-  const handleExcelImportFromCreateModal = (selectedFile: File) => {
-    setImportInitialFile(selectedFile);
-    setImportInitialEmpresaName(formData.name || "");
-    setImportInitialAsocId(formData.asociacion_id ? Number(formData.asociacion_id) : null);
-    setShowModal(false);
-    setShowImportGlobalModal(true);
-  };
-
   const [formData, setFormData] = useState({
     name: "",
     tipo_empresa: "Sociedad",
@@ -111,6 +103,14 @@ function SeleccionarEmpresaContent() {
     telefono: "",
     email: ""
   });
+
+  const handleExcelImportFromCreateModal = (selectedFile: File) => {
+    setImportInitialFile(selectedFile);
+    setImportInitialEmpresaName(formData.name || "");
+    setImportInitialAsocId(formData.asociacion_id ? Number(formData.asociacion_id) : null);
+    setShowModal(false);
+    setShowImportGlobalModal(true);
+  };
 
   useEffect(() => {
     const user = getCurrentUser();
