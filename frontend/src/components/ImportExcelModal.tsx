@@ -34,6 +34,7 @@ import ModalPortal from "@/components/ModalPortal";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
 import { downloadBlob } from "@/lib/download";
+import { useTheme } from "@/context/ThemeContext";
 
 export interface EmpresaDetectada {
   nombre: string;
@@ -153,6 +154,12 @@ export default function ImportExcelModal({
   onSuccess
 }: ImportExcelModalProps) {
   const router = useRouter();
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+  const swalBg = isDark ? "#0f172a" : "#ffffff";
+  const swalColor = isDark ? "#f8fafc" : "#0f172a";
+  const swalCancelColor = isDark ? "#334155" : "#94a3b8";
+
   const [file, setFile] = useState<File | null>(null);
   const [sheets, setSheets] = useState<string[]>([]);
   const [selectedSheet, setSelectedSheet] = useState<string>("");
@@ -264,8 +271,8 @@ export default function ImportExcelModal({
         icon: "warning",
         title: "Formato no válido",
         text: "Por favor selecciona un archivo con formato Excel (.xlsx o .xlsm).",
-        background: "#0f172a",
-        color: "#f8fafc",
+        background: swalBg,
+        color: swalColor,
         confirmButtonColor: "#f59e0b"
       });
       return;
@@ -342,8 +349,8 @@ export default function ImportExcelModal({
         icon: "error",
         title: "Error al procesar Excel",
         text: err.message || "No se pudo interpretar la estructura del archivo.",
-        background: "#0f172a",
-        color: "#f8fafc",
+        background: swalBg,
+        color: swalColor,
         confirmButtonColor: "#f59e0b"
       });
     } finally {
@@ -390,8 +397,8 @@ export default function ImportExcelModal({
         icon: "error",
         title: "Error al descargar",
         text: err.message,
-        background: "#0f172a",
-        color: "#f8fafc"
+        background: swalBg,
+        color: swalColor
       });
     }
   };
@@ -608,8 +615,8 @@ export default function ImportExcelModal({
         icon: "warning",
         title: "Sin despachos seleccionados",
         text: "Debes marcar al menos un despacho para realizar la importación.",
-        background: "#0f172a",
-        color: "#f8fafc",
+        background: swalBg,
+        color: swalColor,
         confirmButtonColor: "#f59e0b"
       });
       return;
@@ -619,14 +626,14 @@ export default function ImportExcelModal({
       const incompletePrompt = await Swal.fire({
         icon: "warning",
         title: "Despachos Incompletos Detectados",
-        html: `Hay <b>${dynamicSummary.incompletosCount}</b> despacho(s) marcados con datos incompletos (como falta de placa o volumen).<br/><br/><span class="text-xs text-slate-400">Puedes completar la placa o volumen directamente en la tabla antes de importar. Las filas sin placa válida no se registrarán.</span>`,
+        html: `Hay <b>${dynamicSummary.incompletosCount}</b> despacho(s) marcados con datos incompletos (como falta de placa o volumen).<br/><br/><span class="text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}">Puedes completar la placa o volumen directamente en la tabla antes de importar. Las filas sin placa válida no se registrarán.</span>`,
         showCancelButton: true,
         confirmButtonText: "Importar de todos modos",
         cancelButtonText: "Volver y completar datos",
         confirmButtonColor: "#f59e0b",
-        cancelButtonColor: "#334155",
-        background: "#0f172a",
-        color: "#f8fafc"
+        cancelButtonColor: swalCancelColor,
+        background: swalBg,
+        color: swalColor
       });
       if (!incompletePrompt.isConfirmed) return;
     }
@@ -639,7 +646,9 @@ export default function ImportExcelModal({
             icon: "warning",
             title: "Nombre de Asociación requerido",
             text: "Por favor ingresa el nombre de la Asociación a crear.",
-            confirmButtonColor: "#f59e0b"
+            confirmButtonColor: "#f59e0b",
+            background: swalBg,
+            color: swalColor
           });
           return;
         }
@@ -651,7 +660,9 @@ export default function ImportExcelModal({
             icon: "warning",
             title: "Selecciona una Asociación",
             text: "Debes elegir una Asociación para vincular las empresas y despachos.",
-            confirmButtonColor: "#f59e0b"
+            confirmButtonColor: "#f59e0b",
+            background: swalBg,
+            color: swalColor
           });
           return;
         }
@@ -664,7 +675,9 @@ export default function ImportExcelModal({
             icon: "warning",
             title: "Nombre de empresa requerido",
             text: "Por favor ingresa la Razón Social de la empresa a crear.",
-            confirmButtonColor: "#f59e0b"
+            confirmButtonColor: "#f59e0b",
+            background: swalBg,
+            color: swalColor
           });
           return;
         }
@@ -676,7 +689,9 @@ export default function ImportExcelModal({
             icon: "warning",
             title: "Selecciona una empresa",
             text: "Debes elegir una empresa de transporte existente.",
-            confirmButtonColor: "#f59e0b"
+            confirmButtonColor: "#f59e0b",
+            background: swalBg,
+            color: swalColor
           });
           return;
         }
@@ -688,20 +703,20 @@ export default function ImportExcelModal({
     const totalReutilizadas = dynamicEmpresasSummary.filter(e => e.action === "reutilizar").length;
 
     let confirmHtml = `
-      <div class="text-left text-xs space-y-2 text-slate-300">
+      <div class="text-left text-xs space-y-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}">
         <p>Se importarán <b>${dynamicSummary.totalViajes}</b> despachos con un flete total de <b>${formatCurrency(dynamicSummary.totalFleteBs)}</b>.</p>
-        <p class="text-amber-400 font-semibold">• Modalidad: ${importType === "asociacion" ? "🏛️ Asociación (Multi-Empresa)" : "🏢 Empresa Individual"}</p>
-        <p class="text-sky-400 font-semibold">• Destino: ${targetDisplay || (schema ? `Empresa '${schema}'` : 'Directorio')}</p>
+        <p class="${isDark ? 'text-amber-400' : 'text-amber-600'} font-semibold">• Modalidad: ${importType === "asociacion" ? "🏛️ Asociación (Multi-Empresa)" : "🏢 Empresa Individual"}</p>
+        <p class="${isDark ? 'text-sky-400' : 'text-sky-600'} font-semibold">• Destino: ${targetDisplay || (schema ? `Empresa '${schema}'` : 'Directorio')}</p>
         ${importType === "asociacion" ? `
-          <div class="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1 text-[11px]">
-            <p class="text-white font-bold">• Empresas detectadas: <b>${dynamicEmpresasSummary.length}</b></p>
-            <p class="text-emerald-400">• Reutilizar empresas existentes: <b>${totalReutilizadas}</b></p>
-            <p class="text-sky-400">• Crear nuevas empresas en la asociación: <b>${totalNuevas}</b></p>
+          <div class="p-2.5 ${isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'} rounded-xl border space-y-1 text-[11px]">
+            <p class="${isDark ? 'text-white' : 'text-slate-900'} font-bold">• Empresas detectadas: <b>${dynamicEmpresasSummary.length}</b></p>
+            <p class="${isDark ? 'text-emerald-400' : 'text-emerald-600'}">• Reutilizar empresas existentes: <b>${totalReutilizadas}</b></p>
+            <p class="${isDark ? 'text-sky-400' : 'text-sky-600'}">• Crear nuevas empresas en la asociación: <b>${totalNuevas}</b></p>
           </div>
         ` : ''}
         <p>• Cisternas identificadas: <b>${dynamicSummary.totalPlacas}</b></p>
-        <p>• Despachos listos: <b class="text-emerald-400">${dynamicSummary.listosCount}</b></p>
-        ${dynamicSummary.incompletosCount > 0 ? `<p class="text-amber-400">• Despachos incompletos: <b>${dynamicSummary.incompletosCount}</b></p>` : ''}
+        <p>• Despachos listos: <b class="${isDark ? 'text-emerald-400' : 'text-emerald-600'}">${dynamicSummary.listosCount}</b></p>
+        ${dynamicSummary.incompletosCount > 0 ? `<p class="${isDark ? 'text-amber-400' : 'text-amber-600'}">• Despachos incompletos: <b>${dynamicSummary.incompletosCount}</b></p>` : ''}
         <p>• Períodos: <b>${dynamicSummary.periodos.join(", ") || "General"}</b></p>
       </div>
     `;
@@ -714,9 +729,9 @@ export default function ImportExcelModal({
       confirmButtonText: "Sí, ejecutar importación",
       cancelButtonText: "Seguir revisando",
       confirmButtonColor: "#10b981",
-      cancelButtonColor: "#334155",
-      background: "#0f172a",
-      color: "#f8fafc"
+      cancelButtonColor: swalCancelColor,
+      background: swalBg,
+      color: swalColor
     });
 
     if (!confirmRes.isConfirmed) return;
@@ -778,10 +793,10 @@ export default function ImportExcelModal({
       const finalName = res.empresa_name || targetDisplay;
 
       let successDetailHtml = `
-        <div class="space-y-3 text-left text-xs text-slate-300">
-          <p class="font-bold text-sm text-emerald-400">${res.message || "Despachos registrados correctamente en el sistema."}</p>
-          <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1.5">
-            ${res.asociacion_name ? `<div>• <b>Asociación:</b> <span class="text-amber-400">${res.asociacion_name}</span></div>` : ''}
+        <div class="space-y-3 text-left text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}">
+          <p class="font-bold text-sm ${isDark ? 'text-emerald-400' : 'text-emerald-600'}">${res.message || "Despachos registrados correctamente en el sistema."}</p>
+          <div class="p-3 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'} rounded-xl border space-y-1.5">
+            ${res.asociacion_name ? `<div>• <b>Asociación:</b> <span class="${isDark ? 'text-amber-400' : 'text-amber-600'}">${res.asociacion_name}</span></div>` : ''}
             ${res.total_empresas_procesadas ? `<div>• <b>Empresas Procesadas:</b> ${res.total_empresas_procesadas} (${res.empresas_creadas || 0} creadas, ${res.empresas_reutilizadas || 0} reutilizadas)</div>` : ''}
             <div>• <b>Viajes Importados:</b> ${res.total_importados || res.total_viajes_importados || dynamicSummary.totalViajes}</div>
             <div>• <b>Cisternas Involucradas:</b> ${dynamicSummary.totalPlacas}</div>
@@ -790,13 +805,13 @@ export default function ImportExcelModal({
           </div>
           ${Array.isArray(res.empresas_detalle) && res.empresas_detalle.length > 0 ? `
             <div class="max-h-40 overflow-y-auto space-y-1 pr-1">
-              <span class="text-[10px] uppercase font-bold text-slate-400">Desglose por Empresa:</span>
+              <span class="text-[10px] uppercase font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}">Desglose por Empresa:</span>
               ${res.empresas_detalle.map((ed: any) => `
-                <div class="p-1.5 bg-slate-950/70 rounded-lg border border-slate-800 flex items-center justify-between text-[11px]">
-                  <span class="font-semibold text-white truncate max-w-[180px]">${ed.empresa_name}</span>
+                <div class="p-1.5 ${isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-white border-slate-200'} rounded-lg border flex items-center justify-between text-[11px]">
+                  <span class="font-semibold ${isDark ? 'text-white' : 'text-slate-900'} truncate max-w-[180px]">${ed.empresa_name}</span>
                   <div class="flex items-center gap-2">
-                    <span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${ed.accion === 'creada' ? 'bg-sky-500/20 text-sky-400' : 'bg-emerald-500/20 text-emerald-400'}">${ed.accion === 'creada' ? 'Nueva' : 'Reutilizada'}</span>
-                    <span class="text-amber-400 font-bold">${ed.total_viajes} viajes</span>
+                    <span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${ed.accion === 'creada' ? (isDark ? 'bg-sky-500/20 text-sky-400' : 'bg-sky-100 text-sky-700 border border-sky-200') : (isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700 border border-emerald-200')}">${ed.accion === 'creada' ? 'Nueva' : 'Reutilizada'}</span>
+                    <span class="${isDark ? 'text-amber-400' : 'text-amber-600'} font-bold">${ed.total_viajes} viajes</span>
                   </div>
                 </div>
               `).join('')}
@@ -813,9 +828,9 @@ export default function ImportExcelModal({
         confirmButtonText: res.asociacion_id ? "Ver Asociación" : (finalSchema ? "Ir al Historial de Viajes" : "Entendido"),
         cancelButtonText: "Permanecer aquí",
         confirmButtonColor: "#10b981",
-        cancelButtonColor: "#334155",
-        background: "#0f172a",
-        color: "#f8fafc"
+        cancelButtonColor: swalCancelColor,
+        background: swalBg,
+        color: swalColor
       });
 
       onSuccess({
@@ -842,8 +857,8 @@ export default function ImportExcelModal({
         icon: "error",
         title: "Error al importar datos",
         text: err.message || "Ocurrió un error al guardar los viajes en la base de datos.",
-        background: "#0f172a",
-        color: "#f8fafc",
+        background: swalBg,
+        color: swalColor,
         confirmButtonColor: "#f59e0b"
       });
     } finally {
@@ -855,25 +870,25 @@ export default function ImportExcelModal({
 
   return (
     <ModalPortal>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-6xl max-h-[94vh] flex flex-col shadow-2xl overflow-hidden text-slate-100">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/60 dark:bg-slate-950/85 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-6xl max-h-[94vh] flex flex-col shadow-2xl overflow-hidden text-slate-800 dark:text-slate-100">
           
           {/* Header del Modal */}
-          <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/80 sticky top-0 z-20 backdrop-blur-md">
+          <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white/95 dark:bg-slate-900/80 sticky top-0 z-20 backdrop-blur-md">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500/20 to-amber-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500/10 to-amber-500/10 dark:from-emerald-500/20 dark:to-amber-500/20 border border-emerald-500/20 dark:border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
                 <FileSpreadsheet className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-tight">
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">
                     Importación y Conciliación Inteligente de Despachos
                   </h3>
-                  <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
                     {globalMode ? "Directorio Global" : `Empresa: ${schema}`}
                   </span>
                 </div>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Inspección, confirmación de acciones, edición en línea y conciliación de volúmenes y fletes.
                 </p>
               </div>
@@ -883,16 +898,16 @@ export default function ImportExcelModal({
               <button
                 type="button"
                 onClick={downloadBaseTemplate}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-700 hover:border-slate-600 bg-slate-800/60 text-slate-300 hover:text-white text-xs font-semibold transition"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white text-xs font-semibold transition"
                 title="Descargar plantilla Excel oficial limpia"
               >
-                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 <span>Plantilla Base</span>
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white flex items-center justify-center transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -903,23 +918,23 @@ export default function ImportExcelModal({
           <div className="p-4 sm:p-6 space-y-6 overflow-y-auto flex-1">
             
             {/* Stepper Visual de 3 Pasos */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 text-xs font-semibold">
-              <div className={`flex items-center gap-2 ${file ? "text-emerald-400 font-bold" : "text-amber-400 font-bold"}`}>
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${file ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" : "bg-amber-500/20 text-amber-400 border border-amber-500/40"}`}>
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 text-xs font-semibold">
+              <div className={`flex items-center gap-2 ${file ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-amber-600 dark:text-amber-400 font-bold"}`}>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${file ? "bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/40" : "bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-500/40"}`}>
                   {file ? "✓" : "1"}
                 </span>
                 <span>1. Archivo y Hojas</span>
               </div>
-              <div className="w-8 h-px bg-slate-800 hidden sm:block" />
-              <div className={`flex items-center gap-2 ${previewData ? "text-emerald-400 font-bold" : file ? "text-amber-400 font-bold" : "text-slate-500"}`}>
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${previewData ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+              <div className="w-8 h-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
+              <div className={`flex items-center gap-2 ${previewData ? "text-emerald-600 dark:text-emerald-400 font-bold" : file ? "text-amber-600 dark:text-amber-400 font-bold" : "text-slate-400 dark:text-slate-500"}`}>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${previewData ? "bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/40" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700"}`}>
                   {previewData ? "✓" : "2"}
                 </span>
                 <span>2. Modalidad y Destino</span>
               </div>
-              <div className="w-8 h-px bg-slate-800 hidden sm:block" />
-              <div className={`flex items-center gap-2 ${previewData ? "text-sky-400 font-bold" : "text-slate-500"}`}>
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${previewData ? "bg-sky-500/20 text-sky-400 border border-sky-500/40" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+              <div className="w-8 h-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
+              <div className={`flex items-center gap-2 ${previewData ? "text-sky-600 dark:text-sky-400 font-bold" : "text-slate-400 dark:text-slate-500"}`}>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${previewData ? "bg-sky-50 dark:bg-sky-500/20 text-sky-700 dark:text-sky-400 border border-sky-300 dark:border-sky-500/40" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700"}`}>
                   3
                 </span>
                 <span>3. Revisión de Despachos</span>
@@ -936,7 +951,7 @@ export default function ImportExcelModal({
                 className={`border-2 border-dashed rounded-3xl p-8 sm:p-12 text-center cursor-pointer transition-all ${
                   isDragOver
                     ? "border-emerald-500 bg-emerald-500/10 scale-[0.99]"
-                    : "border-slate-700 hover:border-emerald-500/50 hover:bg-slate-800/40 bg-slate-900/40"
+                    : "border-slate-300 dark:border-slate-700 hover:border-emerald-500/50 hover:bg-slate-50 dark:hover:bg-slate-800/40 bg-slate-50/50 dark:bg-slate-900/40"
                 }`}
               >
                 <input
@@ -946,35 +961,35 @@ export default function ImportExcelModal({
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-4">
+                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-4">
                   <UploadCloud className="w-8 h-8" />
                 </div>
-                <h4 className="text-base font-bold text-white mb-1">
+                <h4 className="text-base font-bold text-slate-900 dark:text-white mb-1">
                   Arrastra tu archivo Excel aquí o haz clic para examinar
                 </h4>
-                <p className="text-xs text-slate-400 max-w-md mx-auto mb-4">
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-4">
                   Compatible con <b>DRIVER S.R.L VENTAS.xlsx</b>, <b>PLANTILLA DE IMPORTACIÓN.xlsx</b> y formato oficial de 19/20 columnas.
                 </p>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   Formatos soportados: .xlsx, .xlsm
                 </span>
               </div>
             ) : (
               /* Archivo Seleccionado + Selector de Hoja */
-              <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-emerald-400 flex-shrink-0">
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
                     <FileSpreadsheet className="w-6 h-6" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-white">{file.name}</span>
-                      <span className="text-[10px] text-slate-500 font-mono">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white">{file.name}</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                         ({(file.size / (1024 * 1024)).toFixed(2)} MB)
                       </span>
                     </div>
-                    <span className="text-[11px] text-emerald-400 flex items-center gap-1">
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3" /> Archivo analizado correctamente
                     </span>
                   </div>
@@ -982,20 +997,20 @@ export default function ImportExcelModal({
 
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                   {sheets.length > 1 && (
-                    <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-xl px-2.5 py-1.5">
-                      <Layers className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="text-[11px] text-slate-400 font-semibold">Hojas:</span>
+                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-xl px-2.5 py-1.5 shadow-xs">
+                      <Layers className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">Hojas:</span>
                       <select
                         value={selectedSheet}
                         onChange={(e) => handleSheetChange(e.target.value)}
-                        className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer"
+                        className="bg-transparent text-xs font-bold text-slate-800 dark:text-white focus:outline-none cursor-pointer"
                         disabled={isLoadingPreview || isImporting}
                       >
-                        <option value="__ALL__" className="bg-slate-900 text-emerald-400 font-bold">
+                        <option value="__ALL__" className="bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 font-bold">
                           📑 Todas las Hojas ({sheets.length} consolidadas)
                         </option>
                         {sheets.map((s) => (
-                          <option key={s} value={s} className="bg-slate-900 text-white">
+                          <option key={s} value={s} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-white">
                             📄 Hoja: {s}
                           </option>
                         ))}
@@ -1011,7 +1026,7 @@ export default function ImportExcelModal({
                       setEditableRecords([]);
                       setSheets([]);
                     }}
-                    className="px-3 py-1.5 rounded-xl border border-slate-700 hover:border-rose-500/50 hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 text-xs font-semibold transition"
+                    className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-rose-500/50 hover:bg-rose-50 dark:hover:bg-rose-500/10 text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 text-xs font-semibold transition"
                     disabled={isImporting}
                   >
                     Cambiar archivo
@@ -1022,20 +1037,20 @@ export default function ImportExcelModal({
 
             {/* Desglose de Hojas Procesadas si hay más de 1 */}
             {previewData?.hojas_procesadas && previewData.hojas_procesadas.length > 1 && (
-              <div className="p-3 bg-sky-500/10 border border-sky-500/25 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="p-3 bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/25 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-sky-400 flex-shrink-0" />
-                  <span className="text-slate-200 font-bold">Hojas y Años Consolidados:</span>
-                  <span className="text-sky-300 font-mono font-bold">
+                  <Layers className="w-4 h-4 text-sky-500 dark:text-sky-400 flex-shrink-0" />
+                  <span className="text-slate-800 dark:text-slate-200 font-bold">Hojas y Años Consolidados:</span>
+                  <span className="text-sky-700 dark:text-sky-300 font-mono font-bold">
                     {previewData.hojas_procesadas.length} hojas procesadas
                   </span>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5">
                   {previewData.hojas_procesadas.map((h, idx) => (
-                    <span key={idx} className="px-2.5 py-1 rounded-lg bg-slate-900/90 border border-sky-500/30 text-sky-200 text-[11px] font-medium flex items-center gap-1.5 shadow-xs">
-                      <span className="font-bold text-white">{h.hoja}</span>
-                      <span className="text-sky-400 font-black">({h.viajes} despachos)</span>
+                    <span key={idx} className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900/90 border border-sky-200 dark:border-sky-500/30 text-sky-800 dark:text-sky-200 text-[11px] font-medium flex items-center gap-1.5 shadow-xs">
+                      <span className="font-bold text-slate-900 dark:text-white">{h.hoja}</span>
+                      <span className="text-sky-600 dark:text-sky-400 font-black">({h.viajes} despachos)</span>
                     </span>
                   ))}
                 </div>
@@ -1045,11 +1060,11 @@ export default function ImportExcelModal({
             {/* Spinner de Análisis */}
             {isLoadingPreview && (
               <div className="py-12 text-center space-y-3">
-                <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin mx-auto" />
-                <p className="text-sm font-semibold text-slate-300">
+                <RefreshCw className="w-8 h-8 text-emerald-500 dark:text-emerald-400 animate-spin mx-auto" />
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                   Analizando estructura, conciliando volúmenes y verificando calidad de datos...
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-400 dark:text-slate-500">
                   Lectura en flujo ultra-rápida sin sobrecarga de memoria.
                 </p>
               </div>
@@ -1059,14 +1074,14 @@ export default function ImportExcelModal({
             {previewData && !isLoadingPreview && (
               <div className="space-y-4">
                 {/* Selector de Modalidad de Importación */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-1.5 bg-slate-950 border border-slate-800 rounded-2xl shadow-inner">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-inner">
                   <button
                     type="button"
                     onClick={() => setImportType("empresa")}
                     className={`flex-1 flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl font-bold text-xs transition ${
                       importType === "empresa"
-                        ? "bg-amber-500 text-slate-950 shadow-md font-black"
-                        : "text-slate-400 hover:text-white hover:bg-slate-900/50"
+                        ? "bg-amber-500 text-white dark:text-slate-950 shadow-md font-black"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/80 dark:hover:bg-slate-900/50"
                     }`}
                   >
                     <Building2 className="w-4 h-4" />
@@ -1077,14 +1092,14 @@ export default function ImportExcelModal({
                     onClick={() => setImportType("asociacion")}
                     className={`flex-1 flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl font-bold text-xs transition ${
                       importType === "asociacion"
-                        ? "bg-emerald-500 text-slate-950 shadow-md font-black"
-                        : "text-slate-400 hover:text-white hover:bg-slate-900/50"
+                        ? "bg-emerald-600 dark:bg-emerald-500 text-white dark:text-slate-950 shadow-md font-black"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/80 dark:hover:bg-slate-900/50"
                     }`}
                   >
                     <Layers className="w-4 h-4" />
                     <span>Importación por Asociación (Multi-Empresa)</span>
                     {previewData?.is_multi_empresa && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-900 text-emerald-300 border border-emerald-500/30 font-black uppercase">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30 font-black uppercase">
                         {previewData.empresas_detectadas?.length || dynamicEmpresasSummary.length} Detectadas
                       </span>
                     )}
@@ -1093,21 +1108,21 @@ export default function ImportExcelModal({
 
                 {/* Subzona A: Destino Modo Asociación (Multi-Empresa) */}
                 {importType === "asociacion" ? (
-                  <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-emerald-500/30 shadow-lg space-y-3.5">
+                  <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-50/50 via-slate-50 to-emerald-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 border border-emerald-200 dark:border-emerald-500/30 shadow-lg space-y-3.5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                      <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs sm:text-sm">
+                      <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-bold text-xs sm:text-sm">
                         <Layers className="w-4 h-4" />
                         <span>Asociación de Destino (Multi-Empresa)</span>
                       </div>
-                      <span className="text-[11px] text-slate-400">
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
                         Cada empresa se creará o reutilizará automáticamente bajo esta asociación gremial.
                       </span>
                     </div>
 
                     {/* Selector / Creación de Asociación */}
-                    <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-2.5">
+                    <div className="p-3 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2.5">
                       <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold text-slate-200">
+                        <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
                           Asociación Matriz:
                         </label>
                         {!creatingNewAsoc ? (
@@ -1117,7 +1132,7 @@ export default function ImportExcelModal({
                               setCreatingNewAsoc(true);
                               setNewEmpresaAsocId("__create_new__");
                             }}
-                            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1"
+                            className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-bold flex items-center gap-1"
                           >
                             + Registrar Nueva Asociación
                           </button>
@@ -1128,7 +1143,7 @@ export default function ImportExcelModal({
                               setCreatingNewAsoc(false);
                               setNewEmpresaAsocId(asociaciones[0]?.id || "");
                             }}
-                            className="text-[11px] text-slate-400 hover:text-rose-400 font-semibold"
+                            className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 font-semibold"
                           >
                             Cancelar y elegir existente
                           </button>
@@ -1143,7 +1158,7 @@ export default function ImportExcelModal({
                               value={newAsocNombre}
                               onChange={(e) => setNewAsocNombre(e.target.value)}
                               placeholder="Nombre de la Nueva Asociación..."
-                              className="w-full px-3 py-2 bg-slate-950 border border-emerald-500/50 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-400"
+                              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-emerald-300 dark:border-emerald-500/50 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
                             />
                           </div>
                           <div>
@@ -1152,7 +1167,7 @@ export default function ImportExcelModal({
                               value={newAsocSigla}
                               onChange={(e) => setNewAsocSigla(e.target.value)}
                               placeholder="Sigla (Opcional, ej: ATO)..."
-                              className="w-full px-3 py-2 bg-slate-950 border border-emerald-500/50 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-400 uppercase"
+                              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-emerald-300 dark:border-emerald-500/50 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 uppercase"
                             />
                           </div>
                         </div>
@@ -1167,7 +1182,7 @@ export default function ImportExcelModal({
                               setNewEmpresaAsocId(e.target.value);
                             }
                           }}
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-emerald-500"
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white font-semibold focus:outline-none focus:border-emerald-500"
                         >
                           {asociaciones.length === 0 ? (
                             <option value="">No hay asociaciones registradas (Registra una nueva)</option>
@@ -1178,7 +1193,7 @@ export default function ImportExcelModal({
                               </option>
                             ))
                           )}
-                          <option value="__create_new__" className="text-emerald-400 font-bold">+ Registrar Nueva Asociación</option>
+                          <option value="__create_new__" className="text-emerald-600 dark:text-emerald-400 font-bold">+ Registrar Nueva Asociación</option>
                         </select>
                       )}
                     </div>
@@ -1186,15 +1201,15 @@ export default function ImportExcelModal({
                     {/* Empresas detectadas en formato compacto */}
                     <div className="space-y-2 pt-1">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-300 flex items-center gap-1.5">
-                          <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                           Empresas detectadas en la planilla ({dynamicEmpresasSummary.length}):
                         </span>
                         <div className="flex items-center gap-2 text-[10px] font-bold">
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
                             {dynamicEmpresasSummary.filter(e => e.action === "reutilizar").length} Reutilizar
                           </span>
-                          <span className="px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30">
+                          <span className="px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-500/15 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-500/30">
                             {dynamicEmpresasSummary.filter(e => e.action === "crear").length} Se crearán
                           </span>
                         </div>
@@ -1204,23 +1219,23 @@ export default function ImportExcelModal({
                         {dynamicEmpresasSummary.map((emp, idx) => (
                           <div
                             key={idx}
-                            className="p-2.5 bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl flex flex-col justify-between text-xs space-y-1"
+                            className="p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-xl flex flex-col justify-between text-xs space-y-1 shadow-xs"
                           >
                             <div className="flex items-center justify-between gap-1">
-                              <span className="font-bold text-white truncate text-[11px]" title={emp.nombre}>
+                              <span className="font-bold text-slate-900 dark:text-white truncate text-[11px]" title={emp.nombre}>
                                 {emp.nombre}
                               </span>
                               <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase flex-shrink-0 ${
                                 emp.action === "reutilizar"
-                                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                                  : "bg-sky-500/20 text-sky-400 border border-sky-500/30"
+                                  ? "bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30"
+                                  : "bg-sky-50 dark:bg-sky-500/20 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-500/30"
                               }`}>
                                 {emp.action === "reutilizar" ? "Existente" : "+ Crear"}
                               </span>
                             </div>
-                            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-900">
+                            <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200 dark:border-slate-900">
                               <span><b>{emp.totalViajes}</b> viajes</span>
-                              <span className="text-emerald-400 font-mono font-bold">{formatCurrency(emp.totalFleteBs)}</span>
+                              <span className="text-emerald-600 dark:text-emerald-400 font-mono font-bold">{formatCurrency(emp.totalFleteBs)}</span>
                             </div>
                           </div>
                         ))}
@@ -1230,13 +1245,13 @@ export default function ImportExcelModal({
                 ) : (
                   /* Subzona B: Destino Modo Empresa Individual (Modo Global) */
                   globalMode && (
-                    <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-amber-500/30 shadow-lg space-y-3.5">
+                    <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-50/50 via-slate-50 to-amber-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 border border-amber-200 dark:border-amber-500/30 shadow-lg space-y-3.5">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-amber-400 font-bold text-xs sm:text-sm">
+                        <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-bold text-xs sm:text-sm">
                           <Building2 className="w-4 h-4" />
                           <span>Destino de la Empresa Individual</span>
                         </div>
-                        <span className="text-[11px] text-slate-400">
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
                           Define dónde se almacenarán los despachos y unidades
                         </span>
                       </div>
@@ -1247,7 +1262,7 @@ export default function ImportExcelModal({
                           className={`p-3 rounded-xl border cursor-pointer transition ${
                             importMode === "create_new"
                               ? "border-amber-500 bg-amber-500/10 shadow-xs"
-                              : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
+                              : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-300 dark:hover:border-slate-700"
                           }`}
                         >
                           <div className="flex items-center gap-2 mb-1">
@@ -1255,11 +1270,11 @@ export default function ImportExcelModal({
                               type="radio"
                               checked={importMode === "create_new"}
                               onChange={() => setImportMode("create_new")}
-                              className="text-amber-500 focus:ring-amber-500 bg-slate-950"
+                              className="text-amber-500 focus:ring-amber-500 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700"
                             />
-                            <span className="text-xs font-bold text-white">Crear Nueva Empresa Automáticamente</span>
+                            <span className="text-xs font-bold text-slate-900 dark:text-white">Crear Nueva Empresa Automáticamente</span>
                           </div>
-                          <p className="text-[10px] text-slate-400 pl-5">
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 pl-5">
                             Se registrará en el directorio y se inicializará su esquema en la base de datos.
                           </p>
                         </div>
@@ -1269,7 +1284,7 @@ export default function ImportExcelModal({
                           className={`p-3 rounded-xl border cursor-pointer transition ${
                             importMode === "use_existing"
                               ? "border-emerald-500 bg-emerald-500/10 shadow-xs"
-                              : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
+                              : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-300 dark:hover:border-slate-700"
                           }`}
                         >
                           <div className="flex items-center gap-2 mb-1">
@@ -1277,20 +1292,20 @@ export default function ImportExcelModal({
                               type="radio"
                               checked={importMode === "use_existing"}
                               onChange={() => setImportMode("use_existing")}
-                              className="text-emerald-500 focus:ring-emerald-500 bg-slate-950"
+                              className="text-emerald-500 focus:ring-emerald-500 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700"
                             />
-                            <span className="text-xs font-bold text-white">Asignar a Empresa Existente</span>
+                            <span className="text-xs font-bold text-slate-900 dark:text-white">Asignar a Empresa Existente</span>
                           </div>
-                          <p className="text-[10px] text-slate-400 pl-5">
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 pl-5">
                             Incorpora estos viajes dentro de una empresa ya registrada en el sistema.
                           </p>
                         </div>
                       </div>
 
                       {importMode === "create_new" ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 border-t border-slate-800/80">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 border-t border-slate-200 dark:border-slate-800/80">
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                            <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                               Razón Social *
                             </label>
                             <input
@@ -1298,11 +1313,11 @@ export default function ImportExcelModal({
                               value={newEmpresaName}
                               onChange={(e) => setNewEmpresaName(e.target.value)}
                               placeholder="Ej: DRIVER S.R.L."
-                              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                            <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                               NIT (Opcional)
                             </label>
                             <input
@@ -1310,12 +1325,12 @@ export default function ImportExcelModal({
                               value={newEmpresaNit}
                               onChange={(e) => setNewEmpresaNit(e.target.value)}
                               placeholder="Ej: 1028495021"
-                              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
                             />
                           </div>
                           <div>
                             <div className="flex items-center justify-between mb-1">
-                              <label className="block text-[11px] font-bold text-slate-300">
+                              <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
                                 Asociación / Gremio
                               </label>
                               {!creatingNewAsoc && (
@@ -1325,7 +1340,7 @@ export default function ImportExcelModal({
                                     setCreatingNewAsoc(true);
                                     setNewEmpresaAsocId("__create_new__");
                                   }}
-                                  className="text-[10px] text-amber-400 hover:text-amber-300 font-bold"
+                                  className="text-[10px] text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 font-bold"
                                 >
                                   + Nueva Asoc.
                                 </button>
@@ -1341,10 +1356,10 @@ export default function ImportExcelModal({
                                   setNewEmpresaAsocId(e.target.value);
                                 }
                               }}
-                              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                             >
                               <option value="">Empresa Independiente</option>
-                              <option value="__create_new__" className="text-amber-400 font-bold">+ Crear Nueva Asociación</option>
+                              <option value="__create_new__" className="text-amber-600 dark:text-amber-400 font-bold">+ Crear Nueva Asociación</option>
                               {asociaciones.map((a: any) => (
                                 <option key={a.id} value={a.id}>
                                   {a.sigla ? `[${a.sigla}] ` : ""}{a.name}
@@ -1354,14 +1369,14 @@ export default function ImportExcelModal({
                           </div>
                         </div>
                       ) : (
-                        <div className="pt-1 border-t border-slate-800/80">
-                          <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        <div className="pt-1 border-t border-slate-200 dark:border-slate-800/80">
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                             Selecciona la Empresa de Destino *
                           </label>
                           <select
                             value={selectedExistingSchema}
                             onChange={(e) => setSelectedExistingSchema(e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
                           >
                             {empresas.length === 0 ? (
                               <option value="">No hay empresas registradas</option>
@@ -1380,78 +1395,78 @@ export default function ImportExcelModal({
                 )}
 
                 {/* PASO 3: RESUMEN DE MÉTRICAS CLAVE (KPI STRIP) */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 p-3 bg-slate-950/80 border border-slate-800 rounded-2xl">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 p-3 bg-slate-100 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-2xl">
                   {/* KPI 1: Despachos */}
-                  <div className="p-2.5 bg-slate-900/70 border border-slate-800/80 rounded-xl space-y-0.5">
-                    <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                  <div className="p-2.5 bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 rounded-xl space-y-0.5 shadow-xs">
+                    <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase">
                       <span>Despachos</span>
-                      <Layers className="w-3.5 h-3.5 text-sky-400" />
+                      <Layers className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400" />
                     </div>
-                    <div className="text-lg font-black text-white">
+                    <div className="text-lg font-black text-slate-900 dark:text-white">
                       {dynamicSummary.totalViajes}
                     </div>
                     <div className="flex items-center gap-1.5 text-[10px]">
-                      <span className="text-emerald-400 font-bold">{dynamicSummary.listosCount} listos</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold">{dynamicSummary.listosCount} listos</span>
                       {dynamicSummary.incompletosCount > 0 && (
-                        <span className="text-amber-400 font-bold">• {dynamicSummary.incompletosCount} incompletos</span>
+                        <span className="text-amber-600 dark:text-amber-400 font-bold">• {dynamicSummary.incompletosCount} incompletos</span>
                       )}
                     </div>
                   </div>
 
                   {/* KPI 2: Destino */}
-                  <div className="p-2.5 bg-slate-900/70 border border-slate-800/80 rounded-xl space-y-0.5">
-                    <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                  <div className="p-2.5 bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 rounded-xl space-y-0.5 shadow-xs">
+                    <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase">
                       <span>Destino</span>
-                      {importType === "asociacion" ? <Building2 className="w-3.5 h-3.5 text-emerald-400" /> : <Truck className="w-3.5 h-3.5 text-amber-400" />}
+                      {importType === "asociacion" ? <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Truck className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />}
                     </div>
-                    <div className="text-xs font-black text-white truncate" title={importType === "asociacion" ? (creatingNewAsoc ? newAsocNombre : "Asociación") : (importMode === "create_new" ? newEmpresaName : selectedExistingSchema)}>
+                    <div className="text-xs font-black text-slate-900 dark:text-white truncate" title={importType === "asociacion" ? (creatingNewAsoc ? newAsocNombre : "Asociación") : (importMode === "create_new" ? newEmpresaName : selectedExistingSchema)}>
                       {importType === "asociacion" 
                         ? (creatingNewAsoc ? (newAsocNombre || "Nueva Asociación") : (asociaciones.find(a => String(a.id) === String(newEmpresaAsocId))?.name || initialAsociacionName || "Asociación"))
                         : (globalMode ? (importMode === "create_new" ? (newEmpresaName || "Nueva Empresa") : (empresas.find(e => e.schema_name === selectedExistingSchema)?.name || selectedExistingSchema)) : (schema || "Empresa Actual"))}
                     </div>
-                    <span className="text-[10px] text-slate-400 block truncate">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block truncate">
                       {importType === "asociacion" ? `${dynamicEmpresasSummary.length} empresas vinculadas` : (importMode === "create_new" ? "Se creará automáticamente" : "Empresa existente")}
                     </span>
                   </div>
 
                   {/* KPI 3: Cisternas */}
-                  <div className="p-2.5 bg-slate-900/70 border border-slate-800/80 rounded-xl space-y-0.5">
-                    <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                  <div className="p-2.5 bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 rounded-xl space-y-0.5 shadow-xs">
+                    <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase">
                       <span>Cisternas</span>
-                      <Truck className="w-3.5 h-3.5 text-indigo-400" />
+                      <Truck className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
                     </div>
-                    <div className="text-lg font-black text-white">
+                    <div className="text-lg font-black text-slate-900 dark:text-white">
                       {dynamicSummary.totalPlacas}
                     </div>
-                    <span className="text-[10px] text-slate-400 block truncate">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block truncate">
                       Placas únicas detectadas
                     </span>
                   </div>
 
                   {/* KPI 4: Volumen */}
-                  <div className="p-2.5 bg-slate-900/70 border border-slate-800/80 rounded-xl space-y-0.5">
-                    <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                  <div className="p-2.5 bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 rounded-xl space-y-0.5 shadow-xs">
+                    <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase">
                       <span>Volumen Facturado</span>
-                      <Scale className="w-3.5 h-3.5 text-sky-400" />
+                      <Scale className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400" />
                     </div>
-                    <div className="text-base font-black text-sky-400 font-mono">
+                    <div className="text-base font-black text-sky-600 dark:text-sky-400 font-mono">
                       {formatNumber(dynamicSummary.totalVolumenLitros)} L
                     </div>
-                    <span className="text-[10px] text-slate-400 font-mono block">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono block">
                       {formatNumber(dynamicSummary.totalVolumenM3, 3)} m³
                     </span>
                   </div>
 
                   {/* KPI 5: Flete Total */}
-                  <div className="p-2.5 bg-slate-900/70 border border-slate-800/80 rounded-xl space-y-0.5 col-span-2 sm:col-span-1">
-                    <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                  <div className="p-2.5 bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 rounded-xl space-y-0.5 col-span-2 sm:col-span-1 shadow-xs">
+                    <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase">
                       <span>Flete Total</span>
-                      <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                      <DollarSign className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     </div>
-                    <div className="text-base font-black text-emerald-400 font-mono truncate">
+                    <div className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono truncate">
                       {formatCurrency(dynamicSummary.totalFleteBs)}
                     </div>
-                    <span className="text-[10px] text-emerald-400/80 block truncate">
+                    <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400/80 block truncate">
                       {dynamicSummary.periodos.join(", ") || "Período general"}
                     </span>
                   </div>
@@ -1461,17 +1476,17 @@ export default function ImportExcelModal({
 
             {/* ZONA 4: TABLA DE PREVISUALIZACIÓN Y EDICIÓN EN LÍNEA */}
             {previewData && !isLoadingPreview && (
-              <div className="border border-slate-800 rounded-2xl overflow-hidden bg-slate-950/60 space-y-3 p-3 sm:p-4">
+              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-slate-950/60 space-y-3 p-3 sm:p-4 shadow-xs">
                 
                 {/* Cabecera de la tabla y controles de filtro */}
                 <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
                   {/* Pestañas de estado */}
-                  <div className="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 overflow-x-auto text-xs font-bold gap-1">
+                  <div className="flex items-center bg-slate-100 dark:bg-slate-900/90 p-1 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto text-xs font-bold gap-1 shadow-xs">
                     <button
                       type="button"
                       onClick={() => setTableFilter("all")}
                       className={`px-3 py-1.5 rounded-lg transition ${
-                        tableFilter === "all" ? "bg-amber-500 text-slate-950 shadow-xs font-black" : "text-slate-400 hover:text-white"
+                        tableFilter === "all" ? "bg-amber-500 text-slate-950 shadow-xs font-black" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                       }`}
                     >
                       Todos ({editableRecords.length})
@@ -1480,7 +1495,7 @@ export default function ImportExcelModal({
                       type="button"
                       onClick={() => setTableFilter("ready")}
                       className={`px-3 py-1.5 rounded-lg transition ${
-                        tableFilter === "ready" ? "bg-emerald-500 text-slate-950 shadow-xs font-black" : "text-emerald-400 hover:text-emerald-300"
+                        tableFilter === "ready" ? "bg-emerald-500 text-slate-950 shadow-xs font-black" : "text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300"
                       }`}
                     >
                       Listos ({dynamicSummary.listosCount})
@@ -1490,7 +1505,7 @@ export default function ImportExcelModal({
                         type="button"
                         onClick={() => setTableFilter("incomplete")}
                         className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-                          tableFilter === "incomplete" ? "bg-amber-500 text-slate-950 shadow-xs font-black" : "text-amber-400 hover:text-amber-300"
+                          tableFilter === "incomplete" ? "bg-amber-500 text-slate-950 shadow-xs font-black" : "text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
                         }`}
                       >
                         <AlertTriangle className="w-3.5 h-3.5" />
@@ -1508,21 +1523,21 @@ export default function ImportExcelModal({
                         value={tableSearch}
                         onChange={(e) => setTableSearch(e.target.value)}
                         placeholder="Buscar placa, tramo o factura..."
-                        className="w-full pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                        className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500 shadow-xs"
                       />
                     </div>
 
                     <button
                       type="button"
                       onClick={() => toggleAllRecords(true)}
-                      className="px-2.5 py-1.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 text-[11px] font-semibold transition"
+                      className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-semibold transition shadow-xs"
                     >
                       Marcar Todos
                     </button>
                     <button
                       type="button"
                       onClick={() => toggleAllRecords(false)}
-                      className="px-2.5 py-1.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-400 text-[11px] font-semibold transition"
+                      className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 text-[11px] font-semibold transition shadow-xs"
                     >
                       Desmarcar Todos
                     </button>
@@ -1530,7 +1545,7 @@ export default function ImportExcelModal({
                       <button
                         type="button"
                         onClick={selectOnlyReady}
-                        className="px-2.5 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-[11px] font-semibold transition"
+                        className="px-2.5 py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-500/40 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold transition shadow-xs"
                         title="Seleccionar solo los despachos con todos los datos completos"
                       >
                         Solo Listos
@@ -1540,21 +1555,21 @@ export default function ImportExcelModal({
                 </div>
 
                 {/* Tabla Interactiva Responsive */}
-                <div className="border border-slate-800 rounded-xl overflow-x-auto max-h-96">
+                <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto max-h-96 shadow-xs">
                   <table className="w-full text-[11px] text-left border-collapse">
-                    <thead className="bg-slate-900 text-slate-400 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-800">
+                    <thead className="bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200 dark:border-slate-800">
                       <tr>
                         <th className="py-2.5 px-3 text-center w-10">
                           <input
                             type="checkbox"
                             checked={includedRecords.length === editableRecords.length && editableRecords.length > 0}
                             onChange={(e) => toggleAllRecords(e.target.checked)}
-                            className="rounded bg-slate-950 border-slate-700 text-emerald-500"
+                            className="rounded bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-emerald-600 dark:text-emerald-500 cursor-pointer"
                           />
                         </th>
                         <th className="py-2.5 px-2 text-center w-12">#</th>
                         {(importType === "asociacion" || editableRecords.some(x => x.empresa)) && (
-                          <th className="py-2.5 px-3 min-w-[160px] text-emerald-400">Empresa (Editable)</th>
+                          <th className="py-2.5 px-3 min-w-[160px] text-emerald-600 dark:text-emerald-400">Empresa (Editable)</th>
                         )}
                         <th className="py-2.5 px-3 min-w-[130px]">Placa (Editable)</th>
                         <th className="py-2.5 px-3 min-w-[180px]">Tramo</th>
@@ -1567,10 +1582,10 @@ export default function ImportExcelModal({
                         <th className="py-2.5 px-3 text-center">Estado</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/60 font-medium">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium bg-white dark:bg-slate-950/40">
                       {filteredRecords.length === 0 ? (
                         <tr>
-                          <td colSpan={(importType === "asociacion" || editableRecords.some(x => x.empresa)) ? 12 : 11} className="py-8 text-center text-slate-500 text-xs">
+                          <td colSpan={(importType === "asociacion" || editableRecords.some(x => x.empresa)) ? 12 : 11} className="py-8 text-center text-slate-400 dark:text-slate-500 text-xs">
                             No hay despachos para mostrar con el filtro actual.
                           </td>
                         </tr>
@@ -1588,10 +1603,10 @@ export default function ImportExcelModal({
                               key={r.fila}
                               className={`transition ${
                                 !r.included
-                                  ? "opacity-40 bg-slate-950/40"
+                                  ? "opacity-40 bg-slate-100/50 dark:bg-slate-950/40"
                                   : isIncomplete
-                                  ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08]"
-                                  : "hover:bg-slate-800/30"
+                                  ? "bg-amber-500/[0.06] hover:bg-amber-500/[0.12] dark:bg-amber-500/[0.04] dark:hover:bg-amber-500/[0.08]"
+                                  : "hover:bg-slate-50 dark:hover:bg-slate-800/30"
                               }`}
                             >
                               {/* Checkbox de Inclusión */}
@@ -1600,15 +1615,15 @@ export default function ImportExcelModal({
                                   type="checkbox"
                                   checked={r.included !== false}
                                   onChange={(e) => handleRecordFieldChange(originalIdx, "included", e.target.checked)}
-                                  className="rounded bg-slate-950 border-slate-700 text-emerald-500 cursor-pointer"
+                                  className="rounded bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-emerald-600 dark:text-emerald-500 cursor-pointer"
                                 />
                               </td>
 
                               {/* Fila */}
-                              <td className="py-2 px-2 text-center text-slate-500 font-mono">
+                              <td className="py-2 px-2 text-center text-slate-400 dark:text-slate-500 font-mono">
                                 <div className="font-bold">{r.fila}</div>
                                 {r.hoja && (
-                                  <span className="inline-block text-[8px] px-1 py-0.2 rounded bg-slate-800 text-sky-300 border border-slate-700 font-mono mt-0.5 whitespace-nowrap max-w-[80px] truncate" title={`Hoja original: ${r.hoja}`}>
+                                  <span className="inline-block text-[8px] px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-sky-700 dark:text-sky-300 border border-slate-200 dark:border-slate-700 font-mono mt-0.5 whitespace-nowrap max-w-[80px] truncate" title={`Hoja original: ${r.hoja}`}>
                                     {r.hoja}
                                   </span>
                                 )}
@@ -1622,7 +1637,7 @@ export default function ImportExcelModal({
                                     value={r.empresa || ""}
                                     onChange={(e) => handleRecordFieldChange(originalIdx, "empresa", e.target.value)}
                                     placeholder="Empresa..."
-                                    className="w-full px-2 py-1 bg-slate-900 border border-slate-700/80 rounded-lg text-emerald-300 font-semibold text-[11px] uppercase focus:outline-none focus:border-emerald-500 truncate"
+                                    className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-emerald-700 dark:text-emerald-300 font-semibold text-[11px] uppercase focus:outline-none focus:border-emerald-500 truncate"
                                     title={r.empresa}
                                   />
                                 </td>
@@ -1636,16 +1651,16 @@ export default function ImportExcelModal({
                                     value={r.placa || ""}
                                     onChange={(e) => handleRecordFieldChange(originalIdx, "placa", e.target.value)}
                                     placeholder="Placa..."
-                                    className={`w-full px-2 py-1 bg-slate-900 border rounded-lg font-mono font-bold text-xs uppercase focus:outline-none transition ${
+                                    className={`w-full px-2 py-1 bg-white dark:bg-slate-900 border rounded-lg font-mono font-bold text-xs uppercase focus:outline-none transition ${
                                       isMissingPlaca
-                                        ? "border-rose-500 text-rose-300 placeholder-rose-500/50 bg-rose-500/10 focus:border-rose-400"
+                                        ? "border-rose-400 dark:border-rose-500 text-rose-600 dark:text-rose-300 placeholder-rose-400/50 bg-rose-50 dark:bg-rose-500/10 focus:border-rose-500"
                                         : r.isEdited
-                                        ? "border-emerald-500 text-emerald-300 focus:border-emerald-400"
-                                        : "border-slate-700 text-amber-300 focus:border-amber-400"
+                                        ? "border-emerald-400 dark:border-emerald-500 text-emerald-700 dark:text-emerald-300 focus:border-emerald-500"
+                                        : "border-slate-200 dark:border-slate-700 text-amber-600 dark:text-amber-300 focus:border-amber-500"
                                     }`}
                                   />
                                   {isMissingPlaca && (
-                                    <span className="block text-[9px] text-rose-400 font-bold mt-0.5">
+                                    <span className="block text-[9px] text-rose-600 dark:text-rose-400 font-bold mt-0.5">
                                       Falta Placa
                                     </span>
                                   )}
@@ -1658,7 +1673,7 @@ export default function ImportExcelModal({
                                   type="text"
                                   value={r.tramo || ""}
                                   onChange={(e) => handleRecordFieldChange(originalIdx, "tramo", e.target.value)}
-                                  className="w-full px-2 py-1 bg-slate-900 border border-slate-700/80 rounded-lg text-slate-200 text-[11px] focus:outline-none focus:border-amber-500 truncate"
+                                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-slate-800 dark:text-slate-200 text-[11px] focus:outline-none focus:border-amber-500 truncate"
                                   title={r.tramo}
                                 />
                               </td>
@@ -1670,17 +1685,17 @@ export default function ImportExcelModal({
                                   value={r.producto || ""}
                                   onChange={(e) => handleRecordFieldChange(originalIdx, "producto", e.target.value)}
                                   placeholder="Producto..."
-                                  className="w-full px-2 py-0.5 bg-slate-900 border border-slate-700/80 rounded-lg text-slate-200 text-[10px] font-bold uppercase focus:outline-none focus:border-amber-500 truncate"
+                                  className="w-full px-2 py-0.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-slate-800 dark:text-slate-200 text-[10px] font-bold uppercase focus:outline-none focus:border-amber-500 truncate"
                                 />
                                 {r.cliente && (
-                                  <span className="block text-[9px] text-slate-400 font-normal truncate mt-0.5" title={r.cliente}>
+                                  <span className="block text-[9px] text-slate-500 dark:text-slate-400 font-normal truncate mt-0.5" title={r.cliente}>
                                     {r.cliente}
                                   </span>
                                 )}
                               </td>
 
                               {/* Fechas */}
-                              <td className="py-2 px-3 whitespace-nowrap font-mono text-[10px] text-slate-400">
+                              <td className="py-2 px-3 whitespace-nowrap font-mono text-[10px] text-slate-500 dark:text-slate-400">
                                 {r.fecha_carga} → {r.fecha_descarga}
                               </td>
 
@@ -1691,9 +1706,9 @@ export default function ImportExcelModal({
                                   step="0.1"
                                   value={r.volumen_facturado || ""}
                                   onChange={(e) => handleRecordFieldChange(originalIdx, "volumen_facturado", e.target.value)}
-                                  className="w-24 px-2 py-1 bg-slate-900 border border-slate-700/80 rounded-lg text-right font-mono font-bold text-sky-400 text-xs focus:outline-none focus:border-sky-400"
+                                  className="w-24 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-right font-mono font-bold text-sky-600 dark:text-sky-400 text-xs focus:outline-none focus:border-sky-500"
                                 />
-                                <span className="block text-[9px] text-slate-500 font-mono mt-0.5">
+                                <span className="block text-[9px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">
                                   {formatNumber(r.volumen_facturado_m3, 3)} m³
                                 </span>
                               </td>
@@ -1705,12 +1720,12 @@ export default function ImportExcelModal({
                                   step="0.01"
                                   value={r.tarifa_flete || ""}
                                   onChange={(e) => handleRecordFieldChange(originalIdx, "tarifa_flete", e.target.value)}
-                                  className="w-20 px-2 py-1 bg-slate-900 border border-slate-700/80 rounded-lg text-right font-mono text-slate-200 text-xs focus:outline-none focus:border-amber-400"
+                                  className="w-20 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-right font-mono text-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:border-amber-500"
                                 />
                               </td>
 
                               {/* Flete Total Calculado */}
-                              <td className="py-2 px-3 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
+                              <td className="py-2 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                                 {formatCurrency(r.flete_total_bs)}
                               </td>
 
@@ -1721,10 +1736,10 @@ export default function ImportExcelModal({
                                   value={r.nro_factura || ""}
                                   onChange={(e) => handleRecordFieldChange(originalIdx, "nro_factura", e.target.value)}
                                   placeholder="FAC Nro..."
-                                  className="w-24 px-2 py-1 bg-slate-900 border border-slate-700/80 rounded-lg text-amber-300 font-mono text-[10px] focus:outline-none focus:border-amber-400"
+                                  className="w-24 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-amber-600 dark:text-amber-300 font-mono text-[10px] focus:outline-none focus:border-amber-500"
                                 />
                                 {r.mic_dta && (
-                                  <span className="block font-mono text-[9px] text-slate-500 mt-0.5">
+                                  <span className="block font-mono text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
                                     MIC: {r.mic_dta}
                                   </span>
                                 )}
@@ -1735,19 +1750,19 @@ export default function ImportExcelModal({
                                 {isIncomplete ? (
                                   <div className="flex flex-col items-center">
                                     <span
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30"
                                       title={r.incompleto_reason || (isMissingPlaca ? "Falta placa del camión" : isMissingVol ? "Volumen en 0" : "Datos incompletos")}
                                     >
-                                      <AlertTriangle className="w-3 h-3 text-amber-400" />
+                                      <AlertTriangle className="w-3 h-3 text-amber-500 dark:text-amber-400" />
                                       Incompleto
                                     </span>
-                                    <span className="text-[9px] text-amber-400/80 mt-0.5 font-medium">
+                                    <span className="text-[9px] text-amber-600/90 dark:text-amber-400/80 mt-0.5 font-medium">
                                       {r.incompleto_reason || (isMissingPlaca ? "Falta Placa" : isMissingVol ? "Volumen 0" : "Dato faltante")}
                                     </span>
                                   </div>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                                     Listo
                                   </span>
                                 )}
@@ -1764,19 +1779,19 @@ export default function ImportExcelModal({
           </div>
 
           {/* Footer con Acciones */}
-          <div className="px-5 py-4 border-t border-slate-800 bg-slate-900/90 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sticky bottom-0 z-20 backdrop-blur-md">
+          <div className="px-5 py-4 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sticky bottom-0 z-20 backdrop-blur-md">
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 font-semibold text-xs transition"
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-xs transition"
                 disabled={isImporting}
               >
                 Cancelar
               </button>
               
               {editableRecords.length > 0 && (
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   <b>{dynamicSummary.totalViajes}</b> de <b>{editableRecords.length}</b> despachos seleccionados
                 </span>
               )}
