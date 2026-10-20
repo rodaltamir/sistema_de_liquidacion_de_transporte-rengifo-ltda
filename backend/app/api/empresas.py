@@ -241,10 +241,12 @@ async def preview_global_excel(
     contents = await file.read()
     
     session = None
+    target_empresa_name = None
     if target_schema:
         clean_schema = target_schema.strip().lower()
         emp = db.query(Empresa).filter(Empresa.schema_name == clean_schema).first()
         if emp:
+            target_empresa_name = emp.name
             try:
                 session = get_tenant_session(clean_schema)
             except Exception:
@@ -257,7 +259,8 @@ async def preview_global_excel(
             session=session,
             db=db,
             asociacion_id=None,
-            max_preview_records=None
+            max_preview_records=None,
+            target_empresa_name=target_empresa_name
         )
         suggested_name = extract_suggested_company_name(file.filename)
         preview_data["suggested_company_name"] = suggested_name
@@ -282,8 +285,16 @@ async def importar_con_empresa(
     file: Optional[UploadFile] = File(None),
     sheet_name: Optional[str] = Form(None),
     edited_records_json: Optional[str] = Form(None),
+    entidades_clasificacion_json: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
+    ent_map = {}
+    if entidades_clasificacion_json:
+        try:
+            ent_map = json.loads(entidades_clasificacion_json)
+        except Exception:
+            ent_map = {}
+
     # Modo Asociación (Multi-Empresa)
     if mode == "asociacion":
         records_to_import = []
@@ -300,7 +311,8 @@ async def importar_con_empresa(
                 file_bytes=contents,
                 sheet_name=sheet_name,
                 db=db,
-                asociacion_id=asociacion_id
+                asociacion_id=asociacion_id,
+                target_empresa_name=empresa_name
             )
             records_to_import = parsed["records"]
         else:
@@ -315,7 +327,9 @@ async def importar_con_empresa(
             asociacion_id=asociacion_id,
             nueva_asociacion_nombre=nueva_asociacion_nombre,
             nueva_asociacion_sigla=nueva_asociacion_sigla,
-            overwrite_duplicates=overwrite_duplicates
+            overwrite_duplicates=overwrite_duplicates,
+            entidades_clasificacion=ent_map,
+            empresa_principal_nombre=empresa_name
         )
 
     if mode == "create_new":

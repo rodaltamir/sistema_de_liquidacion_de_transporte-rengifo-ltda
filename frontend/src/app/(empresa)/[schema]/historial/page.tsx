@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, Fragment } from "react";
+import { Suspense, useState, useEffect, useMemo, Fragment } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { 
   Navigation, 
@@ -26,10 +26,16 @@ import {
   Filter,
   Layers,
   Plus,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  ArrowDownUp,
+  Building2
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch, getApiUrl } from "@/lib/api";
+import { downloadBlob } from "@/lib/download";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
 import DatePeriodFilter, { DateFilterChangeEvent } from "@/components/DatePeriodFilter";
 import ModalPortal from "@/components/ModalPortal";
@@ -152,6 +158,11 @@ function HistorialViajesContent() {
   const [viewMode, setViewMode] = useState<"agrupado" | "plana">("agrupado");
   const [dateFilterQuery, setDateFilterQuery] = useState("");
   const [activeFilterLabel, setActiveFilterLabel] = useState("");
+
+  // Métodos de Ordenamiento y Exportación
+  const [sortBy, setSortBy] = useState<"fecha" | "factura" | "placa" | "cliente" | "flete">("fecha");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
 
   // Modal de Detalle
   const [selectedViajeDetail, setSelectedViajeDetail] = useState<Viaje | null>(null);
@@ -314,9 +325,47 @@ function HistorialViajesContent() {
   const totalVolumenFacturadoLt = filteredViajes.reduce((acc, v) => acc + getVolFactLitros(v), 0);
   const totalVolumenFacturadoM3 = totalVolumenFacturadoLt / 1000.0;
 
+  // Ordenamiento dinámico de viajes
+  const sortedViajes = useMemo(() => {
+    const list = [...filteredViajes];
+    if (sortBy === "fecha") {
+      list.sort((a, b) => {
+        const dA = a.fecha_carga || a.fecha_factura || "";
+        const dB = b.fecha_carga || b.fecha_factura || "";
+        const cmp = dA.localeCompare(dB);
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    } else if (sortBy === "factura") {
+      list.sort((a, b) => {
+        const fA = (a.nro_factura || "").trim();
+        const fB = (b.nro_factura || "").trim();
+        if (!fA && fB) return 1;
+        if (fA && !fB) return -1;
+        const cmp = fA.localeCompare(fB, undefined, { numeric: true, sensitivity: "base" });
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    } else if (sortBy === "placa") {
+      list.sort((a, b) => {
+        const cmp = (a.placa || "").localeCompare(b.placa || "");
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    } else if (sortBy === "cliente") {
+      list.sort((a, b) => {
+        const cmp = (a.cliente || "").localeCompare(b.cliente || "");
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    } else if (sortBy === "flete") {
+      list.sort((a, b) => {
+        const diff = (Number(a.flete_total_bs) || 0) - (Number(b.flete_total_bs) || 0);
+        return sortDir === "asc" ? diff : -diff;
+      });
+    }
+    return list;
+  }, [filteredViajes, sortBy, sortDir]);
+
   // Agrupación por (Tramo, Producto, Nro Factura)
   const groupsMap: { [k: string]: { tramo: string; producto: string; factura: string; items: Viaje[] } } = {};
-  for (const v of filteredViajes) {
+  for (const v of sortedViajes) {
     const t = (v.tramo || "SIN TRAMO").trim().toUpperCase();
     const p = (v.producto || "SIN PRODUCTO").trim().toUpperCase();
     const f = (v.nro_factura || "").trim().toUpperCase() || "S/F";
@@ -328,16 +377,94 @@ function HistorialViajesContent() {
   }
 
   const groups = Object.values(groupsMap).map((g) => {
-    g.items.sort((a, b) => (a.fecha_carga || "").localeCompare(b.fecha_carga || ""));
     return g;
   });
 
-  // Ordenar grupos cronológicamente por la fecha más antigua de sus viajes
+  // Ordenar grupos según el criterio seleccionado
   groups.sort((a, b) => {
+    if (sortBy === "factura") {
+      const cmp = a.factura.localeCompare(b.factura, undefined, { numeric: true, sensitivity: "base" });
+      return sortDir === "asc" ? cmp : -cmp;
+    }
     const dateA = a.items[0]?.fecha_carga || "";
     const dateB = b.items[0]?.fecha_carga || "";
-    return dateA.localeCompare(dateB);
+    const cmp = dateA.localeCompare(dateB);
+    return sortDir === "asc" ? cmp : -cmp;
   });
+
+  const handleSortToggle = (col: "fecha" | "factura" | "placa" | "cliente" | "flete") => {
+    if (sortBy === col) {
+      setSortDir(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(col);
+      setSortDir("asc");
+    }
+  };
+
+  const handleExportExcel = async () => {
+    if (sortedViajes.length === 0) {
+      Swal.fire({
+        icon: "info",
+        title: "Sin viajes para exportar",
+        text: "No hay viajes que coincidan con los filtros seleccionados.",
+        background: "#0f172a",
+        color: "#f8fafc",
+        confirmButtonColor: "#f59e0b"
+      });
+      return;
+    }
+
+    try {
+      setIsExportingExcel(true);
+      const params: string[] = [];
+      if (dateFilterQuery) {
+        params.push(dateFilterQuery);
+      }
+      if (placaFiltro) {
+        params.push(`placa=${encodeURIComponent(placaFiltro)}`);
+      }
+      if (productoFiltro && productoFiltro !== "TODOS") {
+        params.push(`producto=${encodeURIComponent(productoFiltro)}`);
+      }
+      if (tramoFiltro) {
+        params.push(`tramo=${encodeURIComponent(tramoFiltro)}`);
+      }
+      if (search) {
+        params.push(`search=${encodeURIComponent(search)}`);
+      }
+      params.push(`order_by=${sortBy}`);
+      params.push(`order_dir=${sortDir}`);
+
+      const q = params.length > 0 ? `?${params.join("&")}` : "";
+      const blob = await apiFetch(`/tenants/${schema}/viajes/exportar-excel${q}`);
+      const safeLabel = (activeFilterLabel || "Historial").replace(/\s+/g, "_");
+      downloadBlob(
+        blob,
+        `Despachos_Historial_${safeLabel}_${sortBy}_${sortDir}.xlsx`,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      Swal.fire({
+        icon: "success",
+        title: "Excel Descargado",
+        text: `Se exportaron ${sortedViajes.length} viajes ordenados por ${sortBy} (${sortDir === "asc" ? "Ascendente" : "Descendente"}).`,
+        timer: 1600,
+        showConfirmButton: false,
+        background: "#0f172a",
+        color: "#f8fafc"
+      });
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Error al exportar Excel",
+        text: err.message || "No se pudo descargar el archivo.",
+        confirmButtonColor: "#f59e0b",
+        background: "#0f172a",
+        color: "#f8fafc"
+      });
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
 
   // Acciones: Editar
   const openEditModal = (v: Viaje) => {
@@ -975,6 +1102,109 @@ function HistorialViajesContent() {
         </div>
       </div>
 
+      {/* Barra de Ordenamiento Intuitivo y Exportación Excel */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 shadow-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 mr-1">
+            <ArrowDownUp className="w-4 h-4 text-amber-500" />
+            <span>Ordenar Historial:</span>
+          </div>
+
+          {/* Fecha */}
+          <button
+            type="button"
+            onClick={() => handleSortToggle("fecha")}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
+              sortBy === "fecha"
+                ? "bg-amber-500 text-slate-950 border-amber-500 shadow-xs"
+                : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-400"
+            }`}
+            title="Ordenar cronológicamente por fecha de carga/despacho"
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Fecha {sortBy === "fecha" ? (sortDir === "asc" ? "↑ (Ene → Dic)" : "↓ (Dic → Ene)") : "(Ene ↔ Dic)"}</span>
+          </button>
+
+          {/* Factura */}
+          <button
+            type="button"
+            onClick={() => handleSortToggle("factura")}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
+              sortBy === "factura"
+                ? "bg-amber-500 text-slate-950 border-amber-500 shadow-xs"
+                : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-400"
+            }`}
+            title="Ordenar por número correlativo de factura"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>N° Factura {sortBy === "factura" ? (sortDir === "asc" ? "↑ (Menor → Mayor)" : "↓ (Mayor → Menor)") : ""}</span>
+          </button>
+
+          {/* Placa */}
+          <button
+            type="button"
+            onClick={() => handleSortToggle("placa")}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
+              sortBy === "placa"
+                ? "bg-amber-500 text-slate-950 border-amber-500 shadow-xs"
+                : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-400"
+            }`}
+            title="Ordenar alfabéticamente por placa de la cisterna"
+          >
+            <Truck className="w-3.5 h-3.5" />
+            <span>Placa {sortBy === "placa" ? (sortDir === "asc" ? "↑ (A → Z)" : "↓ (Z → A)") : ""}</span>
+          </button>
+
+          {/* Cliente */}
+          <button
+            type="button"
+            onClick={() => handleSortToggle("cliente")}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
+              sortBy === "cliente"
+                ? "bg-amber-500 text-slate-950 border-amber-500 shadow-xs"
+                : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-400"
+            }`}
+            title="Ordenar alfabéticamente por cliente receptor"
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>Cliente {sortBy === "cliente" ? (sortDir === "asc" ? "↑ (A → Z)" : "↓ (Z → A)") : ""}</span>
+          </button>
+
+          {/* Flete */}
+          <button
+            type="button"
+            onClick={() => handleSortToggle("flete")}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
+              sortBy === "flete"
+                ? "bg-amber-500 text-slate-950 border-amber-500 shadow-xs"
+                : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-400"
+            }`}
+            title="Ordenar por monto del flete"
+          >
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>Flete {sortBy === "flete" ? (sortDir === "asc" ? "↑ Menor" : "↓ Mayor") : ""}</span>
+          </button>
+        </div>
+
+        {/* Botón de Exportación a Excel */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={isExportingExcel || sortedViajes.length === 0}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition active:scale-95"
+            title="Descargar todos los viajes filtrados y ordenados en formato Excel oficial de 19 columnas"
+          >
+            {isExportingExcel ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <FileSpreadsheet className="w-4 h-4" />
+            )}
+            <span>Exportar a Excel ({sortedViajes.length})</span>
+          </button>
+        </div>
+      </div>
+
       {/* Contenido de la Tabla (Agrupada o Plana) */}
       {loading ? (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-400">
@@ -1226,21 +1456,47 @@ function HistorialViajesContent() {
               <thead>
                 <tr className="bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-300 text-[10px] uppercase font-black border-b border-slate-200 dark:border-slate-800">
                   <th className="py-3 px-3">Nº</th>
-                  <th className="py-3 px-3">Factura</th>
+                  <th onClick={() => handleSortToggle("factura")} className="py-3 px-3 cursor-pointer hover:text-amber-500 transition select-none" title="Clic para ordenar por Factura">
+                    <div className="flex items-center gap-1">
+                      <span>Factura</span>
+                      {sortBy === "factura" ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3 text-amber-500" /> : <ArrowDown className="w-3 h-3 text-amber-500" />) : <ArrowUpDown className="w-2.5 h-2.5 text-slate-400" />}
+                    </div>
+                  </th>
                   <th className="py-3 px-3">F. Factura</th>
-                  <th className="py-3 px-3">Placa</th>
-                  <th className="py-3 px-3">F. Carga</th>
+                  <th onClick={() => handleSortToggle("placa")} className="py-3 px-3 cursor-pointer hover:text-amber-500 transition select-none" title="Clic para ordenar por Placa">
+                    <div className="flex items-center gap-1">
+                      <span>Placa</span>
+                      {sortBy === "placa" ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3 text-amber-500" /> : <ArrowDown className="w-3 h-3 text-amber-500" />) : <ArrowUpDown className="w-2.5 h-2.5 text-slate-400" />}
+                    </div>
+                  </th>
+                  <th onClick={() => handleSortToggle("cliente")} className="py-3 px-3 cursor-pointer hover:text-amber-500 transition select-none text-sky-600 dark:text-sky-400" title="Clic para ordenar por Cliente">
+                    <div className="flex items-center gap-1">
+                      <span>Cliente</span>
+                      {sortBy === "cliente" ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3 text-amber-500" /> : <ArrowDown className="w-3 h-3 text-amber-500" />) : <ArrowUpDown className="w-2.5 h-2.5 text-slate-400" />}
+                    </div>
+                  </th>
+                  <th onClick={() => handleSortToggle("fecha")} className="py-3 px-3 cursor-pointer hover:text-amber-500 transition select-none" title="Clic para ordenar por Fecha Carga">
+                    <div className="flex items-center gap-1">
+                      <span>F. Carga</span>
+                      {sortBy === "fecha" ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3 text-amber-500" /> : <ArrowDown className="w-3 h-3 text-amber-500" />) : <ArrowUpDown className="w-2.5 h-2.5 text-slate-400" />}
+                    </div>
+                  </th>
                   <th className="py-3 px-3">Tramo</th>
                   <th className="py-3 px-3">Producto</th>
                   <th className="py-3 px-3 text-right">Vol. Facturado</th>
                   <th className="py-3 px-3 text-right">Tarifa</th>
-                  <th className="py-3 px-3 text-right">Total Flete</th>
+                  <th onClick={() => handleSortToggle("flete")} className="py-3 px-3 text-right cursor-pointer hover:text-amber-500 transition select-none" title="Clic para ordenar por Flete Total">
+                    <div className="flex items-center justify-end gap-1">
+                      <span>Total Flete</span>
+                      {sortBy === "flete" ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3 text-amber-500" /> : <ArrowDown className="w-3 h-3 text-amber-500" />) : <ArrowUpDown className="w-2.5 h-2.5 text-slate-400" />}
+                    </div>
+                  </th>
                   <th className="py-3 px-3 text-right">Desc. Merma</th>
                   <th className="py-3 px-3 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                {filteredViajes.map((v, idx) => {
+                {sortedViajes.map((v, idx) => {
                   const hasFactura = v.nro_factura && v.nro_factura.trim() !== "" && v.nro_factura !== "-";
                   const vFactLt = getVolFactLitros(v);
 
@@ -1263,6 +1519,9 @@ function HistorialViajesContent() {
                       </td>
                       <td className="py-2.5 px-3 font-mono font-bold text-slate-900 dark:text-white">
                         {v.placa}
+                      </td>
+                      <td className="py-2.5 px-3 font-bold text-sky-700 dark:text-sky-300 truncate max-w-[140px]" title={v.cliente}>
+                        {v.cliente}
                       </td>
                       <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-slate-300">
                         {formatDate(v.fecha_carga)}

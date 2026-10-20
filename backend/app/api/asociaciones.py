@@ -521,11 +521,20 @@ async def importar_excel_asociacion(
     file: Optional[UploadFile] = File(None),
     sheet_name: Optional[str] = Form(None),
     edited_records_json: Optional[str] = Form(None),
+    entidades_clasificacion_json: Optional[str] = Form(None),
+    empresa_principal_nombre: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     asoc = db.query(Asociacion).filter(Asociacion.id == id).first()
     if not asoc:
         raise HTTPException(status_code=404, detail="Asociación no encontrada")
+
+    ent_map = {}
+    if entidades_clasificacion_json:
+        try:
+            ent_map = json.loads(entidades_clasificacion_json)
+        except Exception:
+            ent_map = {}
 
     records_to_import = []
     if edited_records_json:
@@ -541,7 +550,8 @@ async def importar_excel_asociacion(
             file_bytes=contents,
             sheet_name=sheet_name,
             db=db,
-            asociacion_id=id
+            asociacion_id=id,
+            target_empresa_name=empresa_principal_nombre
         )
         records_to_import = parsed["records"]
     else:
@@ -554,7 +564,9 @@ async def importar_excel_asociacion(
         records=records_to_import,
         db=db,
         asociacion_id=id,
-        overwrite_duplicates=overwrite_duplicates
+        overwrite_duplicates=overwrite_duplicates,
+        entidades_clasificacion=ent_map,
+        empresa_principal_nombre=empresa_principal_nombre
     )
 
 
@@ -567,8 +579,17 @@ async def importar_con_asociacion(
     file: Optional[UploadFile] = File(None),
     sheet_name: Optional[str] = Form(None),
     edited_records_json: Optional[str] = Form(None),
+    entidades_clasificacion_json: Optional[str] = Form(None),
+    empresa_principal_nombre: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
+    ent_map = {}
+    if entidades_clasificacion_json:
+        try:
+            ent_map = json.loads(entidades_clasificacion_json)
+        except Exception:
+            ent_map = {}
+
     records_to_import = []
     if edited_records_json:
         try:
@@ -583,7 +604,8 @@ async def importar_con_asociacion(
             file_bytes=contents,
             sheet_name=sheet_name,
             db=db,
-            asociacion_id=asociacion_id
+            asociacion_id=asociacion_id,
+            target_empresa_name=empresa_principal_nombre
         )
         records_to_import = parsed["records"]
     else:
@@ -598,6 +620,8 @@ async def importar_con_asociacion(
         asociacion_id=asociacion_id,
         nueva_asociacion_nombre=nueva_asociacion_nombre,
         nueva_asociacion_sigla=nueva_asociacion_sigla,
-        overwrite_duplicates=overwrite_duplicates
+        overwrite_duplicates=overwrite_duplicates,
+        entidades_clasificacion=ent_map,
+        empresa_principal_nombre=empresa_principal_nombre
     )
 

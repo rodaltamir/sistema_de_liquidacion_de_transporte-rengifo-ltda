@@ -1152,37 +1152,181 @@ def export_liquidacion_asociacion_excel(
 
 
 # =========================================================================
-# EXPORTACIÓN 3: PLANTILLA DE CARGA DE VIAJES
 # =========================================================================
+# EXPORTACIÓN 3: PLANTILLA Y EXPORTACIÓN OFICIAL DE CARGA DE VIAJES
+# =========================================================================
+FILL_SUBTOTAL_BLUE = PatternFill(start_color="D9E8F5", end_color="D9E8F5", fill_type="solid") # Azul suave de subtotales
+FONT_SUBTOTAL_BOLD = Font(name=FONT_FAMILY, size=8.5, bold=True, color="1E3A8A")
+
 def generate_viajes_template_excel(empresa_name: str = "") -> io.BytesIO:
     """
-    Genera una plantilla Excel estructurada conforme al estándar oficial
-    de 19 columnas lista para importar viajes masivamente (con Factura, Fecha Factura, Volumen Facturado y Empresa en encabezado).
+    Genera la plantilla oficial Excel de 23 columnas compatible 100% con
+    el estándar de despachos y facturación de empresas de transporte (ej. Driver S.R.L.),
+    incluyendo fórmulas automáticas de importe (=Volumen*Flete) y subtotales por factura.
     """
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Plantilla Viajes"
+    ws.title = "Planilla Ventas y Despachos"
     ws.views.sheetView[0].showGridLines = True
 
-    ws.merge_cells("B2:G2")
-    ws["B2"] = "PLANTILLA OFICIAL DE CARGA DE VIAJES"
-    ws["B2"].font = FONT_MAIN_TITLE
-
-    ws.merge_cells("B3:G3")
-    ws["B3"] = f"EMPRESA: {empresa_name.upper() if empresa_name else 'EMPRESA DE TRANSPORTE'}"
-    ws["B3"].font = FONT_TITLE_BOLD
-
-    # Logotipo en la parte superior derecha (Columna R)
-    add_logo_to_worksheet(ws, logo_base64=None, empresa_name=empresa_name, cell_coord="R1", max_width=150, max_height=48)
-
     headers = [
-        "Nº", "FECHA DE CARGA", "FECHA DE DESCARGA", "MCI/DTA Nº Y OTROS",
-        "PLACA", "TRAMO", "CLIENTE", "Nº DE FACTURA", "FECHA DE FACTURACIÓN", "PRODUCTO",
-        "Volumen en Lt. Origen", "Volumen Recepcionado/Descargado", "Merma T-T", "Total Merma Litros",
-        "MERMA 0,15% s/Volumen", "Merma a Descontar Y.P.F.B.", "Volumen Facturado (Lt)", "TARIFA Bs.", "Total a pagar en Bob."
+        "Empresa Transporte",
+        "Producto",
+        "Planta de Carga",
+        "Factura y otros",
+        "Planta de descarga",
+        "Placa",
+        "Fecha Carga",
+        "Fecha Recepción",
+        "Volumen Despachado (Litro)",
+        "Volumen Recepcionado (Litro)",
+        "Diferencia Desp.-Rece. (Litro)",
+        "Merma Permisible (Litro)",
+        "Merma (Litro)",
+        "Precio Merma + IVA (Bs/Litro)",
+        "Merma a Descontar Bs.",
+        "Volumen a facturar (m3)",
+        "Flete (Bs/m3)",
+        "Importe a Facturar (Bs)",
+        "FECHA DE FACTURA DRIVER SRL",
+        "N° FACTURA DRIVER SRL",
+        "MIC/DTA",
+        "FECHA DE MIC/DTA",
+        "N° CONTRATO"
     ]
 
-    header_row = 5
+    header_row = 1
+    ws.row_dimensions[header_row].height = 36
+    for col_idx, h_text in enumerate(headers, 1):
+        cell = ws.cell(row=header_row, column=col_idx, value=h_text)
+        cell.font = FONT_HEADER
+        cell.fill = FILL_HEADER
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = BORDER_THIN_BLACK
+
+    # Filas de ejemplo realistas
+    sample_rows = [
+        # 1. Cliente agroindustrial con "SIN PLACA"
+        [
+            "INDUSTRIAS DE ACEITE S.A.", "SOYA A GRANEL", "LA PAZ", "Falta MIC", "AREQUIPA",
+            "SIN PLACA", "07/01/2026", "08/01/2026", 0, 0, 0, 0, 0, 0, 0,
+            252.0, 626.40, 157852.80, "07/01/2026", 1243, None, None, "193464"
+        ],
+        # 2. Despacho cisterna YPFB (Factura 1245 viaje 1)
+        [
+            "YPFB", "INSUMOS Y ADITIVOS", "ARICA", "Falta MIC", "COCHABAMBA",
+            "5614-FSP", "02/01/2026", "05/01/2026", 30999, 30934, 0, 0, 0, 5.26, 0,
+            30.934, 503.61, 15578.67, "08/01/2026", 1245, None, None, "199/2025"
+        ],
+        # 3. Despacho cisterna YPFB (Factura 1245 viaje 2)
+        [
+            "YPFB", "DIESEL", "ARICA", "Falta MIC", "LA PAZ",
+            "5239-EFG", "03/01/2026", "06/01/2026", 31017, 30971, 0, 0, 0, 5.73, 0,
+            30.971, 431.98, 13378.85, "08/01/2026", 1245, None, None, "199/2025"
+        ],
+        # 4. Fila Subtotal de la Factura 1245 (Azul)
+        [
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            "=SUM(P3:P4)", None, "=SUM(R3:R4)", "08/01/2026", 1245, None, None, "199/2025"
+        ],
+        # 5. Transportista asociado / Apoyo con carga seca y MIC/DTA
+        [
+            "PEDRO WEILLIAM LIMACHI AYALA", "BOBINAS DE ACERO", "MATARANI", None, "LA PAZ",
+            "5767-EEP", "04/01/2026", "07/01/2026", 0, 0, 0, 0, 0, 0, 0,
+            27.647, 473.28, 13084.54, "09/01/2026", 1247, "25BO775266R", "05/01/2026", None
+        ]
+    ]
+
+    for r_idx, s_data in enumerate(sample_rows, 2):
+        ws.row_dimensions[r_idx].height = 20
+        is_subtotal = (s_data[0] is None and s_data[5] is None)
+        for col_idx, val in enumerate(s_data, 1):
+            cell = ws.cell(row=r_idx, column=col_idx, value=val)
+            cell.border = BORDER_THIN_BLACK
+            if is_subtotal:
+                cell.fill = FILL_SUBTOTAL_BLUE
+                cell.font = FONT_SUBTOTAL_BOLD
+            else:
+                cell.font = FONT_DATA_REGULAR
+
+            if isinstance(val, (int, float)):
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+                if col_idx in (9, 10, 11, 12, 13):
+                    cell.number_format = '#,##0'
+                elif col_idx == 16:
+                    cell.number_format = '#,##0.000'
+                elif col_idx in (17, 18):
+                    cell.number_format = '#,##0.00'
+            elif isinstance(val, str) and val.startswith("="):
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+                cell.number_format = '#,##0.00'
+            else:
+                cell.alignment = Alignment(horizontal="center" if col_idx in (6, 7, 8, 19, 20, 21, 22) else "left", vertical="center")
+
+    min_widths_template = {
+        "A": 28, "B": 20, "C": 18, "D": 16, "E": 18,
+        "F": 14, "G": 14, "H": 14, "I": 15, "J": 15,
+        "K": 14, "L": 14, "M": 14, "N": 15, "O": 15,
+        "P": 18, "Q": 14, "R": 18, "S": 16, "T": 14,
+        "U": 18, "V": 16, "W": 16
+    }
+    adjust_column_widths(ws, min_widths_template)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
+
+
+def export_viajes_list_excel(
+    viajes: List[Any],
+    empresa: Dict[str, Any],
+    params: Any,
+    order_by: str = "fecha",
+    order_dir: str = "asc"
+) -> io.BytesIO:
+    """
+    Exporta la lista de viajes registrados en el sistema al formato Excel estándar oficial
+    (idéntico a la planilla de importación), organizando por Factura y generando
+    filas de subtotal por factura y total general para cuadre matemático absoluto.
+    Soporta ordenamiento dinámico por:
+    - Fecha (Ene -> Dic / Dic -> Ene)
+    - N° Factura (Asc / Desc)
+    - Placa (Asc / Desc)
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    empresa_nombre = empresa.get("name", "EMPRESA DE TRANSPORTE")
+    ws.title = f"Despachos {empresa_nombre[:20]}"
+    ws.views.sheetView[0].showGridLines = True
+
+    headers = [
+        "Empresa Transporte",
+        "Producto",
+        "Planta de Carga",
+        "Factura y otros",
+        "Planta de descarga",
+        "Placa",
+        "Fecha Carga",
+        "Fecha Recepción",
+        "Volumen Despachado (Litro)",
+        "Volumen Recepcionado (Litro)",
+        "Diferencia Desp.-Rece. (Litro)",
+        "Merma Permisible (Litro)",
+        "Merma (Litro)",
+        "Precio Merma + IVA (Bs/Litro)",
+        "Merma a Descontar Bs.",
+        "Volumen a facturar (m3)",
+        "Flete (Bs/m3)",
+        "Importe a Facturar (Bs)",
+        "FECHA DE FACTURA DRIVER SRL",
+        "N° FACTURA DRIVER SRL",
+        "MIC/DTA",
+        "FECHA DE MIC/DTA",
+        "N° CONTRATO"
+    ]
+
+    header_row = 1
     ws.row_dimensions[header_row].height = 34
     for col_idx, h_text in enumerate(headers, 1):
         cell = ws.cell(row=header_row, column=col_idx, value=h_text)
@@ -1191,48 +1335,209 @@ def generate_viajes_template_excel(empresa_name: str = "") -> io.BytesIO:
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         cell.border = BORDER_THIN_BLACK
 
-    # Fila de ejemplo
-    sample_row = 6
-    sample_data = [
-        1, "28/02/2023", "03/03/2023", "23BO1391150T", "4412-DPC",
-        "ARICA - TAMBO QUEMADO - LA PAZ", "YPFB", "FAC-00123", "05/03/2023", "GASOLINA",
-        33959, 33900, -59.0, 14.0, 85, 104.30, 33900, 392.00, 13288.80
-    ]
-    for col_idx, val in enumerate(sample_data, 1):
-        cell = ws.cell(row=sample_row, column=col_idx, value=val)
-        cell.font = FONT_DATA_REGULAR
-        cell.border = BORDER_THIN_BLACK
-        if isinstance(val, (int, float)):
-            cell.alignment = Alignment(horizontal="right", vertical="center")
+    # Agrupar viajes por factura para mantener los subtotales exactos
+    from collections import defaultdict
+    viajes_by_fac = defaultdict(list)
+    sin_fac_viajes = []
+
+    for v in viajes:
+        fac = str(getattr(v, "nro_factura", "") or "").strip()
+        if fac:
+            viajes_by_fac[fac].append(v)
         else:
-            cell.alignment = Alignment(horizontal="center", vertical="center")
+            sin_fac_viajes.append(v)
 
-    # Configuración de página horizontal y centrada para impresión
-    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
-    ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 0
-    ws.print_options.horizontalCentered = True
+    current_row = 2
+    grand_total_vol_m3 = 0.0
+    grand_total_imp_bs = 0.0
 
-    # Holgura de 2.0 cm en la parte superior para perforado y anillado
-    ws.page_margins.top = 0.8       # 0.8 pulgadas = 2.032 cm
-    ws.page_margins.bottom = 0.4    # 0.4 pulgadas = 1.0 cm
-    ws.page_margins.left = 0.4      # 0.4 pulgadas = 1.0 cm
-    ws.page_margins.right = 0.4     # 0.4 pulgadas = 1.0 cm
-    ws.page_margins.header = 0.3
-    ws.page_margins.footer = 0.3
+    def parse_fac_num(f_str: str):
+        nums = re.sub(r'\D', '', str(f_str))
+        return int(nums) if nums else str(f_str)
 
-    min_widths_template = {
-        "A": 6.5, "B": 15, "C": 15, "D": 18, "E": 13,
-        "F": 35, "G": 13, "H": 15, "I": 15, "J": 14,
-        "K": 16, "L": 16, "M": 14, "N": 15, "O": 17,
-        "P": 17, "Q": 16, "R": 14, "S": 19
+    is_desc = (str(order_dir).lower() == "desc")
+
+    if order_by == "factura":
+        sorted_fac_items = sorted(
+            viajes_by_fac.items(),
+            key=lambda x: (0, parse_fac_num(x[0])) if isinstance(parse_fac_num(x[0]), int) else (1, str(x[0])),
+            reverse=is_desc
+        )
+    elif order_by == "placa":
+        sorted_fac_items = sorted(
+            viajes_by_fac.items(),
+            key=lambda x: str(getattr(x[1][0], "placa", "") or "") if x[1] else "",
+            reverse=is_desc
+        )
+    else:  # fecha
+        sorted_fac_items = sorted(
+            viajes_by_fac.items(),
+            key=lambda x: str(getattr(x[1][0], "fecha_carga", None) or getattr(x[1][0], "fecha_factura", None) or "") if x[1] else "",
+            reverse=is_desc
+        )
+
+    # Ordenar viajes dentro de cada factura
+    for fac_code, grp in sorted_fac_items:
+        if order_by == "placa":
+            grp.sort(key=lambda x: str(getattr(x, "placa", "") or ""), reverse=is_desc)
+        elif order_by == "fecha":
+            grp.sort(key=lambda x: str(getattr(x, "fecha_carga", None) or ""), reverse=is_desc)
+        else:
+            grp.sort(key=lambda x: str(getattr(x, "fecha_carga", None) or ""))
+
+    # Ordenar viajes sin factura
+    if order_by == "placa":
+        sin_fac_viajes.sort(key=lambda x: str(getattr(x, "placa", "") or ""), reverse=is_desc)
+    elif order_by == "fecha":
+        sin_fac_viajes.sort(key=lambda x: str(getattr(x, "fecha_carga", None) or ""), reverse=is_desc)
+
+    def write_viaje_row(v, r_num):
+        tramo_str = getattr(v, "tramo", "") or ""
+        orig, dest = "", ""
+        if " - " in tramo_str:
+            parts = tramo_str.split(" - ", 1)
+            orig, dest = parts[0].strip(), parts[1].strip()
+        elif "-" in tramo_str:
+            parts = tramo_str.split("-", 1)
+            orig, dest = parts[0].strip(), parts[1].strip()
+        else:
+            orig = tramo_str
+
+        v_litros = float(getattr(v, "volumen_facturado", None) or getattr(v, "volumen_recepcionado_litros", 0.0) or 0.0)
+        v_m3 = round(v_litros / 1000.0, 3)
+        tarifa = float(getattr(v, "tarifa_flete", 0.0) or 0.0)
+        importe_bs = float(getattr(v, "flete_total_bs", 0.0) or 0.0)
+
+        # Entidad a mostrar: Cliente o Empresa de Apoyo
+        emp_display = getattr(v, "cliente", None) or getattr(v, "empresa_apoyo_nombre", None) or empresa_nombre
+
+        row_vals = [
+            emp_display,
+            getattr(v, "producto", "DIESEL"),
+            orig,
+            "",
+            dest,
+            getattr(v, "placa", "SIN PLACA"),
+            format_fecha_bolivia(getattr(v, "fecha_carga", None)),
+            format_fecha_bolivia(getattr(v, "fecha_descarga", None)),
+            getattr(v, "volumen_origen_litros", 0.0),
+            getattr(v, "volumen_recepcionado_litros", 0.0),
+            getattr(v, "merma_real_litros", 0.0),
+            getattr(v, "merma_tolerable_litros", 0.0),
+            getattr(v, "merma_excedente_litros", 0.0),
+            getattr(v, "precio_merma_litro_bs", 7.45),
+            getattr(v, "merma_descontar_bs", 0.0),
+            v_m3,
+            tarifa,
+            importe_bs,
+            format_fecha_bolivia(getattr(v, "fecha_factura", None)),
+            getattr(v, "nro_factura", None),
+            getattr(v, "mic_dta", None),
+            "",
+            ""
+        ]
+
+        ws.row_dimensions[r_num].height = 19
+        for c_idx, val in enumerate(row_vals, 1):
+            c = ws.cell(row=r_num, column=c_idx, value=val)
+            c.font = FONT_DATA_REGULAR
+            c.border = BORDER_THIN_BLACK
+            if isinstance(val, (int, float)):
+                c.alignment = Alignment(horizontal="right", vertical="center")
+                if c_idx in (9, 10, 11, 12, 13):
+                    c.number_format = '#,##0'
+                elif c_idx == 16:
+                    c.number_format = '#,##0.000'
+                elif c_idx in (14, 15, 17, 18):
+                    c.number_format = '#,##0.00'
+            else:
+                c.alignment = Alignment(horizontal="center" if c_idx in (6, 7, 8, 19, 20, 21) else "left", vertical="center")
+
+        return v_m3, importe_bs
+
+    # Escribir grupos con factura
+    for fac_code, grp in sorted_fac_items:
+        start_row = current_row
+        sub_vol = 0.0
+        sub_imp = 0.0
+
+        for v in grp:
+            vm3, imp = write_viaje_row(v, current_row)
+            sub_vol += vm3
+            sub_imp += imp
+            current_row += 1
+
+        grand_total_vol_m3 += sub_vol
+        grand_total_imp_bs += sub_imp
+
+        # Si la factura tiene más de 1 viaje, generar fila de subtotal (Azul)
+        if len(grp) > 1:
+            end_row = current_row - 1
+            ws.row_dimensions[current_row].height = 20
+            f_date_str = format_fecha_bolivia(getattr(grp[0], "fecha_factura", None))
+
+            for col_idx in range(1, len(headers) + 1):
+                cell = ws.cell(row=current_row, column=col_idx)
+                cell.border = BORDER_THIN_BLACK
+                cell.fill = FILL_SUBTOTAL_BLUE
+                cell.font = FONT_SUBTOTAL_BOLD
+
+                if col_idx == 16: # Volumen Facturado m3
+                    cell.value = f"=SUM(P{start_row}:P{end_row})"
+                    cell.number_format = '#,##0.000'
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
+                elif col_idx == 18: # Importe a Facturar Bs
+                    cell.value = f"=SUM(R{start_row}:R{end_row})"
+                    cell.number_format = '#,##0.00'
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
+                elif col_idx == 19:
+                    cell.value = f_date_str
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+                elif col_idx == 20:
+                    cell.value = fac_code
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+            current_row += 1
+
+    # Despachos sin factura
+    for v in sin_fac_viajes:
+        vm3, imp = write_viaje_row(v, current_row)
+        grand_total_vol_m3 += vm3
+        grand_total_imp_bs += imp
+        current_row += 1
+
+    # FILA TOTAL GENERAL
+    ws.row_dimensions[current_row].height = 24
+    for col_idx in range(1, len(headers) + 1):
+        cell = ws.cell(row=current_row, column=col_idx)
+        cell.border = BORDER_TOTAL_DOUBLE
+        cell.fill = FILL_TOTAL_ROW
+        cell.font = FONT_TOTAL_MAIN
+
+        if col_idx == 1:
+            cell.value = "TOTAL GENERAL"
+            cell.alignment = Alignment(horizontal="left", vertical="center")
+        elif col_idx == 16:
+            cell.value = round(grand_total_vol_m3, 3)
+            cell.number_format = '#,##0.000'
+            cell.alignment = Alignment(horizontal="right", vertical="center")
+        elif col_idx == 18:
+            cell.value = round(grand_total_imp_bs, 2)
+            cell.number_format = '#,##0.00'
+            cell.alignment = Alignment(horizontal="right", vertical="center")
+
+    min_widths = {
+        "A": 28, "B": 20, "C": 18, "D": 16, "E": 18,
+        "F": 14, "G": 14, "H": 14, "I": 15, "J": 15,
+        "K": 14, "L": 14, "M": 14, "N": 15, "O": 15,
+        "P": 18, "Q": 14, "R": 18, "S": 16, "T": 14,
+        "U": 18, "V": 16, "W": 16
     }
-    adjust_column_widths(ws, min_widths_template)
+    adjust_column_widths(ws, min_widths)
 
     output = io.BytesIO()
     wb.save(output)
+    output.seek(0)
+    return output
     output.seek(0)
     return output
 

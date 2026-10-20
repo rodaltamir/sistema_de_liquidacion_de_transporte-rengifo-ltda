@@ -64,7 +64,8 @@ def calculate_viaje_values(
     precio_merma_litro_override: float = None,
     volumen_facturado: float = None,
     total_descuentos_adicionales: float = 0.0,
-    total_descuentos_mermas: float = 0.0
+    total_descuentos_mermas: float = 0.0,
+    flete_total_override: float = None
 ) -> Dict[str, float]:
     """
     Realiza el cálculo operativo exacto de un viaje / despacho:
@@ -73,8 +74,8 @@ def calculate_viaje_values(
     - Merma tolerable (Litros)
     - Merma excedente (Litros a descontar)
     - Descuento por merma (Bs)
-    - Volumen facturado
-    - Total a pagar (Bs) = Volumen Facturado * Tarifa
+    - Volumen facturado (Litros y m³)
+    - Total a pagar (Bs) = Volumen Facturado * Tarifa (o flete_total_override si proviene de factura oficial)
     """
     # 1. Merma Real
     merma_real = round(volumen_origen_litros - volumen_recepcionado_litros, 1)
@@ -94,21 +95,25 @@ def calculate_viaje_values(
     merma_descontar_bs = round(merma_excedente * precio_merma, 2)
 
     # 5. Volumen Facturado y Cálculo del Total a Pagar
-    # Regla: La unidad de medida de Volumen Facturado es en LITROS (Lt, ej. 33.900 L, 33.910 L, 33.215 L)
-    # Por defecto es igual al volumen recepcionado/descargado en Litros: volumen_recepcionado_litros
-    # Operación oficial: (Volumen Facturado en Lt / 1000) * Tarifa (Bs.) = Total a Pagar (Bs)
-    if volumen_facturado is not None and float(volumen_facturado) > 0:
+    # Regla: La unidad de medida de Volumen Facturado en BD es en LITROS (Lt)
+    # Si volumen_facturado viene en m3 o Litros:
+    vol_fact_litros = 0.0
+    if volumen_facturado is not None:
         val_f = float(volumen_facturado)
-        # Si alguien ingresó accidentalmente en m³ (< 1000), normalizar a Litros (* 1000)
-        vol_fact_litros = round(val_f * 1000.0, 1) if val_f < 1000.0 else round(val_f, 1)
-    else:
+        if val_f > 0:
+            vol_fact_litros = round(val_f, 1)
+    elif volumen_recepcionado_litros > 0:
         vol_fact_litros = round(volumen_recepcionado_litros, 1)
+    elif volumen_origen_litros > 0:
+        vol_fact_litros = round(volumen_origen_litros, 1)
 
     vol_fact_m3 = round(vol_fact_litros / 1000.0, 4)
 
     tipo = (tipo_tarifa or "BS_POR_M3").upper()
 
-    if tipo == "USD_POR_M3":
+    if flete_total_override is not None and float(flete_total_override) > 0:
+        flete_total_bs = round(float(flete_total_override), 2)
+    elif tipo == "USD_POR_M3":
         tipo_cambio = params.tipo_cambio_usd_bob or 6.96
         flete_total_bs = round(vol_fact_m3 * tarifa_flete * (tipo_cambio / 10.0), 2)
     elif tipo == "BS_TOTAL_VIAJE":

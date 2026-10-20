@@ -12,7 +12,7 @@ from app.models.public import Empresa
 from app.models.tenant import Viaje, ParametroLiquidacion, UnidadTransporte
 from app.schemas.viaje import ViajeCreate, ViajeUpdate, ViajeResponse, ViajeCalculoPreview
 from app.services.calculation_engine import calculate_viaje_values, determine_trip_period
-from app.services.excel_export import generate_viajes_template_excel
+from app.services.excel_export import generate_viajes_template_excel, export_viajes_list_excel
 from app.services.excel_importer import get_excel_sheets, parse_excel_viajes_data, execute_import_viajes
 
 from sqlalchemy import func
@@ -95,6 +95,8 @@ def list_viajes(
     facturado: Optional[str] = None,
     search: Optional[str] = None,
     orden: Optional[str] = None,
+    order_by: Optional[str] = None,
+    order_dir: Optional[str] = "asc",
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     session = get_tenant_session(schema_name)
@@ -108,7 +110,7 @@ def list_viajes(
             query = query.filter(Viaje.fecha_carga >= fecha_desde)
         if fecha_hasta:
             query = query.filter(Viaje.fecha_carga <= fecha_hasta)
-        if placa:
+        if placa and placa.upper() != "TODAS":
             query = query.filter(Viaje.placa == placa.upper().strip())
         if estado:
             query = query.filter(Viaje.estado == estado)
@@ -133,6 +135,21 @@ def list_viajes(
                 (Viaje.producto.ilike(st))
             )
             
+        if order_by:
+            col_sort = Viaje.fecha_carga
+            if order_by == "factura":
+                col_sort = Viaje.nro_factura
+            elif order_by == "placa":
+                col_sort = Viaje.placa
+            elif order_by == "cliente":
+                col_sort = Viaje.cliente
+            elif order_by == "flete":
+                col_sort = Viaje.flete_total_bs
+
+            if order_dir and str(order_dir).lower() == "desc":
+                return query.order_by(col_sort.desc(), Viaje.id.desc()).all()
+            return query.order_by(col_sort.asc(), Viaje.id.asc()).all()
+
         if orden in ("asc", "agrupado"):
             return query.order_by(Viaje.tramo.asc(), Viaje.producto.asc(), Viaje.fecha_carga.asc(), Viaje.id.asc()).all()
         return query.order_by(Viaje.fecha_carga.desc(), Viaje.id.desc()).all()
@@ -336,7 +353,8 @@ async def preview_viajes_excel(
             file_bytes=contents,
             sheet_name=sheet_name,
             session=session,
-            max_preview_records=None
+            max_preview_records=None,
+            target_empresa_name=empresa.name
         )
         return preview_data
     except Exception as e:
@@ -351,6 +369,7 @@ async def importar_viajes_excel(
     sheet_name: Optional[str] = Form(None),
     overwrite_duplicates: bool = Form(False),
     edited_records_json: Optional[str] = Form(None),
+    entidades_clasificacion_json: Optional[str] = Form(None),
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     session = get_tenant_session(schema_name)
@@ -369,7 +388,8 @@ async def importar_viajes_excel(
                 file_bytes=contents,
                 sheet_name=sheet_name,
                 session=session,
-                max_preview_records=None
+                max_preview_records=None,
+                target_empresa_name=empresa.name
             )
             records_to_import = parsed_data["records"]
         else:
@@ -394,17 +414,106 @@ async def importar_viajes_excel(
         viajes_creados = result["total_importados"]
         viajes_actualizados = result["total_actualizados"]
         viajes_omitidos = result["total_omitidos"]
+        clientes_reg = result.get("clientes_registrados", 0)
+
+        msg_parts = [f"Se importaron {viajes_creados} viajes exitosamente."]
+        if clientes_reg > 0:
+            msg_parts.append(f"Se registraron {clientes_reg} clientes en el catálogo.")
 
         return {
             "success": True,
-            "message": f"Se importaron {viajes_creados} viajes exitosamente.",
+            "message": " ".join(msg_parts),
             "total_importados": viajes_creados,
             "total_actualizados": viajes_actualizados,
             "total_omitidos": viajes_omitidos,
+            "clientes_registrados": clientes_reg,
             "total_filas_leidas": len(records_to_import),
             "periodos_detectados": result["periodos_detectados"],
             "errores": result["errores"]
         }
+    finally:
+        session.close()
+
+@router.get("/exportar-excel")
+def export_viajes_excel(
+    schema_name: str,
+    periodo: Optional[str] = Query(None),
+    periodo_mes: Optional[str] = Query(None),
+    anio: Optional[int] = Query(None),
+    fecha_desde: Optional[date] = Query(None),
+    fecha_hasta: Optional[date] = Query(None),
+    cliente: Optional[str] = Query(None),
+    placa: Optional[str] = Query(None),
+    producto: Optional[str] = Query(None),
+    tramo: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    order_by: Optional[str] = Query("fecha"),
+    order_dir: Optional[str] = Query("asc"),
+    empresa: Empresa = Depends(verify_tenant_exists)
+):
+    session = get_tenant_session(schema_name)
+    try:
+        query = session.query(Viaje)
+        p = periodo_mes or periodo
+        if p:
+            query = query.filter(Viaje.periodo_mes == p)
+        if anio:
+            query = query.filter(Viaje.periodo_mes.startswith(f"{anio}-"))
+        if fecha_desde:
+            query = query.filter(Viaje.fecha_carga >= fecha_desde)
+        if fecha_hasta:
+            query = query.filter(Viaje.fecha_carga <= fecha_hasta)
+        if cliente:
+            query = query.filter(Viaje.cliente.ilike(f"%{cliente.strip()}%"))
+        if placa and placa.upper() != "TODAS":
+            query = query.filter(Viaje.placa.ilike(f"%{placa.strip()}%"))
+        if producto and producto.upper() != "TODOS":
+            query = query.filter(Viaje.producto.ilike(f"%{producto.strip()}%"))
+        if tramo:
+            query = query.filter(Viaje.tramo.ilike(f"%{tramo.strip()}%"))
+        if search:
+            st = f"%{search.strip()}%"
+            query = query.filter(
+                (Viaje.nro_factura.ilike(st)) |
+                (Viaje.mic_dta.ilike(st)) |
+                (Viaje.placa.ilike(st)) |
+                (Viaje.tramo.ilike(st)) |
+                (Viaje.cliente.ilike(st)) |
+                (Viaje.producto.ilike(st))
+            )
+
+        col_sort = Viaje.fecha_carga
+        if order_by == "factura":
+            col_sort = Viaje.nro_factura
+        elif order_by == "placa":
+            col_sort = Viaje.placa
+        elif order_by == "cliente":
+            col_sort = Viaje.cliente
+        elif order_by == "flete":
+            col_sort = Viaje.flete_total_bs
+
+        if order_dir and str(order_dir).lower() == "desc":
+            query = query.order_by(col_sort.desc(), Viaje.id.desc())
+        else:
+            query = query.order_by(col_sort.asc(), Viaje.id.asc())
+
+        viajes = query.all()
+        params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
+        empresa_dict = {"name": empresa.name, "logo_base64": empresa.logo_base64}
+        excel_buffer = export_viajes_list_excel(
+            viajes=viajes,
+            empresa=empresa_dict,
+            params=params,
+            order_by=order_by or "fecha",
+            order_dir=order_dir or "asc"
+        )
+        clean_emp = "".join([c if c.isalnum() else "_" for c in empresa.name])[:20]
+        filename = f"Despachos_Viajes_{clean_emp}_{order_by}_{order_dir}.xlsx"
+        return Response(
+            content=excel_buffer.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
     finally:
         session.close()
 
