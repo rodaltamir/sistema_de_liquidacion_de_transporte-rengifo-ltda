@@ -492,7 +492,7 @@ export default function ImportExcelModal({
             ...rec,
             tipo_entidad: "empresa",
             empresa: entidadNombre,
-            cliente: rec.cliente && rec.cliente !== entidadNombre ? rec.cliente : "YPFB",
+            cliente: rec.cliente && rec.cliente !== entidadNombre ? rec.cliente : "CLIENTE GENERAL",
             isEdited: true
           };
         }
@@ -1674,9 +1674,9 @@ export default function ImportExcelModal({
                       }`}
                     >
                       <Building2 className="w-4 h-4 text-sky-500" />
-                      <span>Empresas y Clientes (Columna A)</span>
+                      <span>Clientes Facturados ({previewData.clientes_detectados?.length || 0})</span>
                       <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-500/30">
-                        {(previewData.empresas_detectadas?.length || 0) + (previewData.clientes_detectados?.length || 0)}
+                        100% Empresa
                       </span>
                     </button>
                   </div>
@@ -2191,7 +2191,7 @@ export default function ImportExcelModal({
                                   {fac.fecha_factura || "—"}
                                 </td>
                                 <td className="py-2 px-3 font-semibold text-slate-900 dark:text-white truncate max-w-[160px]" title={fac.cliente}>
-                                  {fac.cliente || "YPFB"}
+                                  {fac.cliente || "Cliente General"}
                                 </td>
                                 <td className="py-2 px-3 text-emerald-600 dark:text-emerald-400 font-medium truncate max-w-[160px]" title={fac.empresa}>
                                   {fac.empresa || "—"}
@@ -2246,10 +2246,10 @@ export default function ImportExcelModal({
                     <div className="p-3.5 bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/30 rounded-xl space-y-1">
                       <div className="flex items-center gap-2 text-sky-800 dark:text-sky-300 font-bold text-xs">
                         <Building2 className="w-4 h-4 text-sky-500" />
-                        <span>Clasificación Inteligente de la Columna A (Empresa de Transporte / Cliente)</span>
+                        <span>Clientes Facturados del Servicio (Columna A - Sin Flota de Apoyo)</span>
                       </div>
                       <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                        La planilla original suele contener tanto <b>Empresas de Transporte</b> (operadores/transportistas) como <b>Clientes</b> (empresas a quienes se les brindó el servicio de flete, ej: YPFB, Industrias de Aceite S.A.). Aquí puedes confirmar o cambiar el rol de cada entidad antes de importar:
+                        La planilla de ventas contiene los <b>Clientes</b> a quienes se les brindó el servicio y se les emitió la factura (ej: YPFB, Industrias de Aceite S.A., Camposol, Bunge, Hammer SAS, Trucks Templarios, RealTrucks, etc.). Todas las cisternas pertenecen a la empresa transportista.
                       </p>
                     </div>
 

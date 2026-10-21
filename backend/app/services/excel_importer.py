@@ -19,19 +19,21 @@ KNOWN_CLIENT_KEYWORDS = [
     "ALICONSUMO", "PIL ANDINA", "REPSOL", "PETROBRAS", "SHELL", "TOTAL", "COBOCE", "SOBOCE",
     "ITAGROBOL", "GREEN METALS", "GREENFIELD", "MINERA DON VALERIANO", "INDUSTRIA Y COMERCIO",
     "AGRO", "CEMENTO", "ALIMENTOS", "COMERCIALIZADORA", "CORPORACION MINERA", "CAMPOSOL", "PRODECO",
-    "HAMMER", "LAMBOL", "PLUS METALS", "SYNTEX", "DON VALERIANO", "METALS", "ASPHALT"
+    "HAMMER", "LAMBOL", "PLUS METALS", "SYNTEX", "DON VALERIANO", "METALS", "ASPHALT",
+    "TEMPLARIOS", "TRUCKS TEMPLARIOS", "REALTRUCK", "REALTRUCKS", "BOCKTRANS", "MEDLOG",
+    "LIMACHI", "PEDRO WEILLIAM"
 ]
 
 KNOWN_TRANSPORT_KEYWORDS = [
-    "TRANS ", "TRANS.", "TRANSPORTE", "TRANSPORTES", "TRUCKS", "TRUCK'S", "TRUCK",
+    "TRANS ", "TRANS.", "TRANSPORTE", "TRANSPORTES",
     "TRAILER", "LOGISTICA", "LOGISTIC", "COOP. TRANS", "COOPERATIVA", "LINEA", "CARGO", "FLOTA",
-    "DAYTEL", "MGTRAILER", "BOCKTRANS", "CITRANSCO", "ROSESTAR", "BRITANIC",
-    "TEMPLARIOS", "REMOLINO", "QUELION", "PETRO FRAYER", "HANDEK", "COLMENA",
-    "FUENTES", "BRUMEBOL", "JACHI", "JARM", "TEMPESTAD", "REALTRUCK", "TRUKSPER", "MEDLOG", "UNITED"
+    "DAYTEL", "MGTRAILER", "CITRANSCO", "ROSESTAR", "BRITANIC",
+    "REMOLINO", "QUELION", "PETRO FRAYER", "HANDEK", "COLMENA",
+    "FUENTES", "BRUMEBOL", "JACHI", "JARM", "TEMPESTAD", "TRUKSPER", "UNITED"
 ]
 
 KNOWN_INDIVIDUAL_CARRIERS = [
-    "LIMACHI", "ROSMERY QUISPE", "GONZAYO"
+    "ROSMERY QUISPE", "GONZAYO"
 ]
 
 
@@ -288,6 +290,17 @@ def parse_excel_viajes_data(
         if not sample_rows:
             continue
 
+        # Si no se detectó en el título de la hoja, revisar los textos de los encabezados para detectar la empresa transportista
+        if not detected_sheet_company:
+            for s_row in sample_rows:
+                for c_cell in s_row:
+                    c_cell_str = str(c_cell or "").upper()
+                    if "DRIVER" in c_cell_str:
+                        detected_sheet_company = "DRIVER S.R.L."
+                        break
+                if detected_sheet_company:
+                    break
+
         header_row_idx, col_map = detect_columns_and_header_row(sample_rows)
 
         if not header_row_idx or "placa" not in col_map:
@@ -330,6 +343,13 @@ def parse_excel_viajes_data(
                 }
             else:
                 continue
+
+        has_two_separate_entity_columns = (
+            col_map.get("empresa") is not None and 
+            col_map.get("cliente") is not None and 
+            col_map["empresa"] != col_map["cliente"]
+        )
+        carrier_company = target_empresa_name or detected_sheet_company or "DRIVER S.R.L."
 
         sheet_valid_count = 0
         consecutive_empty = 0
@@ -377,12 +397,19 @@ def parse_excel_viajes_data(
 
             placa_upper = placa_raw.upper().strip()
 
+            col_a_raw = cliente_raw or empresa_raw
+            col_a_upper = col_a_raw.upper().strip()
+
             # -------------------------------------------------------------
             # 1. IDENTIFICACIÓN DE FILAS DE SUBTOTAL DE FACTURAS
             # -------------------------------------------------------------
             # En planillas como Driver S.R.L., las facturas con múltiples viajes
             # tienen filas hijas (despachos) y una fila de subtotal (sin placa ni empresa).
-            is_subtotal_row = (not placa_upper and not empresa_raw) or placa_upper in ("TOTAL", "SUBTOTAL", "RESUMEN")
+            is_subtotal_row = (
+                (not placa_upper and not col_a_upper) or 
+                placa_upper in ("TOTAL", "SUBTOTAL", "RESUMEN") or
+                col_a_upper in ("TOTAL", "SUBTOTAL", "RESUMEN")
+            )
 
             if is_subtotal_row:
                 if nro_fac_raw and (importe_raw > 0 or vol_f_raw > 0):
@@ -402,12 +429,12 @@ def parse_excel_viajes_data(
                     skipped_records.append({
                         "fila": r_idx,
                         "hoja": sheet_title,
-                        "motivo": f"Fila de total o resumen ignorada ({placa_raw or 'Fila vacía'})"
+                        "motivo": f"Fila de total o resumen ignorada ({placa_raw or col_a_raw or 'Fila vacía'})"
                     })
                 continue
 
-            # Si no tiene placa, ni empresa, ni importe, es fila en blanco
-            if not placa_upper and not empresa_raw and importe_raw == 0 and vol_f_raw == 0:
+            # Si no tiene placa, ni empresa/cliente, ni importe, es fila en blanco
+            if not placa_upper and not col_a_upper and importe_raw == 0 and vol_f_raw == 0:
                 continue
 
             # -------------------------------------------------------------
@@ -423,51 +450,41 @@ def parse_excel_viajes_data(
                 clean_placa = placa_upper.replace(" ", "")
 
             # -------------------------------------------------------------
-            # 3. CLASIFICACIÓN INTELIGENTE DE EMPRESA Y CLIENTE
+            # 3. EMPRESA TRANSPORTISTA Y CLIENTE FACTURADO (COLUMNA A)
             # -------------------------------------------------------------
-            # Si en la columna "Empresa Transporte" viene un Cliente del servicio
-            # (ej. YPFB, INDUSTRIAS DE ACEITE S.A., CARGILL, ACEROS AREQUIPA):
-            # se le asigna como CLIENTE, y la EMPRESA se mantiene como la transportista.
-            empresa_norm = normalize_company_name(empresa_raw)
-            tipo_ent = classify_entity_name(empresa_norm)
-
-            if tipo_ent == "cliente":
-                clean_cliente = empresa_norm
-                clean_empresa = detected_sheet_company or target_empresa_name or "DRIVER S.R.L."
-                tipo_entidad_asignada = "cliente"
-                es_apoyo = False
-                empresa_apoyo_nombre = None
+            # En libros de ventas de empresas de transporte (ej. DRIVER S.R.L.),
+            # la Columna A (titulada 'FACTURA EMITIDA A:' o 'Empresa Transporte')
+            # contiene los CLIENTES a quienes se les brindó el servicio y se les facturó.
+            # Todas las cisternas/placas pertenecen a la empresa transportista que emitió las facturas.
+            # En esta importación NO hay flotas de apoyo.
+            if has_two_separate_entity_columns:
+                clean_empresa = normalize_company_name(empresa_raw) or carrier_company
+                clean_cliente = normalize_company_name(cliente_raw)
             else:
-                # Es un transportista / asociado o empresa de apoyo
-                clean_empresa = empresa_norm if empresa_norm else (detected_sheet_company or target_empresa_name or "EMPRESA DE TRANSPORTE")
-                
-                # Inferencia inteligente de cliente si no viene columna explícita
-                if cliente_raw and clean_string(cliente_raw):
-                    clean_cliente = clean_string(cliente_raw).upper()
-                else:
-                    prod_u = clean_string(producto_raw).upper()
-                    if any(x in prod_u for x in ("BOBINA", "ACERO", "FIERRO", "BARRA", "PLANCHA", "PERFIL")):
-                        clean_cliente = "CORPORACION ACEROS AREQUIPA S.A."
-                    elif any(x in prod_u for x in ("SOYA", "GIRASOL", "HARINA", "COMPENSACION")):
-                        clean_cliente = "INDUSTRIAS DE ACEITE S.A."
-                    elif any(x in prod_u for x in ("FERTILIZANTE", "BORATO")):
-                        clean_cliente = "FERTILIZANTES DE LOS ANDES S.R.L."
-                    elif "MINERAL" in prod_u:
-                        clean_cliente = "PRODECO S.R.L."
-                    elif any(x in prod_u for x in ("MALTA", "CEBADA")):
-                        clean_cliente = "BOCKTRANS S.R.L."
-                    else:
-                        clean_cliente = "YPFB"
+                clean_empresa = carrier_company
+                clean_cliente = normalize_company_name(col_a_raw)
 
-                tipo_entidad_asignada = "empresa"
-                
-                # Si es un transportista asociado en una planilla consolidada
-                if detected_sheet_company and clean_empresa != detected_sheet_company:
-                    es_apoyo = True
-                    empresa_apoyo_nombre = clean_empresa
+            # Inferencia inteligente de cliente ÚNICAMENTE si la celda de Columna A vino en blanco
+            if not clean_cliente or clean_cliente in ("NONE", "NULL", "-", ""):
+                prod_u = clean_string(producto_raw).upper()
+                if any(x in prod_u for x in ("BOBINA", "ACERO", "FIERRO", "BARRA", "PLANCHA", "PERFIL")):
+                    clean_cliente = "CORPORACION ACEROS AREQUIPA S.A."
+                elif any(x in prod_u for x in ("SOYA", "GIRASOL", "HARINA", "COMPENSACION", "ACEITE")):
+                    clean_cliente = "INDUSTRIAS DE ACEITE S.A."
+                elif any(x in prod_u for x in ("FERTILIZANTE", "BORATO", "UREA")):
+                    clean_cliente = "FERTILIZANTES DE LOS ANDES S.R.L."
+                elif any(x in prod_u for x in ("MINERAL", "CONCENTRADO", "PLOMO", "ZINC", "ESTAÑO")):
+                    clean_cliente = "PRODECO S.R.L."
+                elif any(x in prod_u for x in ("MALTA", "CEBADA")):
+                    clean_cliente = "BOCKTRANS S.R.L."
+                elif any(x in prod_u for x in ("DIESEL", "GASOLINA", "GLP", "CRUDO", "PETROLEO", "INSUMOS", "IYA")):
+                    clean_cliente = "YPFB"
                 else:
-                    es_apoyo = False
-                    empresa_apoyo_nombre = None
+                    clean_cliente = "CLIENTE GENERAL"
+
+            tipo_entidad_asignada = "cliente"
+            es_apoyo = False
+            empresa_apoyo_nombre = None
 
             # -------------------------------------------------------------
             # 4. TRAMO Y PRODUCTO
@@ -591,7 +608,7 @@ def parse_excel_viajes_data(
                 "fila_hoja": r_idx,
                 "empresa": clean_empresa,
                 "cliente": clean_cliente,
-                "entidad_origen": empresa_norm,
+                "entidad_origen": col_a_raw or clean_cliente,
                 "tipo_entidad": tipo_entidad_asignada,
                 "es_apoyo": es_apoyo,
                 "empresa_apoyo_nombre": empresa_apoyo_nombre,
@@ -703,23 +720,21 @@ def parse_excel_viajes_data(
             clientes_stats[cli_nom]["total_volumen_m3"] += r.get("volumen_facturado_m3", 0.0)
             clientes_stats[cli_nom]["total_flete_bs"] += r.get("flete_total_bs", 0.0)
 
-        tipo = r.get("tipo_entidad")
-        if tipo == "empresa":
-            emp_nom = r.get("empresa")
-            if emp_nom:
-                if emp_nom not in empresas_stats:
-                    empresas_stats[emp_nom] = {
-                        "nombre": emp_nom,
-                        "total_viajes": 0,
-                        "total_volumen_m3": 0.0,
-                        "total_flete_bs": 0.0,
-                        "placas": set()
-                    }
-                empresas_stats[emp_nom]["total_viajes"] += 1
-                empresas_stats[emp_nom]["total_volumen_m3"] += r.get("volumen_facturado_m3", 0.0)
-                empresas_stats[emp_nom]["total_flete_bs"] += r.get("flete_total_bs", 0.0)
-                if r.get("placa") and r["placa"] != "SIN PLACA":
-                    empresas_stats[emp_nom]["placas"].add(r["placa"])
+        emp_nom = r.get("empresa")
+        if emp_nom:
+            if emp_nom not in empresas_stats:
+                empresas_stats[emp_nom] = {
+                    "nombre": emp_nom,
+                    "total_viajes": 0,
+                    "total_volumen_m3": 0.0,
+                    "total_flete_bs": 0.0,
+                    "placas": set()
+                }
+            empresas_stats[emp_nom]["total_viajes"] += 1
+            empresas_stats[emp_nom]["total_volumen_m3"] += r.get("volumen_facturado_m3", 0.0)
+            empresas_stats[emp_nom]["total_flete_bs"] += r.get("flete_total_bs", 0.0)
+            if r.get("placa") and r["placa"] != "SIN PLACA":
+                empresas_stats[emp_nom]["placas"].add(r["placa"])
 
     empresas_detectadas_list = []
     for emp_name, stats in sorted(empresas_stats.items()):
@@ -828,6 +843,31 @@ def execute_import_viajes(
     # Cache de empresas de apoyo
     apoyo_cache = {a.nombre.upper().strip(): a for a in session.query(EmpresaApoyo).all()}
 
+    # Si la importación actual no contiene flota de apoyo, sanear proactivamente
+    # cualquier viaje previo que haya quedado marcado erróneamente como apoyo
+    if all(not rec.get("es_apoyo") for rec in records):
+        stale_apoyo = session.query(Viaje).filter(Viaje.es_apoyo == True).all()
+        for sv in stale_apoyo:
+            if sv.empresa_apoyo_nombre:
+                cli = session.query(Cliente).filter(Cliente.nombre.ilike(sv.empresa_apoyo_nombre.strip())).first()
+                if not cli:
+                    cli = Cliente(nombre=sv.empresa_apoyo_nombre.strip().upper(), is_active=True)
+                    session.add(cli)
+                    session.commit()
+                    session.refresh(cli)
+                sv.cliente = cli.nombre
+            sv.es_apoyo = False
+            sv.empresa_apoyo_nombre = None
+            sv.empresa_apoyo_id = None
+        if stale_apoyo:
+            session.commit()
+
+        from app.models.tenant import UnidadApoyo
+        if session.query(UnidadApoyo).count() == 0:
+            session.query(EmpresaApoyo).delete()
+            session.commit()
+            apoyo_cache = {}
+
     for rec in records:
         if rec.get("included") is False:
             continue
@@ -881,8 +921,8 @@ def execute_import_viajes(
                     cliente = "CLIENTE GENERAL"
             nro_fac = clean_string(rec.get("nro_factura")) or None
             flete_total_rec = clean_float(rec.get("flete_total_bs"), 0.0)
-            emp_apoyo_nom = clean_string(rec.get("empresa_apoyo_nombre"))
-            es_apoyo = bool(rec.get("es_apoyo")) or bool(emp_apoyo_nom)
+            es_apoyo = bool(rec.get("es_apoyo", False))
+            emp_apoyo_nom = clean_string(rec.get("empresa_apoyo_nombre")) if es_apoyo else None
 
             # -------------------------------------------------------------
             # REGISTRO AUTOMÁTICO DE CLIENTE SI NO EXISTE
@@ -948,10 +988,21 @@ def execute_import_viajes(
             periodo = determine_trip_period(date_carga, date_descarga)
             periodos_detectados.add(periodo)
 
-            # Si el registro especifica un ID existente de viaje, se actualiza
+            # Buscar viaje existente para actualizar en lugar de duplicar
             existing_viaje = None
             if rec.get("id"):
                 existing_viaje = session.query(Viaje).filter(Viaje.id == rec["id"]).first()
+            elif nro_fac and placa and date_carga:
+                existing_viaje = session.query(Viaje).filter(
+                    Viaje.nro_factura == nro_fac,
+                    Viaje.placa == placa,
+                    Viaje.fecha_carga == date_carga
+                ).first()
+            elif overwrite_duplicates and placa and date_carga:
+                existing_viaje = session.query(Viaje).filter(
+                    Viaje.placa == placa,
+                    Viaje.fecha_carga == date_carga
+                ).first()
 
             if existing_viaje:
                 existing_viaje.placa = placa
@@ -982,6 +1033,7 @@ def execute_import_viajes(
                 existing_viaje.flete_total_bs = calc["flete_total_bs"]
                 existing_viaje.es_apoyo = es_apoyo
                 existing_viaje.empresa_apoyo_nombre = emp_apoyo_nom if es_apoyo else None
+                existing_viaje.empresa_apoyo_id = None if not es_apoyo else existing_viaje.empresa_apoyo_id
                 viajes_actualizados += 1
                 continue
 
@@ -1012,6 +1064,7 @@ def execute_import_viajes(
                 flete_total_bs=calc["flete_total_bs"],
                 es_apoyo=es_apoyo,
                 empresa_apoyo_nombre=emp_apoyo_nom if es_apoyo else None,
+                empresa_apoyo_id=None,
                 estado="Pendiente"
             )
             session.add(nuevo_viaje)
