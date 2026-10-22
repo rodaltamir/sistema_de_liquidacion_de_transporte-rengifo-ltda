@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional, Dict, Any
-from app.db.session import get_db, engine, get_tenant_session
+from app.db.session import get_db, engine, get_tenant_session, init_tenant_schema, sanitize_schema_name
 from app.db.base_class import Base
 from app.models.public import Empresa, Asociacion
 from app.models.tenant import ParametroLiquidacion
@@ -19,50 +19,6 @@ from app.services.excel_importer import (
 
 router = APIRouter(prefix="/empresas", tags=["Empresas de Transporte"])
 
-def sanitize_schema_name(name: str) -> str:
-    slug = re.sub(r'[^a-zA-Z0-9]+', '_', name).strip('_').lower()
-    return f"empresa_{slug[:30]}"
-
-def init_tenant_schema(schema_name: str):
-    """
-    Crea el esquema en PostgreSQL y las tablas tenant-specific con sus valores por defecto.
-    """
-    with engine.connect() as conn:
-        conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"'))
-        conn.commit()
-
-    # Traducir 'tenant' al esquema específico para crear las tablas
-    connectable = engine.execution_options(
-        schema_translate_map={"tenant": schema_name}
-    )
-    from app.models.tenant import UnidadTransporte, ParametroLiquidacion, Viaje, Liquidacion, Empleado, EmpresaApoyo, UnidadApoyo, Cliente
-    tenant_tables = [
-        UnidadTransporte.__table__,
-        ParametroLiquidacion.__table__,
-        Viaje.__table__,
-        Liquidacion.__table__,
-        Empleado.__table__,
-        EmpresaApoyo.__table__,
-        UnidadApoyo.__table__,
-        Cliente.__table__
-    ]
-    Base.metadata.create_all(bind=connectable, tables=tenant_tables)
-    from app.db.migrations import ensure_tenant_columns
-    try:
-        ensure_tenant_columns(schema_name)
-    except Exception:
-        pass
-
-    # Crear configuración inicial por defecto
-    tenant_session = get_tenant_session(schema_name)
-    try:
-        existing_params = tenant_session.query(ParametroLiquidacion).first()
-        if not existing_params:
-            default_params = ParametroLiquidacion()
-            tenant_session.add(default_params)
-            tenant_session.commit()
-    finally:
-        tenant_session.close()
 
 @router.get("/", response_model=List[EmpresaResponse])
 def list_empresas(
@@ -379,6 +335,8 @@ async def importar_con_empresa(
         if not target_empresa:
             raise HTTPException(status_code=404, detail="La empresa de destino seleccionada no existe.")
         schema_name = target_empresa.schema_name
+        # Asegurar que el esquema y tablas tenant existan en PostgreSQL
+        init_tenant_schema(schema_name)
     else:
         raise HTTPException(status_code=400, detail="Modo de importación inválido. Use 'create_new', 'use_existing' o 'asociacion'.")
 

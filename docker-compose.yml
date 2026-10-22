@@ -53,6 +53,7 @@ services:
       - ./backend/main.py:/app/main.py
       - ./backend/seed_data.py:/app/seed_data.py
       - ./backend/exports:/app/exports
+      - ./backend/tests:/app/tests
     depends_on:
       db:
         condition: service_healthy

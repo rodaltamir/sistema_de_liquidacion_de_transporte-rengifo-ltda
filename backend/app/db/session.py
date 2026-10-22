@@ -47,6 +47,13 @@ def get_db():
         db.close()
 
 
+def sanitize_schema_name(name: str) -> str:
+    """Sanitiza el nombre de una empresa para usarlo como esquema PostgreSQL."""
+    import re
+    slug = re.sub(r'[^a-zA-Z0-9]+', '_', str(name or "")).strip('_').lower()
+    return f"empresa_{slug[:30]}"
+
+
 def init_tenant_schema(schema_name: str):
     """
     Crea el esquema en PostgreSQL y las tablas tenant-specific con sus valores por defecto.

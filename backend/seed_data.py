@@ -102,6 +102,27 @@ def seed():
             db.add(operador)
             print("Usuario 'usuario' inicializado (pass: user123)")
 
+        # 4. Empresa Principal Oficial: DRIVER S.R.L.
+        driver_empresa = db.query(Empresa).filter(
+            (Empresa.schema_name == "empresa_driver_s_r_l") | (Empresa.name.ilike("DRIVER S.R.L%"))
+        ).first()
+        if not driver_empresa:
+            driver_empresa = Empresa(
+                name="DRIVER S.R.L.",
+                schema_name="empresa_driver_s_r_l",
+                nit="1020304050",
+                tipo_empresa="Sociedad de Responsabilidad Limitada",
+                representante_legal="DRIVER S.R.L.",
+                icon="Truck",
+                is_active=True
+            )
+            db.add(driver_empresa)
+            db.commit()
+            print("Empresa 'DRIVER S.R.L.' inicializada (schema: empresa_driver_s_r_l)")
+        
+        from app.db.session import init_tenant_schema
+        init_tenant_schema("empresa_driver_s_r_l")
+
         db.commit()
         print("Inicialización base completada con éxito. Sistema listo en blanco.")
     finally:

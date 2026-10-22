@@ -7,6 +7,7 @@ import openpyxl
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.models.tenant import Viaje, ParametroLiquidacion, UnidadTransporte, Cliente, EmpresaApoyo
+from app.db.session import sanitize_schema_name
 from app.services.calculation_engine import calculate_viaje_values, determine_trip_period
 
 
@@ -67,10 +68,6 @@ def classify_entity_name(name: str) -> str:
     return "cliente"
 
 
-def sanitize_schema_name(name: str) -> str:
-    """Sanitiza el nombre de la empresa para usarlo como esquema PostgreSQL."""
-    slug = re.sub(r'[^a-zA-Z0-9]+', '_', name).strip('_').lower()
-    return f"empresa_{slug[:30]}"
 
 
 def normalize_company_name(name: Any) -> str:
@@ -91,7 +88,7 @@ def get_excel_sheets(file_bytes: bytes) -> List[str]:
 
 
 def parse_date_value(val: Any) -> Optional[date]:
-    """Parsea valores de fecha de forma robusta soportando datetime, date, str y números de serie Excel."""
+    """Parsea valores de fecha de forma robusta soportando datetime, date, str, errores tipográficos comunes y números de serie Excel."""
     if val is None or val == "":
         return None
     if isinstance(val, datetime):
@@ -102,21 +99,49 @@ def parse_date_value(val: Any) -> Optional[date]:
         # Número de serie de Excel (días desde 1899-12-30)
         try:
             from datetime import timedelta
-            return date(1899, 12, 30) + timedelta(days=int(val))
+            if 1000 <= val <= 100000:
+                return date(1899, 12, 30) + timedelta(days=int(val))
         except Exception:
-            return None
+            pass
     val_str = str(val).strip()
-    if not val_str or val_str.upper() in ("NONE", "NULL", "FALTA", "-", "0"):
+    if not val_str or val_str.upper() in (
+        "NONE", "NULL", "FALTA", "-", "0", 
+        "FECHA CARGA", "FECHA RECEPCIÓN", "FECHA RECEPCION", "FECHA DESCARGA", "FECHA FACTURA"
+    ):
         return None
+
+    # Corrección de erratas frecuentes en planillas contables manuales:
+    # 1. Falta de barra antes de año de 4 dígitos: ej. "02/082024" -> "02/08/2024", "15/062025" -> "15/06/2025"
+    val_str = re.sub(r'(\d{1,2})[/-](\d{1,2})(20\d\d)\b', r'\1/\2/\3', val_str)
+    # 2. Año con dígito extra repetido: ej. "17/1/20204" -> "17/1/2024", "20244" -> "2024"
+    val_str = re.sub(r'(\b\d{1,2}[/-]\d{1,2}[/-])202\d{2}\b', r'\g<1>2024', val_str)
+    val_str = re.sub(r'\b20244\b', '2024', val_str)
+
+    # Extraer solo la parte de fecha si viene concatenada con hora
+    if " " in val_str:
+        part_date = val_str.split()[0]
+        if any(c in part_date for c in ("/", "-")):
+            val_str = part_date
+    elif "T" in val_str:
+        part_date = val_str.split("T")[0]
+        if any(c in part_date for c in ("/", "-")):
+            val_str = part_date
+
     try:
         dt = date_parser.parse(val_str, dayfirst=True)
-        return dt.date()
-    except Exception:
-        try:
-            dt = date_parser.parse(val_str, dayfirst=False)
+        if 1990 <= dt.year <= 2040:
             return dt.date()
-        except Exception:
-            return None
+    except Exception:
+        pass
+
+    try:
+        dt = date_parser.parse(val_str, dayfirst=False)
+        if 1990 <= dt.year <= 2040:
+            return dt.date()
+    except Exception:
+        pass
+
+    return None
 
 
 def clean_float(val: Any, default: float = 0.0) -> float:
@@ -353,6 +378,8 @@ def parse_excel_viajes_data(
 
         sheet_valid_count = 0
         consecutive_empty = 0
+        last_seen_cliente: Optional[str] = None
+        invoice_clients: Dict[str, str] = {}
 
         # Iterar filas de datos
         for r_idx, row in enumerate(ws.iter_rows(values_only=True), 1):
@@ -403,10 +430,15 @@ def parse_excel_viajes_data(
             # -------------------------------------------------------------
             # 1. IDENTIFICACIÓN DE FILAS DE SUBTOTAL DE FACTURAS
             # -------------------------------------------------------------
-            # En planillas como Driver S.R.L., las facturas con múltiples viajes
-            # tienen filas hijas (despachos) y una fila de subtotal (sin placa ni empresa).
+            # En planillas contables, las facturas con múltiples despachos tienen filas hijas
+            # y una fila de subtotal/resumen. Una fila de subtotal no tiene datos operacionales
+            # (ni placa, ni producto, ni plantas de carga/descarga ni tramo), aunque el contador
+            # haya copiado el nombre del cliente o el número de factura en dicha fila.
+            has_operational_fields = bool(
+                placa_raw or producto_raw or planta_c or planta_d or tramo_raw
+            )
             is_subtotal_row = (
-                (not placa_upper and not col_a_upper) or 
+                (not has_operational_fields) or 
                 placa_upper in ("TOTAL", "SUBTOTAL", "RESUMEN") or
                 col_a_upper in ("TOTAL", "SUBTOTAL", "RESUMEN")
             )
@@ -466,21 +498,30 @@ def parse_excel_viajes_data(
 
             # Inferencia inteligente de cliente ÚNICAMENTE si la celda de Columna A vino en blanco
             if not clean_cliente or clean_cliente in ("NONE", "NULL", "-", ""):
-                prod_u = clean_string(producto_raw).upper()
-                if any(x in prod_u for x in ("BOBINA", "ACERO", "FIERRO", "BARRA", "PLANCHA", "PERFIL")):
-                    clean_cliente = "CORPORACION ACEROS AREQUIPA S.A."
-                elif any(x in prod_u for x in ("SOYA", "GIRASOL", "HARINA", "COMPENSACION", "ACEITE")):
-                    clean_cliente = "INDUSTRIAS DE ACEITE S.A."
-                elif any(x in prod_u for x in ("FERTILIZANTE", "BORATO", "UREA")):
-                    clean_cliente = "FERTILIZANTES DE LOS ANDES S.R.L."
-                elif any(x in prod_u for x in ("MINERAL", "CONCENTRADO", "PLOMO", "ZINC", "ESTAÑO")):
-                    clean_cliente = "PRODECO S.R.L."
-                elif any(x in prod_u for x in ("MALTA", "CEBADA")):
-                    clean_cliente = "BOCKTRANS S.R.L."
-                elif any(x in prod_u for x in ("DIESEL", "GASOLINA", "GLP", "CRUDO", "PETROLEO", "INSUMOS", "IYA")):
-                    clean_cliente = "YPFB"
+                if nro_fac_raw and str(nro_fac_raw).strip() in invoice_clients:
+                    clean_cliente = invoice_clients[str(nro_fac_raw).strip()]
+                elif last_seen_cliente:
+                    clean_cliente = last_seen_cliente
                 else:
-                    clean_cliente = "CLIENTE GENERAL"
+                    prod_u = clean_string(producto_raw).upper()
+                    if any(x in prod_u for x in ("BOBINA", "ACERO", "FIERRO", "BARRA", "PLANCHA", "PERFIL")):
+                        clean_cliente = "CORPORACION ACEROS AREQUIPA S.A."
+                    elif any(x in prod_u for x in ("SOYA", "GIRASOL", "HARINA", "COMPENSACION", "ACEITE")):
+                        clean_cliente = "INDUSTRIAS DE ACEITE S.A."
+                    elif any(x in prod_u for x in ("FERTILIZANTE", "BORATO", "UREA")):
+                        clean_cliente = "FERTILIZANTES DE LOS ANDES S.R.L."
+                    elif any(x in prod_u for x in ("MINERAL", "CONCENTRADO", "PLOMO", "ZINC", "ESTAÑO")):
+                        clean_cliente = "PRODECO S.R.L."
+                    elif any(x in prod_u for x in ("MALTA", "CEBADA")):
+                        clean_cliente = "BOCKTRANS S.R.L."
+                    elif any(x in prod_u for x in ("DIESEL", "GASOLINA", "GLP", "CRUDO", "PETROLEO", "INSUMOS", "IYA")):
+                        clean_cliente = "YPFB"
+                    else:
+                        clean_cliente = "CLIENTE GENERAL"
+            else:
+                last_seen_cliente = clean_cliente
+                if nro_fac_raw:
+                    invoice_clients[str(nro_fac_raw).strip()] = clean_cliente
 
             tipo_entidad_asignada = "cliente"
             es_apoyo = False
@@ -509,8 +550,13 @@ def parse_excel_viajes_data(
             # 5. FECHAS E INFERENCIA DE PERÍODO
             # -------------------------------------------------------------
             date_fac = parse_date_value(f_fac_raw)
-            date_carga = parse_date_value(f_carga_raw)
-            date_descarga = parse_date_value(f_descarga_raw)
+            date_carga_parsed = parse_date_value(f_carga_raw)
+            date_descarga_parsed = parse_date_value(f_descarga_raw)
+
+            sin_fechas_operativas = (date_carga_parsed is None and date_descarga_parsed is None)
+
+            date_carga = date_carga_parsed
+            date_descarga = date_descarga_parsed
 
             if not date_carga:
                 if date_descarga:
@@ -526,9 +572,9 @@ def parse_excel_viajes_data(
                 date_descarga = date_carga
 
             # Período
-            if f_carga_raw and parse_date_value(f_carga_raw):
+            if date_carga_parsed:
                 periodo = determine_trip_period(date_carga, date_descarga)
-            elif f_descarga_raw and parse_date_value(f_descarga_raw):
+            elif date_descarga_parsed:
                 periodo = determine_trip_period(date_descarga, None)
             elif date_fac:
                 periodo = determine_trip_period(date_fac, None)
@@ -618,6 +664,8 @@ def parse_excel_viajes_data(
                 "fecha_carga": date_carga.isoformat(),
                 "fecha_descarga": date_descarga.isoformat(),
                 "fecha_factura": date_fac.isoformat() if date_fac else None,
+                "sin_fechas_operativas": sin_fechas_operativas,
+                "fecha_asignada_de_factura": bool(sin_fechas_operativas and date_fac),
                 "nro_factura": nro_fac_raw if nro_fac_raw else None,
                 "mic_dta": clean_mic,
                 "contrato": clean_contrato,
@@ -993,11 +1041,35 @@ def execute_import_viajes(
             if rec.get("id"):
                 existing_viaje = session.query(Viaje).filter(Viaje.id == rec["id"]).first()
             elif nro_fac and placa and date_carga:
-                existing_viaje = session.query(Viaje).filter(
-                    Viaje.nro_factura == nro_fac,
-                    Viaje.placa == placa,
-                    Viaje.fecha_carga == date_carga
-                ).first()
+                if placa == "SIN PLACA":
+                    # Para servicios 'SIN PLACA', diferenciar despachos por tramo y flete
+                    existing_viaje = session.query(Viaje).filter(
+                        Viaje.nro_factura == nro_fac,
+                        Viaje.placa == "SIN PLACA",
+                        Viaje.tramo == tramo,
+                        Viaje.fecha_carga == date_carga
+                    ).first()
+                    if not existing_viaje and flete_total_rec > 0:
+                        existing_viaje = session.query(Viaje).filter(
+                            Viaje.nro_factura == nro_fac,
+                            Viaje.placa == "SIN PLACA",
+                            Viaje.tramo == tramo,
+                            func.abs(Viaje.flete_total_bs - flete_total_rec) < 0.05
+                        ).first()
+                else:
+                    existing_viaje = session.query(Viaje).filter(
+                        Viaje.nro_factura == nro_fac,
+                        Viaje.placa == placa,
+                        Viaje.fecha_carga == date_carga
+                    ).first()
+                    if not existing_viaje and placa:
+                        # Búsqueda por factura y placa si es un viaje único de esa factura (ej. fecha reparada)
+                        candidates = session.query(Viaje).filter(
+                            Viaje.nro_factura == nro_fac,
+                            Viaje.placa == placa
+                        ).all()
+                        if len(candidates) == 1:
+                            existing_viaje = candidates[0]
             elif overwrite_duplicates and placa and date_carga:
                 existing_viaje = session.query(Viaje).filter(
                     Viaje.placa == placa,

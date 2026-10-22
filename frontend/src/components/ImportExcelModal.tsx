@@ -119,6 +119,8 @@ export interface PreviewRecord {
   fecha_carga: string;
   fecha_descarga: string;
   fecha_factura?: string | null;
+  sin_fechas_operativas?: boolean;
+  fecha_asignada_de_factura?: boolean;
   nro_factura?: string | null;
   mic_dta?: string | null;
   contrato?: string | null;
@@ -2035,7 +2037,17 @@ export default function ImportExcelModal({
 
                                   {/* Fechas */}
                                   <td className="py-2 px-3 whitespace-nowrap font-mono text-[10px] text-slate-500 dark:text-slate-400">
-                                    {r.fecha_carga} → {r.fecha_descarga}
+                                    <div className="flex items-center gap-1.5">
+                                      <span>{r.fecha_carga} → {r.fecha_descarga}</span>
+                                      {r.sin_fechas_operativas && (
+                                        <span 
+                                          className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                                          title="Sin fechas de carga/descarga en la planilla. Se asignó automáticamente la fecha de la factura para control contable."
+                                        >
+                                          Factura
+                                        </span>
+                                      )}
+                                    </div>
                                   </td>
 
                                   {/* Volumen Facturado Editable (Litros) */}

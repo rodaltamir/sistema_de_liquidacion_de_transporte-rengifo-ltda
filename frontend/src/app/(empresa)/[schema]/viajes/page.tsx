@@ -1164,7 +1164,11 @@ function ViajesContent() {
       });
 
       if (res.periodos_detectados && res.periodos_detectados.length > 0) {
-        setPeriodo(res.periodos_detectados[0]);
+        if (res.periodos_detectados.length > 1) {
+          handleDateFilterChange({ mode: "historico", label: "Histórico Completo (Todos los Años)" });
+        } else {
+          setPeriodo(res.periodos_detectados[0]);
+        }
       }
       loadViajes();
     } catch (err: any) {
@@ -1712,11 +1716,25 @@ function ViajesContent() {
                 <Navigation className="w-10 h-10" />
               </div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-                Aún no has registrado viajes en el periodo {periodo}
+                {periodo ? `Aún no has registrado viajes en el periodo ${periodo}` : "No hay viajes que coincidan con el filtro actual"}
               </h3>
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto mb-6 leading-relaxed">
                 Ingresa los despachos y recepciones de combustible. El sistema calculará en tiempo real el flete bruto en Bs, los subtotales agrupados por tramo y las mermas contractuales YPFB.
               </p>
+              {periodosDisponibles.length > 0 && (
+                <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-center">
+                  <p className="text-xs text-amber-700 dark:text-amber-400 font-semibold mb-2.5">
+                    Hay {periodosDisponibles.reduce((acc: number, p: any) => acc + (p.total_viajes || 0), 0)} viajes registrados en otros periodos o años.
+                  </p>
+                  <button
+                    onClick={() => handleDateFilterChange({ mode: "historico", label: "Histórico Completo (Todos los Años)" })}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-md transition transform hover:scale-105"
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span>Ver Histórico Completo ({periodosDisponibles.reduce((acc: number, p: any) => acc + (p.total_viajes || 0), 0)} viajes)</span>
+                  </button>
+                </div>
+              )}
               <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
                 <button
                   onClick={openCreateModal}
