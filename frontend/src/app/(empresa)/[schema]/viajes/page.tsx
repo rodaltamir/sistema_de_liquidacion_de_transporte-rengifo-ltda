@@ -33,7 +33,9 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowDownUp,
-  Building2
+  Building2,
+  LayoutGrid,
+  Table
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch, getApiUrl } from "@/lib/api";
@@ -161,6 +163,7 @@ function ViajesContent() {
 
   // Pestaña Principal: "planilla" o "historial"
   const [activeMainTab, setActiveMainTab] = useState<"planilla" | "historial">("planilla");
+  const [tablaModo, setTablaModo] = useState<"compacta" | "extendida">("compacta");
 
   // Catálogos dinámicos por empresa
   const [catalogProductos, setCatalogProductos] = useState<string[]>([
@@ -1810,97 +1813,131 @@ function ViajesContent() {
         </div>
       </div>
 
-      {/* Barra de Ordenamiento Intuitivo */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs shadow-xs">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400">
-          <ArrowDownUp className="w-3.5 h-3.5 text-amber-500" />
-          <span>Ordenar Viajes:</span>
+      {/* Barra de Ordenamiento Intuitivo y Modo de Vista */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs shadow-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400">
+            <ArrowDownUp className="w-3.5 h-3.5 text-amber-500" />
+            <span>Ordenar:</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (sortBy === "fecha") {
+                  setSortDir(prev => prev === "asc" ? "desc" : "asc");
+                } else {
+                  setSortBy("fecha");
+                  setSortDir("asc");
+                }
+              }}
+              className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition ${
+                sortBy === "fecha"
+                  ? "bg-amber-500 text-slate-950 border-amber-500 shadow-2xs"
+                  : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-400"
+              }`}
+              title="Ordenar por fecha de carga/despacho (Enero a Diciembre o Diciembre a Enero)"
+            >
+              <Calendar className="w-3 h-3" />
+              <span>Fecha {sortBy === "fecha" ? (sortDir === "asc" ? "↑ (Ene → Dic)" : "↓ (Dic → Ene)") : "(Ene ↔ Dic)"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (sortBy === "factura") {
+                  setSortDir(prev => prev === "asc" ? "desc" : "asc");
+                } else {
+                  setSortBy("factura");
+                  setSortDir("asc");
+                }
+              }}
+              className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition ${
+                sortBy === "factura"
+                  ? "bg-amber-500 text-slate-950 border-amber-500 shadow-2xs"
+                  : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-400"
+              }`}
+              title="Ordenar correlativamente por número de factura"
+            >
+              <FileText className="w-3 h-3" />
+              <span>N° Factura {sortBy === "factura" ? (sortDir === "asc" ? "↑ Menor" : "↓ Mayor") : ""}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (sortBy === "placa") {
+                  setSortDir(prev => prev === "asc" ? "desc" : "asc");
+                } else {
+                  setSortBy("placa");
+                  setSortDir("asc");
+                }
+              }}
+              className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition ${
+                sortBy === "placa"
+                  ? "bg-amber-500 text-slate-950 border-amber-500 shadow-2xs"
+                  : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-400"
+              }`}
+              title="Ordenar alfabéticamente por placa"
+            >
+              <Truck className="w-3 h-3" />
+              <span>Placa {sortBy === "placa" ? (sortDir === "asc" ? "↑ A-Z" : "↓ Z-A") : ""}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (sortBy === "cliente") {
+                  setSortDir(prev => prev === "asc" ? "desc" : "asc");
+                } else {
+                  setSortBy("cliente");
+                  setSortDir("asc");
+                }
+              }}
+              className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition ${
+                sortBy === "cliente"
+                  ? "bg-amber-500 text-slate-950 border-amber-500 shadow-2xs"
+                  : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-400"
+              }`}
+              title="Ordenar por cliente del servicio"
+            >
+              <Building2 className="w-3 h-3" />
+              <span>Cliente {sortBy === "cliente" ? (sortDir === "asc" ? "↑ A-Z" : "↓ Z-A") : ""}</span>
+            </button>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => {
-              if (sortBy === "fecha") {
-                setSortDir(prev => prev === "asc" ? "desc" : "asc");
-              } else {
-                setSortBy("fecha");
-                setSortDir("asc");
-              }
-            }}
-            className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition ${
-              sortBy === "fecha"
-                ? "bg-amber-500 text-slate-950 border-amber-500 shadow-2xs"
-                : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-400"
-            }`}
-            title="Ordenar por fecha de carga/despacho (Enero a Diciembre o Diciembre a Enero)"
-          >
-            <Calendar className="w-3 h-3" />
-            <span>Fecha {sortBy === "fecha" ? (sortDir === "asc" ? "↑ (Ene → Dic)" : "↓ (Dic → Ene)") : "(Ene ↔ Dic)"}</span>
-          </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              if (sortBy === "factura") {
-                setSortDir(prev => prev === "asc" ? "desc" : "asc");
-              } else {
-                setSortBy("factura");
-                setSortDir("asc");
-              }
-            }}
-            className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition ${
-              sortBy === "factura"
-                ? "bg-amber-500 text-slate-950 border-amber-500 shadow-2xs"
-                : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-400"
-            }`}
-            title="Ordenar correlativamente por número de factura"
-          >
-            <FileText className="w-3 h-3" />
-            <span>N° Factura {sortBy === "factura" ? (sortDir === "asc" ? "↑ Menor" : "↓ Mayor") : ""}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (sortBy === "placa") {
-                setSortDir(prev => prev === "asc" ? "desc" : "asc");
-              } else {
-                setSortBy("placa");
-                setSortDir("asc");
-              }
-            }}
-            className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition ${
-              sortBy === "placa"
-                ? "bg-amber-500 text-slate-950 border-amber-500 shadow-2xs"
-                : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-400"
-            }`}
-            title="Ordenar alfabéticamente por placa"
-          >
-            <Truck className="w-3 h-3" />
-            <span>Placa {sortBy === "placa" ? (sortDir === "asc" ? "↑ A-Z" : "↓ Z-A") : ""}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (sortBy === "cliente") {
-                setSortDir(prev => prev === "asc" ? "desc" : "asc");
-              } else {
-                setSortBy("cliente");
-                setSortDir("asc");
-              }
-            }}
-            className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition ${
-              sortBy === "cliente"
-                ? "bg-amber-500 text-slate-950 border-amber-500 shadow-2xs"
-                : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-400"
-            }`}
-            title="Ordenar por cliente del servicio"
-          >
-            <Building2 className="w-3 h-3" />
-            <span>Cliente {sortBy === "cliente" ? (sortDir === "asc" ? "↑ A-Z" : "↓ Z-A") : ""}</span>
-          </button>
-        </div>
+        {/* Selector de Modo de Vista (Ajustada sin scroll vs Extendida) */}
+        {activeMainTab === "planilla" && (
+          <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setTablaModo("compacta")}
+              className={`px-2.5 py-1 rounded-md transition text-[11px] flex items-center gap-1.5 ${
+                tablaModo === "compacta"
+                  ? "bg-amber-500 text-slate-950 font-bold shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+              title="Vista adaptada a pantalla completa sin desplazamiento horizontal"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Ajustada (Sin Scroll)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTablaModo("extendida")}
+              className={`px-2.5 py-1 rounded-md transition text-[11px] flex items-center gap-1.5 ${
+                tablaModo === "extendida"
+                  ? "bg-amber-500 text-slate-950 font-bold shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+              title="Vista extendida tradicional con todas las 20 columnas separadas"
+            >
+              <Table className="w-3.5 h-3.5" />
+              <span>Extendida (20 Cols)</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ============================================================== */}
@@ -1975,232 +2012,510 @@ function ViajesContent() {
           )
         ) : (
           <div className="bg-white dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm dark:shadow-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-black uppercase text-[10px]">
-                    <th className="py-3 px-1 text-center">Nº</th>
-                    <th className="py-3 px-2 text-center whitespace-nowrap">FECHA DE CARGA</th>
-                    <th className="py-3 px-2 text-center whitespace-nowrap">FECHA DE DESCARGA</th>
-                    <th className="py-3 px-2 text-center whitespace-nowrap">MCI/DTA Nº Y OTROS</th>
-                    <th className="py-3 px-2 text-center">PLACA</th>
-                    <th className="py-3 px-2.5 text-left">TRAMO</th>
-                    <th className="py-3 px-2 text-center">CLIENTE</th>
-                    <th className="py-3 px-2 text-center">PRODUCTO</th>
-                    <th className="py-3 px-2 text-center whitespace-nowrap">N° FACTURA</th>
-                    <th className="py-3 px-2 text-center whitespace-nowrap">FECHA FACTURA</th>
-                    <th className="py-3 px-2 text-right whitespace-nowrap">Volumen en Lt. Origen</th>
-                    <th className="py-3 px-2 text-right whitespace-nowrap">Volumen Recepcionado/Descargado</th>
-                    <th className="py-3 px-1.5 text-right whitespace-nowrap">Merma T/Tr</th>
-                    <th className="py-3 px-1.5 text-right whitespace-nowrap">Total Merma (Lt)</th>
-                    <th className="py-3 px-1.5 text-center whitespace-nowrap">MERMA Tolerable</th>
-                    <th className="py-3 px-2 text-right whitespace-nowrap">Merma a Descontar Y.P.F.B. Bs.</th>
-                    <th className="py-3 px-2 text-right whitespace-nowrap">Volumen Facturado</th>
-                    <th className="py-3 px-2 text-right whitespace-nowrap">TARIFA Bs.</th>
-                    <th className="py-3 px-2 text-right whitespace-nowrap">Total a pagar en Bob.</th>
-                    <th className="py-3 px-2 text-center whitespace-nowrap">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                  {(() => {
-                    let globalIdx = startGlobalIdx;
+            {tablaModo === "compacta" ? (
+              /* ============================================================== */
+              /* TABLA MODO COMPACTO: 100% AJUSTADA A PANTALLA SIN SCROLL HORIZONTAL */
+              /* ============================================================== */
+              <div className="w-full">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-black uppercase text-[10px]">
+                      <th className="py-3 px-2 text-center w-9">Nº</th>
+                      <th className="py-3 px-2 text-left">UNIDAD / MIC</th>
+                      <th className="py-3 px-2 text-center">FECHAS</th>
+                      <th className="py-3 px-2.5 text-left">RUTA & CLIENTE</th>
+                      <th className="py-3 px-2 text-center">PRODUCTO</th>
+                      <th className="py-3 px-2 text-center">FACTURA</th>
+                      <th className="py-3 px-2 text-right">VOLUMEN FACT.</th>
+                      <th className="py-3 px-2 text-right">MERMAS YPFB</th>
+                      <th className="py-3 px-2 text-right">TOTAL FLETE</th>
+                      <th className="py-3 px-1.5 text-center w-20">ACC.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                    {(() => {
+                      let globalIdx = startGlobalIdx;
 
-                    return paginatedGroups.map((group, gIdx) => {
-                      const grpVolOrig = group.items.reduce((acc, x) => acc + (Number(x.volumen_origen_litros) || 0), 0);
-                      const grpVolRec = group.items.reduce((acc, x) => acc + (Number(x.volumen_recepcionado_litros) || 0), 0);
-                      const grpMermaReal = group.items.reduce((acc, x) => acc + (Number(x.merma_real_litros) || 0), 0);
-                      const grpMermaExc = group.items.reduce((acc, x) => acc + (Number(x.merma_excedente_litros) || 0), 0);
-                      const grpMermaTol = group.items.reduce((acc, x) => acc + (Number(x.merma_tolerable_litros) || 0), 0);
-                      const grpMDesc = group.items.reduce((acc, x) => acc + (Number(x.merma_descontar_bs) || 0), 0);
-                      const grpDescAdic = group.items.reduce((acc, x) => acc + (Number(x.total_descuentos_adicionales_bs) || 0) + (Number(x.total_descuentos_mermas_bs) || 0), 0);
-                      const grpTotDesc = grpMDesc + grpDescAdic;
-                      const grpVolFact = group.items.reduce((acc, x) => acc + getVolFactLitros(x), 0);
-                      const grpFlete = group.items.reduce((acc, x) => acc + (Number(x.flete_total_bs) || 0), 0);
-                      const grpLiquido = grpFlete - grpTotDesc;
-                      const grpTarifa = group.items[0]?.tarifa_flete || 0;
+                      return paginatedGroups.map((group, gIdx) => {
+                        const grpVolOrig = group.items.reduce((acc, x) => acc + (Number(x.volumen_origen_litros) || 0), 0);
+                        const grpVolRec = group.items.reduce((acc, x) => acc + (Number(x.volumen_recepcionado_litros) || 0), 0);
+                        const grpMermaReal = group.items.reduce((acc, x) => acc + (Number(x.merma_real_litros) || 0), 0);
+                        const grpMermaExc = group.items.reduce((acc, x) => acc + (Number(x.merma_excedente_litros) || 0), 0);
+                        const grpMDesc = group.items.reduce((acc, x) => acc + (Number(x.merma_descontar_bs) || 0), 0);
+                        const grpDescAdic = group.items.reduce((acc, x) => acc + (Number(x.total_descuentos_adicionales_bs) || 0) + (Number(x.total_descuentos_mermas_bs) || 0), 0);
+                        const grpTotDesc = grpMDesc + grpDescAdic;
+                        const grpVolFact = group.items.reduce((acc, x) => acc + getVolFactLitros(x), 0);
+                        const grpFlete = group.items.reduce((acc, x) => acc + (Number(x.flete_total_bs) || 0), 0);
+                        const grpLiquido = grpFlete - grpTotDesc;
+                        const grpTarifa = group.items[0]?.tarifa_flete || 0;
 
-                      const facLabel = group.factura === "S/F" ? "S/F" : group.factura;
-                      const fechasFac = Array.from(new Set(group.items.map(x => x.fecha_factura).filter(Boolean)));
-                      const fechaLabel = fechasFac.length > 0 ? fechasFac.map(f => formatDate(f)).join(", ") : "-";
+                        const facLabel = group.factura === "S/F" ? "S/F" : group.factura;
+                        const fechasFac = Array.from(new Set(group.items.map(x => x.fecha_factura).filter(Boolean)));
+                        const fechaLabel = fechasFac.length > 0 ? fechasFac.map(f => formatDate(f)).join(", ") : "-";
 
-                      return (
-                        <Fragment key={`grp-${gIdx}`}>
-                          {group.items.map((v) => {
-                            globalIdx++;
-                            return (
-                              <tr key={v.id} className="hover:bg-amber-50/40 dark:hover:bg-slate-800/50 transition">
-                                <td className="py-2.5 px-1 text-center font-bold text-slate-700 dark:text-slate-300">{globalIdx}</td>
-                                <td className="py-2.5 px-2 text-center text-slate-500 dark:text-slate-400 whitespace-nowrap">{formatDate(v.fecha_carga)}</td>
-                                <td className="py-2.5 px-2 text-center text-slate-500 dark:text-slate-400 whitespace-nowrap">{formatDate(v.fecha_descarga)}</td>
-                                <td className="py-2.5 px-2 text-center font-mono font-bold text-amber-700 dark:text-amber-400 whitespace-nowrap">{v.mic_dta || "-"}</td>
-                                <td className="py-2.5 px-2 text-center">
-                                  <div className="font-mono font-bold text-slate-900 dark:text-white flex items-center justify-center gap-1.5">
-                                    <span>{v.placa}</span>
-                                  </div>
-                                  {v.es_apoyo ? (
-                                    <div className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold flex items-center justify-center gap-1 mt-0.5">
-                                      <Handshake className="w-3 h-3 text-amber-600 dark:text-amber-500" />
-                                      <span className="truncate max-w-[100px]" title={v.empresa_apoyo_nombre || "Empresa de Apoyo"}>
-                                        {v.empresa_apoyo_nombre || "Apoyo"}
+                        return (
+                          <Fragment key={`grp-${gIdx}`}>
+                            {group.items.map((v) => {
+                              globalIdx++;
+                              const totDesc = (v.merma_descontar_bs || 0) + (v.total_descuentos_adicionales_bs || 0) + (v.total_descuentos_mermas_bs || 0);
+
+                              return (
+                                <tr key={v.id} className="hover:bg-amber-50/40 dark:hover:bg-slate-800/50 transition">
+                                  {/* Nº */}
+                                  <td className="py-2.5 px-2 text-center font-bold text-slate-700 dark:text-slate-300 text-[11px]">
+                                    {globalIdx}
+                                  </td>
+
+                                  {/* Unidad / MIC */}
+                                  <td className="py-2.5 px-2">
+                                    <div className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                                      {v.placa}
+                                    </div>
+                                    <div className="text-[10px] font-mono text-amber-700 dark:text-amber-400 font-semibold truncate max-w-[120px]" title={v.mic_dta || "Sin MIC"}>
+                                      {v.mic_dta ? `MIC: ${v.mic_dta}` : "-"}
+                                    </div>
+                                    {v.es_apoyo ? (
+                                      <div className="text-[9px] text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-0.5 mt-0.5" title={v.empresa_apoyo_nombre || "Empresa de Apoyo"}>
+                                        <Handshake className="w-2.5 h-2.5 text-amber-600 dark:text-amber-500" />
+                                        <span className="truncate max-w-[95px]">{v.empresa_apoyo_nombre || "Apoyo"}</span>
+                                      </div>
+                                    ) : null}
+                                  </td>
+
+                                  {/* Fechas */}
+                                  <td className="py-2.5 px-2 text-[10.5px] font-mono text-slate-600 dark:text-slate-400 leading-tight">
+                                    <div className="flex items-center gap-1 justify-center whitespace-nowrap">
+                                      <span className="text-[9px] text-slate-400 font-bold uppercase">C:</span>
+                                      <span>{formatDate(v.fecha_carga)}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 justify-center whitespace-nowrap mt-0.5">
+                                      <span className="text-[9px] text-slate-400 font-bold uppercase">D:</span>
+                                      <span>{formatDate(v.fecha_descarga)}</span>
+                                    </div>
+                                  </td>
+
+                                  {/* Ruta & Cliente */}
+                                  <td className="py-2.5 px-2.5">
+                                    <div className="text-slate-800 dark:text-slate-200 font-medium text-[11px] truncate max-w-[190px]" title={v.tramo}>
+                                      {v.tramo}
+                                    </div>
+                                    <div className="mt-0.5">
+                                      <span className="inline-block px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20 uppercase truncate max-w-[160px]" title={v.cliente || "Y.P.F.B."}>
+                                        {v.cliente || "Y.P.F.B."}
                                       </span>
                                     </div>
-                                  ) : null}
-                                </td>
-                                <td className="py-2.5 px-2.5 text-slate-700 dark:text-slate-300 truncate max-w-[160px]" title={v.tramo}>
-                                  {v.tramo}
-                                </td>
-                                <td className="py-2.5 px-2 text-center font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                                  {v.cliente || "Y.P.F.B."}
-                                </td>
-                                <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                                    v.producto === "GASOLINA" 
-                                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" 
-                                      : v.producto === "DIESEL"
-                                      ? "bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30"
-                                      : v.producto.includes("PLANCHA")
-                                      ? "bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30"
-                                      : v.producto.includes("SOYA")
-                                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
-                                      : v.producto.includes("GIRASOL")
-                                      ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30"
-                                      : "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30"
-                                  }`}>
-                                    {v.producto}
-                                  </span>
-                                </td>
-                                <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                                  {v.nro_factura && v.nro_factura.trim() ? (
-                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                                      {v.nro_factura}
+                                  </td>
+
+                                  {/* Producto */}
+                                  <td className="py-2.5 px-2 text-center">
+                                    <span className={`inline-block px-2 py-0.5 rounded text-[9.5px] font-bold border truncate max-w-[110px] ${
+                                      v.producto === "GASOLINA" 
+                                        ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" 
+                                        : v.producto === "DIESEL"
+                                        ? "bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30"
+                                        : v.producto.includes("PLANCHA")
+                                        ? "bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30"
+                                        : v.producto.includes("SOYA")
+                                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                                        : v.producto.includes("GIRASOL")
+                                        ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30"
+                                        : "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30"
+                                    }`} title={v.producto}>
+                                      {v.producto}
                                     </span>
-                                  ) : (
-                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">S/F</span>
-                                  )}
-                                </td>
-                                <td className="py-2.5 px-2 text-center text-slate-500 dark:text-slate-400 whitespace-nowrap font-mono text-[11px]">
-                                  {v.fecha_factura ? formatDate(v.fecha_factura) : "-"}
-                                </td>
-                                <td className="py-2.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">{formatNumber(v.volumen_origen_litros, 0)} L</td>
-                                <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400 whitespace-nowrap">{formatNumber(v.volumen_recepcionado_litros, 0)} L</td>
-                                <td className="py-2.5 px-1.5 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                                  {v.merma_real_litros > 0 ? `-${formatNumber(v.merma_real_litros, 1)}` : formatNumber(v.merma_real_litros, 1)} L
-                                </td>
-                                <td className={`py-2.5 px-1.5 text-right font-mono whitespace-nowrap ${v.merma_excedente_litros > 0 ? "text-amber-700 dark:text-amber-400 font-bold" : "text-slate-400 dark:text-slate-500"}`}>
-                                  {formatNumber(v.merma_excedente_litros, 1)} L
-                                </td>
-                                <td className="py-2.5 px-1.5 text-center font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                                  {v.merma_tolerable_litros !== null && v.merma_tolerable_litros !== undefined ? Number(v.merma_tolerable_litros).toFixed(0) : "0"} L
-                                </td>
-                                <td className={`py-2.5 px-2 text-right font-mono whitespace-nowrap ${v.merma_descontar_bs > 0 ? "text-rose-700 dark:text-rose-400 font-bold" : "text-slate-400 dark:text-slate-500"}`}>
-                                  {formatCurrency(v.merma_descontar_bs)}
-                                </td>
-                                <td className="py-2.5 px-2 text-right font-mono font-bold text-sky-700 dark:text-sky-400 whitespace-nowrap">
-                                  {formatNumber(getVolFactLitros(v), 0)} L
-                                </td>
-                                <td className="py-2.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                                  Bs. {formatNumber(v.tarifa_flete, 2)}
-                                </td>
-                                <td className="py-2.5 px-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 whitespace-nowrap">
-                                  <div>{formatCurrency(v.flete_total_bs)}</div>
-                                  {(() => {
-                                    const totDesc = (v.merma_descontar_bs || 0) + (v.total_descuentos_adicionales_bs || 0) + (v.total_descuentos_mermas_bs || 0);
-                                    if (totDesc <= 0) return null;
-                                    return (
-                                      <div className="text-[9px] font-normal leading-tight mt-0.5">
-                                        <div className="text-rose-600 dark:text-rose-400">Desc: -{formatCurrency(totDesc)}</div>
-                                        <div className="text-emerald-700 dark:text-emerald-400 font-bold">Líq: {formatCurrency(v.flete_total_bs - totDesc)}</div>
+                                  </td>
+
+                                  {/* Factura */}
+                                  <td className="py-2.5 px-2 text-center">
+                                    {v.nro_factura && v.nro_factura.trim() ? (
+                                      <div>
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 inline-block">
+                                          FAC #{v.nro_factura}
+                                        </span>
+                                        <div className="text-[9.5px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                                          {v.fecha_factura ? formatDate(v.fecha_factura) : "-"}
+                                        </div>
                                       </div>
-                                    );
-                                  })()}
-                                </td>
-                                <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                                  <div className="flex items-center justify-center gap-1">
-                                    <button
-                                      onClick={() => handleDuplicate(v)}
-                                      className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition"
-                                      title="Duplicar Despacho"
-                                    >
-                                      <Copy className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={() => openEditModal(v)}
-                                      className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-900 dark:hover:text-white transition"
-                                      title="Editar Despacho"
-                                    >
-                                      <Edit className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDelete(v)}
-                                      className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
-                                      title="Eliminar Despacho"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
+                                    ) : (
+                                      <div>
+                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">S/F</span>
+                                        <div className="text-[9.5px] font-mono text-slate-400 dark:text-slate-500 mt-0.5">-</div>
+                                      </div>
+                                    )}
+                                  </td>
+
+                                  {/* Volumen */}
+                                  <td className="py-2.5 px-2 text-right font-mono">
+                                    <div className="font-bold text-sky-700 dark:text-sky-400 text-xs">
+                                      {formatNumber(getVolFactLitros(v), 0)} L
+                                    </div>
+                                    <div className="text-[9px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                                      {v.volumen_origen_litros > 0 || v.volumen_recepcionado_litros > 0 ? (
+                                        <span>Ori: {formatNumber(v.volumen_origen_litros, 0)} · Rec: {formatNumber(v.volumen_recepcionado_litros, 0)}</span>
+                                      ) : (
+                                        <span>{formatNumber(getVolFactM3(v), 2)} m³</span>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* Mermas */}
+                                  <td className="py-2.5 px-2 text-right font-mono">
+                                    {v.merma_descontar_bs > 0 ? (
+                                      <div>
+                                        <div className="text-rose-600 dark:text-rose-400 font-bold text-[11px]">
+                                          -{formatCurrency(v.merma_descontar_bs)}
+                                        </div>
+                                        <div className="text-[9px] text-amber-700 dark:text-amber-400">
+                                          Exc: {formatNumber(v.merma_excedente_litros, 1)} L
+                                        </div>
+                                      </div>
+                                    ) : v.merma_real_litros > 0 ? (
+                                      <div className="text-[10px] text-slate-500">
+                                        -{formatNumber(v.merma_real_litros, 1)} L
+                                        <div className="text-[8.5px] text-emerald-600 font-medium">En Tolerancia</div>
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-400 text-[10px] font-sans">0 L / Bs. 0</span>
+                                    )}
+                                  </td>
+
+                                  {/* Total Flete */}
+                                  <td className="py-2.5 px-2 text-right font-mono">
+                                    <div className="font-black text-amber-700 dark:text-amber-400 text-xs">
+                                      {formatCurrency(v.flete_total_bs)}
+                                    </div>
+                                    <div className="text-[9px] text-slate-500 dark:text-slate-400">
+                                      Tar: Bs. {formatNumber(v.tarifa_flete, 2)}
+                                    </div>
+                                    {totDesc > 0 && (
+                                      <div className="text-[9px] text-emerald-700 dark:text-emerald-400 font-bold">
+                                        Líq: {formatCurrency(v.flete_total_bs - totDesc)}
+                                      </div>
+                                    )}
+                                  </td>
+
+                                  {/* Acciones */}
+                                  <td className="py-2.5 px-1.5 text-center whitespace-nowrap">
+                                    <div className="flex items-center justify-center gap-0.5">
+                                      <button
+                                        onClick={() => handleDuplicate(v)}
+                                        className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition"
+                                        title="Duplicar Despacho"
+                                      >
+                                        <Copy className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => openEditModal(v)}
+                                        className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-900 dark:hover:text-white transition"
+                                        title="Editar Despacho"
+                                      >
+                                        <Edit className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDelete(v)}
+                                        className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
+                                        title="Eliminar Despacho"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+
+                            {/* FILA ESPECIAL COMPACTA: Subtotal del Grupo con Facturación */}
+                            <tr className="bg-amber-100/70 dark:bg-amber-950/40 font-bold border-y-2 border-amber-300 dark:border-amber-700 text-[10.5px]">
+                              <td colSpan={6} className="py-2 px-2.5 text-left border-x border-amber-300 dark:border-amber-700">
+                                <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-1.5">TOTAL {group.producto}</span>
+                                <span className="text-slate-700 dark:text-slate-300 font-medium">| FAC: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
+                                {fechaLabel !== "-" && (
+                                  <span className="text-slate-700 dark:text-slate-300 font-medium ml-1.5">| FECHA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
+                                )}
+                              </td>
+                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700">
+                                <div className="font-black text-sky-800 dark:text-sky-300 text-[11px]">{formatNumber(grpVolFact, 0)} L</div>
+                                <div className="text-[9px] text-slate-500 dark:text-slate-400">Orig: {formatNumber(grpVolOrig, 0)} · Rec: {formatNumber(grpVolRec, 0)}</div>
+                              </td>
+                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700">
+                                {grpMDesc > 0 ? (
+                                  <div>
+                                    <div className="font-bold text-rose-700 dark:text-rose-400 text-[11px]">-{formatCurrency(grpMDesc)}</div>
+                                    <div className="text-[9px] text-amber-800 dark:text-amber-400">Exc: {formatNumber(grpMermaExc, 1)} L</div>
                                   </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
+                                ) : (
+                                  <div className="text-slate-600 dark:text-slate-400 text-[10px]">-{formatNumber(Math.abs(grpMermaReal), 1)} L</div>
+                                )}
+                              </td>
+                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700">
+                                <div className="font-black text-amber-900 dark:text-amber-400 text-[11px]">{formatCurrency(grpFlete)}</div>
+                                <div className="text-[9px] text-slate-600 dark:text-slate-400">Tar: Bs. {formatNumber(grpTarifa, 2)}</div>
+                                {grpTotDesc > 0 && (
+                                  <div className="text-[9px] text-emerald-800 dark:text-emerald-300 font-bold">Líq: {formatCurrency(grpLiquido)}</div>
+                                )}
+                              </td>
+                              <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
+                            </tr>
+                          </Fragment>
+                        );
+                      });
+                    })()}
 
-                          {/* FILA ESPECIAL: Subtotal del Grupo con Facturación y Fechas */}
-                          <tr className="bg-amber-100/70 dark:bg-amber-950/40 font-bold border-y-2 border-amber-300 dark:border-amber-700 text-[10.5px]">
-                            <td colSpan={10} className="py-2.5 px-3 text-left border-x border-amber-300 dark:border-amber-700">
-                              <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-2">TOTAL {group.producto}</span>
-                              <span className="text-slate-700 dark:text-slate-300 font-medium">| FACTURA: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
-                              <span className="text-slate-700 dark:text-slate-300 font-medium ml-2">| FECHA FACTURA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
-                            </td>
-                            <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-900 dark:text-white">{formatNumber(grpVolOrig, 0)} L</td>
-                            <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-emerald-800 dark:text-emerald-300">{formatNumber(grpVolRec, 0)} L</td>
-                            <td className="py-2 px-1 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-700 dark:text-slate-300">-{formatNumber(Math.abs(grpMermaReal), 1)} L</td>
-                            <td className="py-2 px-1 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-400">{formatNumber(grpMermaExc, 1)} L</td>
-                            <td className="py-2 px-1 text-center font-mono border-x border-amber-300 dark:border-amber-700 text-slate-500">{formatNumber(grpMermaTol, 1)} L</td>
-                            <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-rose-700 dark:text-rose-400">{formatCurrency(grpMDesc)}</td>
-                            <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 0)} L</td>
-                            <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-slate-700 dark:text-slate-300">Bs. {formatNumber(grpTarifa, 2)}</td>
-                            <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-amber-900 dark:text-amber-400">
-                              <div>{formatCurrency(grpFlete)}</div>
-                              {grpTotDesc > 0 && (
-                                <div className="text-[9px] font-normal leading-tight mt-0.5">
-                                  <div className="text-rose-700 dark:text-rose-400">Desc: -{formatCurrency(grpTotDesc)}</div>
-                                  <div className="text-emerald-800 dark:text-emerald-300 font-bold">Líq: {formatCurrency(grpLiquido)}</div>
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
-                          </tr>
-                        </Fragment>
-                      );
-                    });
-                  })()}
+                    {/* Fila de Totales Generales de Planilla en Modo Compacto */}
+                    <tr className="bg-slate-100 dark:bg-slate-800/90 font-black text-slate-900 dark:text-white border-t-2 border-b border-slate-300 dark:border-slate-700 text-xs">
+                      <td colSpan={6} className="py-2.5 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 text-[11px]">
+                        TOTAL GENERAL ({filtered.length} DESPACHOS):
+                      </td>
+                      <td className="py-2.5 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700">
+                        <div className="font-black text-sky-700 dark:text-sky-400 text-xs">{formatNumber(totalVolFacturado, 0)} L</div>
+                        <div className="text-[9px] text-slate-500 font-normal">Rec: {formatNumber(totalRecepcionado, 0)} L</div>
+                      </td>
+                      <td className="py-2.5 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700">
+                        <div className="font-bold text-rose-700 dark:text-rose-400 text-xs">{formatCurrency(totalDescMermaBs)}</div>
+                        <div className="text-[9px] text-slate-500 font-normal">Real: -{formatNumber(Math.abs(totalMermaReal), 1)} L</div>
+                      </td>
+                      <td className="py-2.5 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700">
+                        <div className="font-black text-amber-600 dark:text-amber-400 text-sm">{formatCurrency(totalFleteBs)}</div>
+                        {totalTodosDescuentos > 0 && (
+                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">Líq: {formatCurrency(totalLiquidoGeneral)}</div>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-1 border-x border-slate-300 dark:border-slate-700"></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              /* ============================================================== */
+              /* TABLA MODO EXTENDIDO (20 COLUMNAS CON SCROLL HORIZONTAL)        */
+              /* ============================================================== */
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-black uppercase text-[10px]">
+                      <th className="py-3 px-1 text-center">Nº</th>
+                      <th className="py-3 px-2 text-center whitespace-nowrap">FECHA DE CARGA</th>
+                      <th className="py-3 px-2 text-center whitespace-nowrap">FECHA DE DESCARGA</th>
+                      <th className="py-3 px-2 text-center whitespace-nowrap">MCI/DTA Nº Y OTROS</th>
+                      <th className="py-3 px-2 text-center">PLACA</th>
+                      <th className="py-3 px-2.5 text-left">TRAMO</th>
+                      <th className="py-3 px-2 text-center">CLIENTE</th>
+                      <th className="py-3 px-2 text-center">PRODUCTO</th>
+                      <th className="py-3 px-2 text-center whitespace-nowrap">N° FACTURA</th>
+                      <th className="py-3 px-2 text-center whitespace-nowrap">FECHA FACTURA</th>
+                      <th className="py-3 px-2 text-right whitespace-nowrap">Volumen en Lt. Origen</th>
+                      <th className="py-3 px-2 text-right whitespace-nowrap">Volumen Recepcionado/Descargado</th>
+                      <th className="py-3 px-1.5 text-right whitespace-nowrap">Merma T/Tr</th>
+                      <th className="py-3 px-1.5 text-right whitespace-nowrap">Total Merma (Lt)</th>
+                      <th className="py-3 px-1.5 text-center whitespace-nowrap">MERMA Tolerable</th>
+                      <th className="py-3 px-2 text-right whitespace-nowrap">Merma a Descontar Y.P.F.B. Bs.</th>
+                      <th className="py-3 px-2 text-right whitespace-nowrap">Volumen Facturado</th>
+                      <th className="py-3 px-2 text-right whitespace-nowrap">TARIFA Bs.</th>
+                      <th className="py-3 px-2 text-right whitespace-nowrap">Total a pagar en Bob.</th>
+                      <th className="py-3 px-2 text-center whitespace-nowrap">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                    {(() => {
+                      let globalIdx = startGlobalIdx;
 
-                  {/* Fila de Totales Generales de Planilla */}
-                  <tr className="bg-slate-100 dark:bg-slate-800/90 font-black text-slate-900 dark:text-white border-t-2 border-b border-slate-300 dark:border-slate-700 text-xs">
-                    <td colSpan={10} className="py-3 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700">
-                      TOTAL GENERAL:
-                    </td>
-                    <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white">{formatNumber(totalDespachado, 0)} L</td>
-                    <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-emerald-700 dark:text-emerald-400">{formatNumber(totalRecepcionado, 0)} L</td>
-                    <td className="py-3 px-1.5 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-slate-700 dark:text-slate-300">-{formatNumber(Math.abs(totalMermaReal), 1)} L</td>
-                    <td className="py-3 px-1.5 border-x border-slate-300 dark:border-slate-700"></td>
-                    <td className="py-3 px-1.5 border-x border-slate-300 dark:border-slate-700"></td>
-                    <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-rose-700 dark:text-rose-400">{formatCurrency(totalDescMermaBs)}</td>
-                    <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-black text-sky-700 dark:text-sky-400">{formatNumber(totalVolFacturado, 0)} L</td>
-                    <td className="py-3 px-2 border-x border-slate-300 dark:border-slate-700"></td>
-                    <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-black text-amber-600 dark:text-amber-400 text-sm">
-                      <div>{formatCurrency(totalFleteBs)}</div>
-                      {totalTodosDescuentos > 0 && (
-                        <div className="text-[10px] font-bold leading-tight mt-0.5">
-                          <div className="text-rose-600 dark:text-rose-400">Desc: -{formatCurrency(totalTodosDescuentos)}</div>
-                          <div className="text-emerald-600 dark:text-emerald-400">Líq: {formatCurrency(totalLiquidoGeneral)}</div>
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-3 px-2 border-x border-slate-300 dark:border-slate-700"></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                      return paginatedGroups.map((group, gIdx) => {
+                        const grpVolOrig = group.items.reduce((acc, x) => acc + (Number(x.volumen_origen_litros) || 0), 0);
+                        const grpVolRec = group.items.reduce((acc, x) => acc + (Number(x.volumen_recepcionado_litros) || 0), 0);
+                        const grpMermaReal = group.items.reduce((acc, x) => acc + (Number(x.merma_real_litros) || 0), 0);
+                        const grpMermaExc = group.items.reduce((acc, x) => acc + (Number(x.merma_excedente_litros) || 0), 0);
+                        const grpMermaTol = group.items.reduce((acc, x) => acc + (Number(x.merma_tolerable_litros) || 0), 0);
+                        const grpMDesc = group.items.reduce((acc, x) => acc + (Number(x.merma_descontar_bs) || 0), 0);
+                        const grpDescAdic = group.items.reduce((acc, x) => acc + (Number(x.total_descuentos_adicionales_bs) || 0) + (Number(x.total_descuentos_mermas_bs) || 0), 0);
+                        const grpTotDesc = grpMDesc + grpDescAdic;
+                        const grpVolFact = group.items.reduce((acc, x) => acc + getVolFactLitros(x), 0);
+                        const grpFlete = group.items.reduce((acc, x) => acc + (Number(x.flete_total_bs) || 0), 0);
+                        const grpLiquido = grpFlete - grpTotDesc;
+                        const grpTarifa = group.items[0]?.tarifa_flete || 0;
+
+                        const facLabel = group.factura === "S/F" ? "S/F" : group.factura;
+                        const fechasFac = Array.from(new Set(group.items.map(x => x.fecha_factura).filter(Boolean)));
+                        const fechaLabel = fechasFac.length > 0 ? fechasFac.map(f => formatDate(f)).join(", ") : "-";
+
+                        return (
+                          <Fragment key={`grp-${gIdx}`}>
+                            {group.items.map((v) => {
+                              globalIdx++;
+                              return (
+                                <tr key={v.id} className="hover:bg-amber-50/40 dark:hover:bg-slate-800/50 transition">
+                                  <td className="py-2.5 px-1 text-center font-bold text-slate-700 dark:text-slate-300">{globalIdx}</td>
+                                  <td className="py-2.5 px-2 text-center text-slate-500 dark:text-slate-400 whitespace-nowrap">{formatDate(v.fecha_carga)}</td>
+                                  <td className="py-2.5 px-2 text-center text-slate-500 dark:text-slate-400 whitespace-nowrap">{formatDate(v.fecha_descarga)}</td>
+                                  <td className="py-2.5 px-2 text-center font-mono font-bold text-amber-700 dark:text-amber-400 whitespace-nowrap">{v.mic_dta || "-"}</td>
+                                  <td className="py-2.5 px-2 text-center">
+                                    <div className="font-mono font-bold text-slate-900 dark:text-white flex items-center justify-center gap-1.5">
+                                      <span>{v.placa}</span>
+                                    </div>
+                                    {v.es_apoyo ? (
+                                      <div className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold flex items-center justify-center gap-1 mt-0.5">
+                                        <Handshake className="w-3 h-3 text-amber-600 dark:text-amber-500" />
+                                        <span className="truncate max-w-[100px]" title={v.empresa_apoyo_nombre || "Empresa de Apoyo"}>
+                                          {v.empresa_apoyo_nombre || "Apoyo"}
+                                        </span>
+                                      </div>
+                                    ) : null}
+                                  </td>
+                                  <td className="py-2.5 px-2.5 text-slate-700 dark:text-slate-300 truncate max-w-[160px]" title={v.tramo}>
+                                    {v.tramo}
+                                  </td>
+                                  <td className="py-2.5 px-2 text-center font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                                    {v.cliente || "Y.P.F.B."}
+                                  </td>
+                                  <td className="py-2.5 px-2 text-center whitespace-nowrap">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                      v.producto === "GASOLINA" 
+                                        ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" 
+                                        : v.producto === "DIESEL"
+                                        ? "bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30"
+                                        : v.producto.includes("PLANCHA")
+                                        ? "bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30"
+                                        : v.producto.includes("SOYA")
+                                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                                        : v.producto.includes("GIRASOL")
+                                        ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30"
+                                        : "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30"
+                                    }`}>
+                                      {v.producto}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-2 text-center whitespace-nowrap">
+                                    {v.nro_factura && v.nro_factura.trim() ? (
+                                      <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                                        {v.nro_factura}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">S/F</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-2 text-center text-slate-500 dark:text-slate-400 whitespace-nowrap font-mono text-[11px]">
+                                    {v.fecha_factura ? formatDate(v.fecha_factura) : "-"}
+                                  </td>
+                                  <td className="py-2.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">{formatNumber(v.volumen_origen_litros, 0)} L</td>
+                                  <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400 whitespace-nowrap">{formatNumber(v.volumen_recepcionado_litros, 0)} L</td>
+                                  <td className="py-2.5 px-1.5 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                                    {v.merma_real_litros > 0 ? `-${formatNumber(v.merma_real_litros, 1)}` : formatNumber(v.merma_real_litros, 1)} L
+                                  </td>
+                                  <td className={`py-2.5 px-1.5 text-right font-mono whitespace-nowrap ${v.merma_excedente_litros > 0 ? "text-amber-700 dark:text-amber-400 font-bold" : "text-slate-400 dark:text-slate-500"}`}>
+                                    {formatNumber(v.merma_excedente_litros, 1)} L
+                                  </td>
+                                  <td className="py-2.5 px-1.5 text-center font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                                    {v.merma_tolerable_litros !== null && v.merma_tolerable_litros !== undefined ? Number(v.merma_tolerable_litros).toFixed(0) : "0"} L
+                                  </td>
+                                  <td className={`py-2.5 px-2 text-right font-mono whitespace-nowrap ${v.merma_descontar_bs > 0 ? "text-rose-700 dark:text-rose-400 font-bold" : "text-slate-400 dark:text-slate-500"}`}>
+                                    {formatCurrency(v.merma_descontar_bs)}
+                                  </td>
+                                  <td className="py-2.5 px-2 text-right font-mono font-bold text-sky-700 dark:text-sky-400 whitespace-nowrap">
+                                    {formatNumber(getVolFactLitros(v), 0)} L
+                                  </td>
+                                  <td className="py-2.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                                    Bs. {formatNumber(v.tarifa_flete, 2)}
+                                  </td>
+                                  <td className="py-2.5 px-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 whitespace-nowrap">
+                                    <div>{formatCurrency(v.flete_total_bs)}</div>
+                                    {(() => {
+                                      const totDesc = (v.merma_descontar_bs || 0) + (v.total_descuentos_adicionales_bs || 0) + (v.total_descuentos_mermas_bs || 0);
+                                      if (totDesc <= 0) return null;
+                                      return (
+                                        <div className="text-[9px] font-normal leading-tight mt-0.5">
+                                          <div className="text-rose-600 dark:text-rose-400">Desc: -{formatCurrency(totDesc)}</div>
+                                          <div className="text-emerald-700 dark:text-emerald-400 font-bold">Líq: {formatCurrency(v.flete_total_bs - totDesc)}</div>
+                                        </div>
+                                      );
+                                    })()}
+                                  </td>
+                                  <td className="py-2.5 px-2 text-center whitespace-nowrap">
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button
+                                        onClick={() => handleDuplicate(v)}
+                                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition"
+                                        title="Duplicar Despacho"
+                                      >
+                                        <Copy className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => openEditModal(v)}
+                                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-900 dark:hover:text-white transition"
+                                        title="Editar Despacho"
+                                      >
+                                        <Edit className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDelete(v)}
+                                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
+                                        title="Eliminar Despacho"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+
+                            {/* FILA ESPECIAL: Subtotal del Grupo con Facturación y Fechas */}
+                            <tr className="bg-amber-100/70 dark:bg-amber-950/40 font-bold border-y-2 border-amber-300 dark:border-amber-700 text-[10.5px]">
+                              <td colSpan={10} className="py-2.5 px-3 text-left border-x border-amber-300 dark:border-amber-700">
+                                <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-2">TOTAL {group.producto}</span>
+                                <span className="text-slate-700 dark:text-slate-300 font-medium">| FACTURA: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
+                                <span className="text-slate-700 dark:text-slate-300 font-medium ml-2">| FECHA FACTURA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
+                              </td>
+                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-900 dark:text-white">{formatNumber(grpVolOrig, 0)} L</td>
+                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-emerald-800 dark:text-emerald-300">{formatNumber(grpVolRec, 0)} L</td>
+                              <td className="py-2 px-1 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-700 dark:text-slate-300">-{formatNumber(Math.abs(grpMermaReal), 1)} L</td>
+                              <td className="py-2 px-1 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-400">{formatNumber(grpMermaExc, 1)} L</td>
+                              <td className="py-2 px-1 text-center font-mono border-x border-amber-300 dark:border-amber-700 text-slate-500">{formatNumber(grpMermaTol, 1)} L</td>
+                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-rose-700 dark:text-rose-400">{formatCurrency(grpMDesc)}</td>
+                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 0)} L</td>
+                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-slate-700 dark:text-slate-300">Bs. {formatNumber(grpTarifa, 2)}</td>
+                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-amber-900 dark:text-amber-400">
+                                <div>{formatCurrency(grpFlete)}</div>
+                                {grpTotDesc > 0 && (
+                                  <div className="text-[9px] font-normal leading-tight mt-0.5">
+                                    <div className="text-rose-700 dark:text-rose-400">Desc: -{formatCurrency(grpTotDesc)}</div>
+                                    <div className="text-emerald-800 dark:text-emerald-300 font-bold">Líq: {formatCurrency(grpLiquido)}</div>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
+                            </tr>
+                          </Fragment>
+                        );
+                      });
+                    })()}
+
+                    {/* Fila de Totales Generales de Planilla */}
+                    <tr className="bg-slate-100 dark:bg-slate-800/90 font-black text-slate-900 dark:text-white border-t-2 border-b border-slate-300 dark:border-slate-700 text-xs">
+                      <td colSpan={10} className="py-3 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700">
+                        TOTAL GENERAL:
+                      </td>
+                      <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white">{formatNumber(totalDespachado, 0)} L</td>
+                      <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-emerald-700 dark:text-emerald-400">{formatNumber(totalRecepcionado, 0)} L</td>
+                      <td className="py-3 px-1.5 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-slate-700 dark:text-slate-300">-{formatNumber(Math.abs(totalMermaReal), 1)} L</td>
+                      <td className="py-3 px-1.5 border-x border-slate-300 dark:border-slate-700"></td>
+                      <td className="py-3 px-1.5 border-x border-slate-300 dark:border-slate-700"></td>
+                      <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-rose-700 dark:text-rose-400">{formatCurrency(totalDescMermaBs)}</td>
+                      <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-black text-sky-700 dark:text-sky-400">{formatNumber(totalVolFacturado, 0)} L</td>
+                      <td className="py-3 px-2 border-x border-slate-300 dark:border-slate-700"></td>
+                      <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-black text-amber-600 dark:text-amber-400 text-sm">
+                        <div>{formatCurrency(totalFleteBs)}</div>
+                        {totalTodosDescuentos > 0 && (
+                          <div className="text-[10px] font-bold leading-tight mt-0.5">
+                            <div className="text-rose-600 dark:text-rose-400">Desc: -{formatCurrency(totalTodosDescuentos)}</div>
+                            <div className="text-emerald-600 dark:text-emerald-400">Líq: {formatCurrency(totalLiquidoGeneral)}</div>
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 px-2 border-x border-slate-300 dark:border-slate-700"></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
             {renderPagination(totalPlanillaGroups, totalPlanillaPages, `grupos (${filtered.length} despachos)`)}
           </div>
         )
