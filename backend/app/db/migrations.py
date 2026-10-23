@@ -22,6 +22,18 @@ def ensure_tenant_columns(schema_name: str):
         conn.execute(text(f'ALTER TABLE "{schema_name}".parametros_liquidacion ADD COLUMN IF NOT EXISTS tramos_json TEXT DEFAULT \'["ARICA - TAMBO QUEMADO - LA PAZ", "IQUIQUE - PISIGA - ORURO", "MEJILLONES - OLLAGÜE - UYUNI"]\';'))
         conn.execute(text(f'UPDATE "{schema_name}".parametros_liquidacion SET productos_json = \'["GASOLINA", "DIESEL", "INSUMOS Y ADITIVOS"]\' WHERE productos_json IS NULL;'))
         conn.execute(text(f'UPDATE "{schema_name}".parametros_liquidacion SET tramos_json = \'["ARICA - TAMBO QUEMADO - LA PAZ", "IQUIQUE - PISIGA - ORURO", "MEJILLONES - OLLAGÜE - UYUNI"]\' WHERE tramos_json IS NULL;'))
+
+        # ÍNDICES DE ALTO RENDIMIENTO (Aceleración de búsquedas, filtros y ordenamiento)
+        conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{schema_name}_viajes_fecha_carga" ON "{schema_name}".viajes (fecha_carga DESC);'))
+        conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{schema_name}_viajes_nro_factura" ON "{schema_name}".viajes (nro_factura);'))
+        conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{schema_name}_viajes_cliente" ON "{schema_name}".viajes (cliente);'))
+        conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{schema_name}_viajes_estado" ON "{schema_name}".viajes (estado);'))
+        conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{schema_name}_viajes_producto" ON "{schema_name}".viajes (producto);'))
+        conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{schema_name}_viajes_periodo_fecha" ON "{schema_name}".viajes (periodo_mes, fecha_carga DESC);'))
+        conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{schema_name}_viajes_fac_placa" ON "{schema_name}".viajes (nro_factura, placa);'))
+        conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{schema_name}_clientes_nombre" ON "{schema_name}".clientes (nombre);'))
+        conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{schema_name}_unidades_placa" ON "{schema_name}".unidades_transporte (placa);'))
+        conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{schema_name}_liquidaciones_periodo" ON "{schema_name}".liquidaciones (periodo_mes);'))
         conn.commit()
 
 def run_all_tenant_migrations():

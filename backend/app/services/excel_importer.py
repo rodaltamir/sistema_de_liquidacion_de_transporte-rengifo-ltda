@@ -145,12 +145,30 @@ def parse_date_value(val: Any) -> Optional[date]:
 
 
 def clean_float(val: Any, default: float = 0.0) -> float:
-    """Convierte un valor a float limpiando caracteres como comas y espacios."""
+    """Convierte un valor a float limpiando caracteres de moneda, separadores de miles y comas decimales."""
     if val is None or val == "":
         return default
     if isinstance(val, (int, float)):
         return float(val)
-    val_str = str(val).strip().replace(" ", "").replace(",", ".")
+    val_str = str(val).strip().upper()
+    for prefix in ("BS.", "BS", "BOB", "$US", "USD", "$", "LTS", "LT", "M3"):
+        val_str = val_str.replace(prefix, "")
+    val_str = val_str.strip().replace(" ", "")
+    
+    if not val_str:
+        return default
+
+    # Manejar formatos con miles y decimales
+    if "," in val_str and "." in val_str:
+        if val_str.find(",") < val_str.find("."):
+            # Formato estándar ej. 13,288.80
+            val_str = val_str.replace(",", "")
+        else:
+            # Formato europeo/latino ej. 13.288,80
+            val_str = val_str.replace(".", "").replace(",", ".")
+    elif "," in val_str:
+        val_str = val_str.replace(",", ".")
+
     try:
         return float(val_str)
     except Exception:
@@ -158,10 +176,11 @@ def clean_float(val: Any, default: float = 0.0) -> float:
 
 
 def clean_string(val: Any) -> str:
-    """Limpia cadenas de texto."""
+    """Limpia cadenas de texto normalizando espacios y saltos de línea."""
     if val is None:
         return ""
-    return str(val).strip()
+    s = str(val).replace("\r", " ").replace("\n", " ").strip()
+    return re.sub(r'\s+', ' ', s)
 
 
 def detect_columns_and_header_row(rows_iter) -> Tuple[Optional[int], Dict[str, int]]:
@@ -178,49 +197,49 @@ def detect_columns_and_header_row(rows_iter) -> Tuple[Optional[int], Dict[str, i
         row_vals = [clean_string(c) for c in row]
         row_upper = [v.upper() for v in row_vals]
 
-        has_placa = any("PLACA" in v for v in row_upper)
-        has_prod = any("PRODUCTO" in v for v in row_upper)
-        has_vol = any("VOLUMEN" in v or "VOL" in v or "DESPACHADO" in v for v in row_upper)
-        has_emp = any("EMPRESA" in v or "TRANSPORTE" in v or "CLIENTE" in v for v in row_upper)
+        has_placa = any("PLACA" in v or "TRACTO" in v or "CISTERNA" in v for v in row_upper)
+        has_prod = any("PRODUCTO" in v or "MERCADERIA" in v for v in row_upper)
+        has_vol = any("VOLUMEN" in v or "VOL" in v or "DESPACHADO" in v or "LITROS" in v for v in row_upper)
+        has_emp = any("EMPRESA" in v or "TRANSPORTE" in v or "CLIENTE" in v or "CONSIGNATARIO" in v for v in row_upper)
 
         if has_placa and (has_prod or has_vol or has_emp):
             header_row_idx = r_idx
             for c_idx, val in enumerate(row_upper):
                 if not val:
                     continue
-                if "PLACA" in val and "placa" not in col_map:
+                if ("PLACA" in val or "TRACTO" in val or "CISTERNA" in val) and "placa" not in col_map:
                     col_map["placa"] = c_idx
                 elif ("EMPRESA TRANSPORTE" in val or "TRANSPORTISTA" in val or "ASOCIADO" in val or "SOCIO" in val or "PROPIETARIO" in val or ("EMPRESA" in val and "CLIENTE" not in val and "FACTURA" not in val)) and "empresa" not in col_map:
                     col_map["empresa"] = c_idx
                 elif ("CLIENTE" in val or "CONSIGNATARIO" in val or "REMITENTE" in val or "FACTURA EMITIDA" in val or "RAZON SOCIAL" in val or "RAZÓN SOCIAL" in val or "DESTINATARIO" in val or "PAGADOR" in val) and "cliente" not in col_map:
                     col_map["cliente"] = c_idx
-                elif "PRODUCTO" in val and "producto" not in col_map:
+                elif ("PRODUCTO" in val or "MERCADERIA" in val) and "producto" not in col_map:
                     col_map["producto"] = c_idx
                 elif ("PLANTA DE CARGA" in val or "PLANTA CARGA" in val or ("ORIGEN" in val and "FECHA" not in val and "VOL" not in val)) and "planta_carga" not in col_map:
                     col_map["planta_carga"] = c_idx
                 elif ("PLANTA DE DESCARGA" in val or "PLANTA DESCARGA" in val or ("DESTINO" in val and "FECHA" not in val and "VOL" not in val)) and "planta_descarga" not in col_map:
                     col_map["planta_descarga"] = c_idx
-                elif "TRAMO" in val and "tramo" not in col_map:
+                elif ("TRAMO" in val or "RUTA" in val) and "tramo" not in col_map:
                     col_map["tramo"] = c_idx
-                elif ("CARGA" in val and "FECHA" in val) or val in ("FECHA DE CARGA", "F. CARGA", "FECHA CARGA", "F_CARGA"):
+                elif ("CARGA" in val and "FECHA" in val) or val in ("FECHA DE CARGA", "F. CARGA", "FECHA CARGA", "F_CARGA", "FECHA DESPACHO"):
                     col_map["fecha_carga"] = c_idx
-                elif ("RECEPCI" in val and "FECHA" in val) or ("DESCARGA" in val and "FECHA" in val) or val in ("FECHA RECEPCIÓN", "FECHA RECEPCION", "FECHA DESCARGA", "F. DESCARGA"):
+                elif ("RECEPCI" in val and "FECHA" in val) or ("DESCARGA" in val and "FECHA" in val) or val in ("FECHA RECEPCIÓN", "FECHA RECEPCION", "FECHA DESCARGA", "F. DESCARGA", "F_DESCARGA"):
                     col_map["fecha_descarga"] = c_idx
-                elif ("DESPACHADO" in val and ("VOL" in val or "15" in val or "LITRO" in val)) or ("ORIGEN" in val and "VOL" in val):
+                elif ("DESPACHADO" in val and ("VOL" in val or "15" in val or "LITRO" in val or "LT" in val)) or ("ORIGEN" in val and "VOL" in val) or val in ("VOL. ORIGEN", "VOL ORIGEN", "VOL. CARGA"):
                     col_map["vol_origen"] = c_idx
-                elif ("RECEPCIONAD" in val and ("VOL" in val or "15" in val or "LITRO" in val)) or ("DESCARGADO" in val and "VOL" in val):
+                elif ("RECEPCIONAD" in val and ("VOL" in val or "15" in val or "LITRO" in val or "LT" in val)) or ("DESCARGADO" in val and "VOL" in val) or val in ("VOL. RECEPCION", "VOL RECEPCION", "VOL. DESCARGA"):
                     col_map["vol_recepcion"] = c_idx
-                elif ("FACTURAR" in val or "FACTURADO" in val) and ("VOL" in val or "M3" in val or "LITRO" in val):
+                elif ("FACTURAR" in val or "FACTURADO" in val) and ("VOL" in val or "M3" in val or "LITRO" in val or "LT" in val):
                     col_map["vol_facturado"] = c_idx
-                elif "TARIFA" in val or ("FLETE" in val and ("BS" in val or "M3" in val or "US" in val) and "IMPORTE" not in val):
+                elif "TARIFA" in val or ("FLETE" in val and ("BS" in val or "M3" in val or "US" in val) and "IMPORTE" not in val and "TOTAL" not in val):
                     col_map["tarifa"] = c_idx
-                elif "IMPORTE" in val and ("FACTURAR" in val or "TOTAL" in val or "BS" in val):
+                elif ("IMPORTE" in val or "TOTAL" in val) and ("FACTURAR" in val or "FLETE" in val or "BS" in val or "BOB" in val or "PAGAR" in val):
                     col_map["importe_total"] = c_idx
-                elif ("N°" in val or "NRO" in val or "NUM" in val or "Nº" in val) and "FACTURA" in val and "fecha" not in val:
-                    col_map["nro_factura"] = c_idx
-                elif "FECHA" in val and "FACTURA" in val:
+                elif "FECHA" in val and ("FACTURA" in val or "FAC" in val or "EMISION" in val) and "fecha_factura" not in col_map:
                     col_map["fecha_factura"] = c_idx
-                elif ("MIC" in val or "DTA" in val or "MCI" in val) and "FECHA" not in val:
+                elif ("FACTURA" in val or "FAC." in val or "NRO FAC" in val) and not any(k in val for k in ("FECHA", "EMITIDA", "EMPRESA", "CLIENTE", "IMPORTE", "TOTAL", "MONTO", "A FACTURAR")) and "nro_factura" not in col_map:
+                    col_map["nro_factura"] = c_idx
+                elif ("MIC" in val or "DTA" in val or "MCI" in val or "CRT" in val) and "FECHA" not in val:
                     col_map["mic_dta"] = c_idx
                 elif ("MIC" in val or "DTA" in val) and "FECHA" in val:
                     col_map["fecha_mic"] = c_idx
@@ -645,6 +664,22 @@ def parse_excel_viajes_data(
             is_incompleto = len(missing_fields) > 0
             incompleto_reason = ", ".join(missing_fields) if is_incompleto else None
 
+            # Estimación de mermas y líquido pagable para transparencia total en previsualizaciones
+            if vol_o > 0 and vol_r > 0:
+                m_real = round(vol_r - vol_o, 1)
+                prod_u = clean_prod.upper()
+                tol_pct = 0.25 if "GASOLINA" in prod_u else 0.15 if ("DIESEL" in prod_u or prod_u == "DO") else 0.0
+                m_tol = round(vol_o * (tol_pct / 100.0), 1)
+                m_exc = max(0.0, round(abs(m_real) - m_tol, 1)) if abs(m_real) > m_tol else 0.0
+                m_desc_bs = round(m_exc * 7.45, 2)
+            else:
+                m_real = 0.0
+                tol_pct = 0.0
+                m_tol = 0.0
+                m_exc = 0.0
+                m_desc_bs = 0.0
+            liq_pagable = round(flete_calculado - m_desc_bs, 2)
+
             global_fila_counter += 1
             sheet_valid_count += 1
 
@@ -676,6 +711,12 @@ def parse_excel_viajes_data(
                 "tarifa_flete": tarifa,
                 "tipo_tarifa": tipo_tarifa,
                 "flete_total_bs": flete_calculado,
+                "merma_real_litros": m_real,
+                "tolerancia_pct": tol_pct,
+                "merma_tolerable_litros": m_tol,
+                "merma_excedente_litros": m_exc,
+                "merma_descontar_bs": m_desc_bs,
+                "liquido_pagable_bs": liq_pagable,
                 "periodo_mes": periodo,
                 "is_incompleto": is_incompleto,
                 "incompleto_reason": incompleto_reason,

@@ -2,16 +2,36 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
 
-# Engine para esquemas públicos
-engine = create_engine(settings.SQLALCHEMY_DATABASE_URI, pool_pre_ping=True)
+# Engine para esquemas públicos optimizado con pool persistente
+engine = create_engine(
+    settings.SQLALCHEMY_DATABASE_URI,
+    pool_pre_ping=True,
+    pool_size=25,
+    max_overflow=50,
+    pool_recycle=3600
+)
 
 # Sesión local para esquema público
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 
+# Cache en memoria de nombres de esquemas resueltos para velocidad ultrarrápida
+_SCHEMA_CACHE = {}
+
+def invalidate_schema_cache():
+    """Invalida la caché de esquemas cuando se crea o actualiza una empresa."""
+    global _SCHEMA_CACHE
+    _SCHEMA_CACHE.clear()
+
 def resolve_actual_schema(schema_name: str) -> str:
+    if not schema_name:
+        return ""
     clean = schema_name.strip().lower()
+    if clean in _SCHEMA_CACHE:
+        return _SCHEMA_CACHE[clean]
+
     from app.models.public import Empresa
     db = SessionLocal()
+    actual = clean
     try:
         emp = db.query(Empresa).filter(
             (Empresa.schema_name.ilike(clean)) |
@@ -20,12 +40,14 @@ def resolve_actual_schema(schema_name: str) -> str:
             Empresa.is_active == True
         ).first()
         if emp and emp.schema_name:
-            return emp.schema_name
+            actual = emp.schema_name
     except Exception:
         pass
     finally:
         db.close()
-    return clean
+    
+    _SCHEMA_CACHE[clean] = actual
+    return actual
 
 def get_tenant_session(schema_name: str):
     """

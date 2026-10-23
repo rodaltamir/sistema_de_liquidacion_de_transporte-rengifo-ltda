@@ -108,14 +108,7 @@ export default function EmpresaLayout({
       href: `/${schema}/viajes`,
       icon: Navigation,
       description: "Despachos, fletes y mermas",
-      isActive: (path: string) => path === `/${schema}/viajes`
-    },
-    {
-      name: "Historial de Viajes",
-      href: `/${schema}/historial`,
-      icon: History,
-      description: "Búsqueda por factura y detalle de viajes",
-      isActive: (path: string) => path.startsWith(`/${schema}/historial`)
+      isActive: (path: string) => path === `/${schema}/viajes` || path.startsWith(`/${schema}/historial`)
     },
     {
       name: "Liquidaciones",

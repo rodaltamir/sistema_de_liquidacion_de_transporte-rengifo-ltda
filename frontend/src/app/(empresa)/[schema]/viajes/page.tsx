@@ -141,9 +141,23 @@ function ViajesContent() {
   const [placaFiltro, setPlacaFiltro] = useState("");
   const [productoFiltro, setProductoFiltro] = useState("TODOS");
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [sortBy, setSortBy] = useState<"fecha" | "factura" | "placa" | "cliente" | "flete">("fecha");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+
+  // Paginación de alto rendimiento
+  const [pageSize, setPageSize] = useState<number>(50);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+
+  // Búsqueda debounced (150ms) para respuesta ultrafluida al escribir
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+      setCurrentPage(1);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   // Pestaña Principal: "planilla" o "historial"
   const [activeMainTab, setActiveMainTab] = useState<"planilla" | "historial">("planilla");
@@ -274,10 +288,14 @@ function ViajesContent() {
     loadViajes();
   }, [schema, periodo, dateFilterQuery, placaFiltro]);
 
-  // Si viene acción de URL para abrir modal de nuevo viaje
+  // Si viene acción de URL para abrir modal de nuevo viaje o seleccionar pestaña
   useEffect(() => {
     if (searchParams.get("action") === "nuevo" && !loading) {
       openCreateModal();
+    }
+    const tabParam = searchParams.get("tab");
+    if (tabParam === "historial" || tabParam === "planilla") {
+      setActiveMainTab(tabParam);
     }
   }, [searchParams, loading]);
 
@@ -1185,45 +1203,52 @@ function ViajesContent() {
     }
   };
 
-  // Filtrado de viajes para Planilla
-  const filtered = (Array.isArray(viajes) ? viajes : []).filter((v) => {
-    if (productoFiltro !== "TODOS" && v.producto !== productoFiltro) {
-      return false;
-    }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      const matchPlaca = v.placa.toLowerCase().includes(q);
-      const matchMic = v.mic_dta ? v.mic_dta.toLowerCase().includes(q) : false;
-      const matchFactura = v.nro_factura ? v.nro_factura.toLowerCase().includes(q) : false;
-      const matchTramo = v.tramo.toLowerCase().includes(q);
-      const matchCliente = v.cliente.toLowerCase().includes(q);
-      return matchPlaca || matchMic || matchFactura || matchTramo || matchCliente;
-    }
-    return true;
-  });
+  // Filtrado de viajes para Planilla optimizado con useMemo
+  const filtered = useMemo(() => {
+    const list = Array.isArray(viajes) ? viajes : [];
+    if (productoFiltro === "TODOS" && !search.trim()) return list;
+    const q = search.trim().toLowerCase();
+    return list.filter((v) => {
+      if (productoFiltro !== "TODOS" && v.producto !== productoFiltro) return false;
+      if (q) {
+        return (
+          v.placa.toLowerCase().includes(q) ||
+          (v.mic_dta ? v.mic_dta.toLowerCase().includes(q) : false) ||
+          (v.nro_factura ? v.nro_factura.toLowerCase().includes(q) : false) ||
+          v.tramo.toLowerCase().includes(q) ||
+          v.cliente.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [viajes, productoFiltro, search]);
 
-  // Filtrado específico para Historial
-  const historialFiltered = (Array.isArray(viajes) ? viajes : []).filter((v) => {
-    if (historialFacturadoFilter === "FACTURADOS" && (!v.nro_factura || !v.nro_factura.trim())) {
-      return false;
-    }
-    if (historialFacturadoFilter === "SIN_FACTURAR" && v.nro_factura && v.nro_factura.trim()) {
-      return false;
-    }
-    if (productoFiltro !== "TODOS" && v.producto !== productoFiltro) {
-      return false;
-    }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      const matchPlaca = v.placa.toLowerCase().includes(q);
-      const matchMic = v.mic_dta ? v.mic_dta.toLowerCase().includes(q) : false;
-      const matchFactura = v.nro_factura ? v.nro_factura.toLowerCase().includes(q) : false;
-      const matchTramo = v.tramo.toLowerCase().includes(q);
-      const matchCliente = v.cliente.toLowerCase().includes(q);
-      return matchPlaca || matchMic || matchFactura || matchTramo || matchCliente;
-    }
-    return true;
-  });
+  // Filtrado específico para Historial optimizado con useMemo
+  const historialFiltered = useMemo(() => {
+    const list = Array.isArray(viajes) ? viajes : [];
+    const q = search.trim().toLowerCase();
+    return list.filter((v) => {
+      if (historialFacturadoFilter === "FACTURADOS" && (!v.nro_factura || !v.nro_factura.trim())) {
+        return false;
+      }
+      if (historialFacturadoFilter === "SIN_FACTURAR" && v.nro_factura && v.nro_factura.trim()) {
+        return false;
+      }
+      if (productoFiltro !== "TODOS" && v.producto !== productoFiltro) {
+        return false;
+      }
+      if (q) {
+        return (
+          v.placa.toLowerCase().includes(q) ||
+          (v.mic_dta ? v.mic_dta.toLowerCase().includes(q) : false) ||
+          (v.nro_factura ? v.nro_factura.toLowerCase().includes(q) : false) ||
+          v.tramo.toLowerCase().includes(q) ||
+          v.cliente.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [viajes, historialFacturadoFilter, productoFiltro, search]);
 
   // Ordenamiento dinámico de Historial
   const sortedHistorialFiltered = useMemo(() => {
@@ -1263,23 +1288,202 @@ function ViajesContent() {
     return list;
   }, [historialFiltered, sortBy, sortDir]);
 
-  // Métricas Sumatorias de Planilla
-  const totalDespachado = filtered.reduce((acc, v) => acc + (v.volumen_origen_litros || 0), 0);
-  const totalRecepcionado = filtered.reduce((acc, v) => acc + (v.volumen_recepcionado_litros || 0), 0);
-  const totalMermaReal = filtered.reduce((acc, v) => acc + (v.merma_real_litros || 0), 0);
-  const totalDescMermaBs = filtered.reduce((acc, v) => acc + (v.merma_descontar_bs || 0), 0);
-  const totalVolFacturado = filtered.reduce((acc, v) => acc + getVolFactLitros(v), 0);
-  const totalFleteBs = filtered.reduce((acc, v) => acc + (v.flete_total_bs || 0), 0);
-  const totalDescAdicBs = filtered.reduce((acc, v) => acc + (v.total_descuentos_adicionales_bs || 0) + (v.total_descuentos_mermas_bs || 0), 0);
-  const totalTodosDescuentos = totalDescMermaBs + totalDescAdicBs;
-  const totalLiquidoGeneral = totalFleteBs - totalTodosDescuentos;
+  // Agrupación y Ordenamiento de Planilla optimizada con useMemo
+  const planillaGroups = useMemo(() => {
+    const groupsMap: { [k: string]: { tramo: string; producto: string; factura: string; items: Viaje[] } } = {};
+    for (const v of filtered) {
+      const t = (v.tramo || "SIN TRAMO").trim().toUpperCase();
+      const p = (v.producto || "SIN PRODUCTO").trim().toUpperCase();
+      const f = (v.nro_factura || "").trim().toUpperCase() || "S/F";
+      const key = `${t}___${p}___${f}`;
+      if (!groupsMap[key]) {
+        groupsMap[key] = { tramo: t, producto: p, factura: f, items: [] };
+      }
+      groupsMap[key].items.push(v);
+    }
+
+    const groupsList = Object.values(groupsMap).map((g) => {
+      g.items.sort((a, b) => {
+        if (sortBy === "fecha") {
+          const dA = a.fecha_carga || "";
+          const dB = b.fecha_carga || "";
+          const cmp = dA.localeCompare(dB);
+          return sortDir === "asc" ? cmp : -cmp;
+        } else if (sortBy === "placa") {
+          const cmp = (a.placa || "").localeCompare(b.placa || "");
+          return sortDir === "asc" ? cmp : -cmp;
+        } else if (sortBy === "cliente") {
+          const cmp = (a.cliente || "").localeCompare(b.cliente || "");
+          return sortDir === "asc" ? cmp : -cmp;
+        }
+        return (a.fecha_carga || "").localeCompare(b.fecha_carga || "");
+      });
+      return g;
+    });
+
+    groupsList.sort((a, b) => {
+      if (sortBy === "factura") {
+        const cmp = a.factura.localeCompare(b.factura, undefined, { numeric: true, sensitivity: "base" });
+        return sortDir === "asc" ? cmp : -cmp;
+      }
+      const dateA = a.items[0]?.fecha_carga || "";
+      const dateB = b.items[0]?.fecha_carga || "";
+      const cmp = dateA.localeCompare(dateB);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+
+    return groupsList;
+  }, [filtered, sortBy, sortDir]);
+
+  // Paginación para Historial y Planilla
+  const totalHistorialItems = sortedHistorialFiltered.length;
+  const totalHistorialPages = pageSize === 0 ? 1 : Math.ceil(totalHistorialItems / pageSize) || 1;
+  const paginatedHistorial = useMemo(() => {
+    if (pageSize === 0) return sortedHistorialFiltered;
+    const start = (currentPage - 1) * pageSize;
+    return sortedHistorialFiltered.slice(start, start + pageSize);
+  }, [sortedHistorialFiltered, currentPage, pageSize]);
+
+  const totalPlanillaGroups = planillaGroups.length;
+  const totalPlanillaPages = pageSize === 0 ? 1 : Math.ceil(totalPlanillaGroups / pageSize) || 1;
+  const paginatedGroups = useMemo(() => {
+    if (pageSize === 0) return planillaGroups;
+    const start = (currentPage - 1) * pageSize;
+    return planillaGroups.slice(start, start + pageSize);
+  }, [planillaGroups, currentPage, pageSize]);
+
+  const startGlobalIdx = useMemo(() => {
+    if (pageSize === 0 || currentPage <= 1) return 0;
+    const prevGroups = planillaGroups.slice(0, (currentPage - 1) * pageSize);
+    return prevGroups.reduce((acc, g) => acc + g.items.length, 0);
+  }, [planillaGroups, currentPage, pageSize]);
+
+  // Métricas Sumatorias de Planilla calculadas en un solo paso
+  const {
+    totalDespachado,
+    totalRecepcionado,
+    totalMermaReal,
+    totalDescMermaBs,
+    totalVolFacturado,
+    totalFleteBs,
+    totalDescAdicBs,
+    totalTodosDescuentos,
+    totalLiquidoGeneral
+  } = useMemo(() => {
+    let desp = 0;
+    let recep = 0;
+    let mReal = 0;
+    let dMerma = 0;
+    let vFact = 0;
+    let flete = 0;
+    let dAdic = 0;
+
+    for (const v of filtered) {
+      desp += v.volumen_origen_litros || 0;
+      recep += v.volumen_recepcionado_litros || 0;
+      mReal += v.merma_real_litros || 0;
+      dMerma += v.merma_descontar_bs || 0;
+      vFact += getVolFactLitros(v);
+      flete += v.flete_total_bs || 0;
+      dAdic += (v.total_descuentos_adicionales_bs || 0) + (v.total_descuentos_mermas_bs || 0);
+    }
+    const totDesc = dMerma + dAdic;
+    return {
+      totalDespachado: desp,
+      totalRecepcionado: recep,
+      totalMermaReal: mReal,
+      totalDescMermaBs: dMerma,
+      totalVolFacturado: vFact,
+      totalFleteBs: flete,
+      totalDescAdicBs: dAdic,
+      totalTodosDescuentos: totDesc,
+      totalLiquidoGeneral: flete - totDesc
+    };
+  }, [filtered]);
 
   // Métricas de Historial
   const histTotalViajes = viajes.length;
-  const histFacturados = viajes.filter(v => v.nro_factura && v.nro_factura.trim());
-  const histSinFactura = viajes.filter(v => !v.nro_factura || !v.nro_factura.trim());
-  const histMontoFacturadoBs = histFacturados.reduce((acc, v) => acc + (v.flete_total_bs || 0), 0);
-  const histMontoSinFacturaBs = histSinFactura.reduce((acc, v) => acc + (v.flete_total_bs || 0), 0);
+  const histFacturados = useMemo(() => viajes.filter(v => v.nro_factura && v.nro_factura.trim()), [viajes]);
+  const histSinFactura = useMemo(() => viajes.filter(v => !v.nro_factura || !v.nro_factura.trim()), [viajes]);
+  const histMontoFacturadoBs = useMemo(() => histFacturados.reduce((acc, v) => acc + (v.flete_total_bs || 0), 0), [histFacturados]);
+  const histMontoSinFacturaBs = useMemo(() => histSinFactura.reduce((acc, v) => acc + (v.flete_total_bs || 0), 0), [histSinFactura]);
+
+  // Componente de Paginación Inteligente
+  const renderPagination = (totalItems: number, totalPages: number, itemLabel: string = "viajes") => {
+    if (totalItems <= 25 && pageSize >= 25) return null;
+    const startItem = pageSize === 0 ? 1 : Math.min((currentPage - 1) * pageSize + 1, totalItems);
+    const endItem = pageSize === 0 ? totalItems : Math.min(currentPage * pageSize, totalItems);
+
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs mt-3 shadow-xs">
+        <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+          <span>Mostrando <b>{totalItems > 0 ? startItem : 0}</b> - <b>{endItem}</b> de <b>{totalItems}</b> {itemLabel}</span>
+          <span className="text-slate-300 dark:text-slate-700">|</span>
+          <label className="flex items-center gap-1.5">
+            <span>Por página:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded px-2 py-1 text-xs font-semibold focus:outline-none focus:border-amber-500 text-slate-900 dark:text-white"
+            >
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={250}>250</option>
+              <option value={0}>Todos ({totalItems})</option>
+            </select>
+          </label>
+        </div>
+
+        {pageSize > 0 && totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage <= 1}
+              className="px-2 py-1 rounded border border-slate-200 dark:border-slate-800 disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition"
+              title="Primera página"
+            >
+              &laquo;
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage <= 1}
+              className="px-2.5 py-1 rounded border border-slate-200 dark:border-slate-800 disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition"
+              title="Página anterior"
+            >
+              &lsaquo;
+            </button>
+            <span className="px-3 py-1 font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded border border-amber-500/20">
+              Página {currentPage} de {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage >= totalPages}
+              className="px-2.5 py-1 rounded border border-slate-200 dark:border-slate-800 disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition"
+              title="Página siguiente"
+            >
+              &rsaquo;
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage >= totalPages}
+              className="px-2 py-1 rounded border border-slate-200 dark:border-slate-800 disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition"
+              title="Última página"
+            >
+              &raquo;
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4 font-sans selection:bg-amber-500 selection:text-slate-950">
@@ -1598,8 +1802,8 @@ function ViajesContent() {
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder={activeMainTab === "historial" ? "Buscar por Nº de Factura, placa, cliente, MIC..." : "Buscar por MIC, tramo, placa o cliente..."}
             className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500 transition"
           />
@@ -1762,7 +1966,7 @@ function ViajesContent() {
                 No hay viajes que coincidan con los filtros aplicados en la planilla.
               </p>
               <button
-                onClick={() => { setSearch(""); setPlacaFiltro(""); setProductoFiltro("TODOS"); }}
+                onClick={() => { setSearchInput(""); setSearch(""); setPlacaFiltro(""); setProductoFiltro("TODOS"); }}
                 className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 transition"
               >
                 Restablecer Filtros
@@ -1783,6 +1987,8 @@ function ViajesContent() {
                     <th className="py-3 px-2.5 text-left">TRAMO</th>
                     <th className="py-3 px-2 text-center">CLIENTE</th>
                     <th className="py-3 px-2 text-center">PRODUCTO</th>
+                    <th className="py-3 px-2 text-center whitespace-nowrap">N° FACTURA</th>
+                    <th className="py-3 px-2 text-center whitespace-nowrap">FECHA FACTURA</th>
                     <th className="py-3 px-2 text-right whitespace-nowrap">Volumen en Lt. Origen</th>
                     <th className="py-3 px-2 text-right whitespace-nowrap">Volumen Recepcionado/Descargado</th>
                     <th className="py-3 px-1.5 text-right whitespace-nowrap">Merma T/Tr</th>
@@ -1797,53 +2003,9 @@ function ViajesContent() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                   {(() => {
-                    // Agrupación de viajes por (tramo, producto, nro_factura) y orden cronológico
-                    const groupsMap: { [k: string]: { tramo: string; producto: string; factura: string; items: Viaje[] } } = {};
-                    for (const v of filtered) {
-                      const t = (v.tramo || "SIN TRAMO").trim().toUpperCase();
-                      const p = (v.producto || "SIN PRODUCTO").trim().toUpperCase();
-                      const f = (v.nro_factura || "").trim().toUpperCase() || "S/F";
-                      const key = `${t}___${p}___${f}`;
-                      if (!groupsMap[key]) {
-                        groupsMap[key] = { tramo: t, producto: p, factura: f, items: [] };
-                      }
-                      groupsMap[key].items.push(v);
-                    }
+                    let globalIdx = startGlobalIdx;
 
-                    const groups = Object.values(groupsMap).map((g) => {
-                      g.items.sort((a, b) => {
-                        if (sortBy === "fecha") {
-                          const dA = a.fecha_carga || "";
-                          const dB = b.fecha_carga || "";
-                          const cmp = dA.localeCompare(dB);
-                          return sortDir === "asc" ? cmp : -cmp;
-                        } else if (sortBy === "placa") {
-                          const cmp = (a.placa || "").localeCompare(b.placa || "");
-                          return sortDir === "asc" ? cmp : -cmp;
-                        } else if (sortBy === "cliente") {
-                          const cmp = (a.cliente || "").localeCompare(b.cliente || "");
-                          return sortDir === "asc" ? cmp : -cmp;
-                        }
-                        return (a.fecha_carga || "").localeCompare(b.fecha_carga || "");
-                      });
-                      return g;
-                    });
-
-                    // Ordenar grupos según el criterio seleccionado
-                    groups.sort((a, b) => {
-                      if (sortBy === "factura") {
-                        const cmp = a.factura.localeCompare(b.factura, undefined, { numeric: true, sensitivity: "base" });
-                        return sortDir === "asc" ? cmp : -cmp;
-                      }
-                      const dateA = a.items[0]?.fecha_carga || "";
-                      const dateB = b.items[0]?.fecha_carga || "";
-                      const cmp = dateA.localeCompare(dateB);
-                      return sortDir === "asc" ? cmp : -cmp;
-                    });
-
-                    let globalIdx = 0;
-
-                    return groups.map((group, gIdx) => {
+                    return paginatedGroups.map((group, gIdx) => {
                       const grpVolOrig = group.items.reduce((acc, x) => acc + (Number(x.volumen_origen_litros) || 0), 0);
                       const grpVolRec = group.items.reduce((acc, x) => acc + (Number(x.volumen_recepcionado_litros) || 0), 0);
                       const grpMermaReal = group.items.reduce((acc, x) => acc + (Number(x.merma_real_litros) || 0), 0);
@@ -1906,6 +2068,18 @@ function ViajesContent() {
                                   }`}>
                                     {v.producto}
                                   </span>
+                                </td>
+                                <td className="py-2.5 px-2 text-center whitespace-nowrap">
+                                  {v.nro_factura && v.nro_factura.trim() ? (
+                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                                      {v.nro_factura}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">S/F</span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-2 text-center text-slate-500 dark:text-slate-400 whitespace-nowrap font-mono text-[11px]">
+                                  {v.fecha_factura ? formatDate(v.fecha_factura) : "-"}
                                 </td>
                                 <td className="py-2.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">{formatNumber(v.volumen_origen_litros, 0)} L</td>
                                 <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400 whitespace-nowrap">{formatNumber(v.volumen_recepcionado_litros, 0)} L</td>
@@ -1971,7 +2145,7 @@ function ViajesContent() {
 
                           {/* FILA ESPECIAL: Subtotal del Grupo con Facturación y Fechas */}
                           <tr className="bg-amber-100/70 dark:bg-amber-950/40 font-bold border-y-2 border-amber-300 dark:border-amber-700 text-[10.5px]">
-                            <td colSpan={8} className="py-2.5 px-3 text-left border-x border-amber-300 dark:border-amber-700">
+                            <td colSpan={10} className="py-2.5 px-3 text-left border-x border-amber-300 dark:border-amber-700">
                               <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-2">TOTAL {group.producto}</span>
                               <span className="text-slate-700 dark:text-slate-300 font-medium">| FACTURA: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
                               <span className="text-slate-700 dark:text-slate-300 font-medium ml-2">| FECHA FACTURA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
@@ -2002,7 +2176,7 @@ function ViajesContent() {
 
                   {/* Fila de Totales Generales de Planilla */}
                   <tr className="bg-slate-100 dark:bg-slate-800/90 font-black text-slate-900 dark:text-white border-t-2 border-b border-slate-300 dark:border-slate-700 text-xs">
-                    <td colSpan={8} className="py-3 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700">
+                    <td colSpan={10} className="py-3 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700">
                       TOTAL GENERAL:
                     </td>
                     <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white">{formatNumber(totalDespachado, 0)} L</td>
@@ -2027,6 +2201,7 @@ function ViajesContent() {
                 </tbody>
               </table>
             </div>
+            {renderPagination(totalPlanillaGroups, totalPlanillaPages, `grupos (${filtered.length} despachos)`)}
           </div>
         )
       )}
@@ -2079,7 +2254,7 @@ function ViajesContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                  {sortedHistorialFiltered.map((v) => {
+                  {paginatedHistorial.map((v) => {
                     const totDesc = (v.total_descuentos_adicionales_bs || 0) + (v.total_descuentos_mermas_bs || 0) + (v.merma_descontar_bs || 0);
                     return (
                       <tr key={`hist-${v.id}`} className="hover:bg-amber-50/40 dark:hover:bg-slate-800/50 transition">
@@ -2197,6 +2372,7 @@ function ViajesContent() {
                 </tbody>
               </table>
             </div>
+            {renderPagination(totalHistorialItems, totalHistorialPages, "viajes")}
           </div>
         )
       )}

@@ -73,29 +73,39 @@ def get_dashboard_metrics(
             query_liq = query_liq.filter(Liquidacion.periodo_mes.startswith(f"{target_year}-"))
             label_periodo = f"Gestión {target_year} (Anual)"
 
-        viajes_mes = query_viajes.all()
-        
-        total_viajes = len(viajes_mes)
-        total_volumen_origen = sum(v.volumen_origen_litros for v in viajes_mes)
-        total_volumen_recepcionado = sum(v.volumen_recepcionado_litros for v in viajes_mes)
-        total_flete_bruto = sum(v.flete_total_bs for v in viajes_mes)
-        total_merma_real = sum(v.merma_real_litros for v in viajes_mes)
-        total_merma_descontar = sum(v.merma_descontar_bs for v in viajes_mes)
+        # Agregaciones SQL directas en PostgreSQL (Ultra rápido)
+        agg_result = query_viajes.with_entities(
+            func.count(Viaje.id),
+            func.coalesce(func.sum(Viaje.volumen_recepcionado_litros), 0.0),
+            func.coalesce(func.sum(Viaje.flete_total_bs), 0.0),
+            func.coalesce(func.sum(Viaje.merma_real_litros), 0.0),
+            func.coalesce(func.sum(Viaje.merma_descontar_bs), 0.0)
+        ).first()
 
-        # Desglose por producto
-        vol_por_producto = {}
-        for v in viajes_mes:
-            prod = v.producto or "OTROS"
-            vol_por_producto[prod] = vol_por_producto.get(prod, 0.0) + v.volumen_recepcionado_litros
+        total_viajes = agg_result[0] or 0
+        total_volumen_recepcionado = float(agg_result[1] or 0.0)
+        total_flete_bruto = float(agg_result[2] or 0.0)
+        total_merma_real = float(agg_result[3] or 0.0)
+        total_merma_descontar = float(agg_result[4] or 0.0)
+
+        # Desglose por producto directo en base de datos
+        prod_rows = query_viajes.with_entities(
+            Viaje.producto,
+            func.sum(Viaje.volumen_recepcionado_litros)
+        ).group_by(Viaje.producto).all()
+        vol_por_producto = {(p[0] or "OTROS"): float(p[1] or 0.0) for p in prod_rows}
 
         # Unidades de transporte
         total_unidades = session.query(UnidadTransporte).count()
         unidades_activas = session.query(UnidadTransporte).filter(UnidadTransporte.estado == "Activo").count()
 
-        # Liquidaciones del período filtrado
-        liquidaciones = query_liq.all()
-        total_liquidaciones = len(liquidaciones)
-        total_liquido_pagable = sum(l.liquido_pagable_bs for l in liquidaciones)
+        # Liquidaciones del período filtrado agregadas en base de datos
+        liq_agg = query_liq.with_entities(
+            func.count(Liquidacion.id),
+            func.coalesce(func.sum(Liquidacion.liquido_pagable_bs), 0.0)
+        ).first()
+        total_liquidaciones = liq_agg[0] or 0
+        total_liquido_pagable = float(liq_agg[1] or 0.0)
 
         # Viajes recientes
         viajes_recientes = session.query(Viaje).order_by(Viaje.fecha_carga.desc()).limit(6).all()

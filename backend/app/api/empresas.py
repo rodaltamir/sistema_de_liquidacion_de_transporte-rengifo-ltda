@@ -4,12 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional, Dict, Any
-from app.db.session import get_db, engine, get_tenant_session, init_tenant_schema, sanitize_schema_name
+from app.db.session import get_db, engine, get_tenant_session, init_tenant_schema, sanitize_schema_name, invalidate_schema_cache
 from app.db.base_class import Base
 from app.models.public import Empresa, Asociacion
 from app.models.tenant import ParametroLiquidacion
 from app.schemas.empresa import EmpresaCreate, EmpresaUpdate, EmpresaResponse
-from app.api.deps import require_admin, require_current_user
+from app.api.deps import require_admin, require_current_user, invalidate_tenant_cache
 from app.services.excel_importer import (
     get_excel_sheets,
     parse_excel_viajes_data,
@@ -83,6 +83,8 @@ def create_empresa(emp_in: EmpresaCreate, db: Session = Depends(get_db)):
     db.add(empresa)
     db.commit()
     db.refresh(empresa)
+    invalidate_schema_cache()
+    invalidate_tenant_cache()
 
     # Inicializar esquema y tablas
     init_tenant_schema(schema_name)
@@ -440,6 +442,8 @@ def update_empresa(schema_name: str, emp_in: EmpresaUpdate, db: Session = Depend
 
     db.commit()
     db.refresh(emp)
+    invalidate_schema_cache()
+    invalidate_tenant_cache()
 
     return EmpresaResponse(
         id=emp.id,
@@ -467,6 +471,8 @@ def delete_empresa(schema_name: str, db: Session = Depends(get_db)):
     
     db.delete(emp)
     db.commit()
+    invalidate_schema_cache()
+    invalidate_tenant_cache()
 
     # Opcionalmente eliminar el esquema
     try:

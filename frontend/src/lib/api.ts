@@ -12,7 +12,31 @@ export function getApiBaseUrl(): string {
 
 export const getApiUrl = getApiBaseUrl;
 
-export async function apiFetch(endpoint: string, options: RequestInit = {}) {
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
+
+// Cache en memoria para acelerar la navegación entre módulos (0ms en cambios de pestaña)
+const memoryCache = new Map<string, CacheEntry>();
+
+export function clearApiCache(pattern?: string) {
+  if (!pattern) {
+    memoryCache.clear();
+    return;
+  }
+  for (const key of memoryCache.keys()) {
+    if (key.includes(pattern)) {
+      memoryCache.delete(key);
+    }
+  }
+}
+
+export interface ApiFetchOptions extends RequestInit {
+  noCache?: boolean;
+}
+
+export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
   const headers: Record<string, string> = {
@@ -31,6 +55,21 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
 
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const url = `${getApiBaseUrl()}${cleanEndpoint}`;
+
+  const method = (options.method || 'GET').toUpperCase();
+  const isGet = method === 'GET';
+  const bypassCache = options.cache === 'no-store' || options.noCache === true;
+
+  // Si se ejecuta una mutación (POST, PUT, DELETE, PATCH), invalidar la caché
+  if (!isGet) {
+    clearApiCache();
+  } else if (!bypassCache) {
+    const cached = memoryCache.get(url);
+    // Catálogos, empresas y unidades se benefician de 30s de caché en memoria
+    if (cached && (Date.now() - cached.timestamp < 30000)) {
+      return cached.data;
+    }
+  }
 
   const response = await fetch(url, {
     ...options,
@@ -60,5 +99,14 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     return new Blob([rawBlob], { type: contentType.split(';')[0].trim() });
   }
 
-  return response.json();
+  const jsonResult = await response.json();
+
+  if (isGet && !bypassCache) {
+    memoryCache.set(url, {
+      data: jsonResult,
+      timestamp: Date.now()
+    });
+  }
+
+  return jsonResult;
 }

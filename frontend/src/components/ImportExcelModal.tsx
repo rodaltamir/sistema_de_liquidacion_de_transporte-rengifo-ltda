@@ -131,6 +131,12 @@ export interface PreviewRecord {
   tarifa_flete: number;
   tipo_tarifa: string;
   flete_total_bs: number;
+  merma_real_litros?: number;
+  tolerancia_pct?: number;
+  merma_tolerable_litros?: number;
+  merma_excedente_litros?: number;
+  merma_descontar_bs?: number;
+  liquido_pagable_bs?: number;
   periodo_mes: string;
   is_incompleto?: boolean;
   incompleto_reason?: string;
@@ -2077,7 +2083,13 @@ export default function ImportExcelModal({
 
                                   {/* Flete Total Calculado */}
                                   <td className="py-2 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                                    {formatCurrency(r.flete_total_bs)}
+                                    <div>{formatCurrency(r.flete_total_bs)}</div>
+                                    {(Number(r.merma_descontar_bs) > 0) && (
+                                      <div className="text-[9px] font-normal leading-tight mt-0.5">
+                                        <div className="text-rose-500 dark:text-rose-400">Merma: -{formatCurrency(Number(r.merma_descontar_bs))}</div>
+                                        <div className="text-emerald-700 dark:text-emerald-300 font-bold">Líq: {formatCurrency(r.liquido_pagable_bs ?? (r.flete_total_bs - Number(r.merma_descontar_bs)))}</div>
+                                      </div>
+                                    )}
                                   </td>
 
                                   {/* Factura / MIC Editable */}
@@ -2089,6 +2101,11 @@ export default function ImportExcelModal({
                                       placeholder="FAC Nro..."
                                       className="w-24 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-amber-600 dark:text-amber-300 font-mono text-[10px] focus:outline-none focus:border-amber-500"
                                     />
+                                    {r.fecha_factura && (
+                                      <span className="block font-mono text-[9px] text-emerald-600 dark:text-emerald-400 mt-0.5" title="Fecha de Factura">
+                                        📅 {formatDate(r.fecha_factura)}
+                                      </span>
+                                    )}
                                     {r.mic_dta && (
                                       <span className="block font-mono text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
                                         MIC: {r.mic_dta}

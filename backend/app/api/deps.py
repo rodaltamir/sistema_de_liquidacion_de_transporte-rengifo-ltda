@@ -44,9 +44,21 @@ def require_admin(current_user: User = Depends(require_current_user)) -> User:
         )
     return current_user
 
+_TENANT_CACHE = {}
+
+def invalidate_tenant_cache():
+    global _TENANT_CACHE
+    _TENANT_CACHE.clear()
+
 def verify_tenant_exists(schema_name: str, db: Session = Depends(get_db)) -> Empresa:
-    # Búsqueda flexible de esquema (con o sin prefijo 'empresa_', case-insensitive)
     clean_schema = schema_name.strip().lower()
+    cached_id = _TENANT_CACHE.get(clean_schema)
+    if cached_id:
+        emp = db.query(Empresa).filter(Empresa.id == cached_id).first()
+        if emp and emp.is_active:
+            return emp
+
+    # Búsqueda flexible de esquema (con o sin prefijo 'empresa_', case-insensitive)
     alt_with_prefix = f"empresa_{clean_schema}" if not clean_schema.startswith("empresa_") else clean_schema
     alt_without_prefix = clean_schema.replace("empresa_", "", 1)
 
@@ -62,5 +74,7 @@ def verify_tenant_exists(schema_name: str, db: Session = Depends(get_db)) -> Emp
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Empresa de transporte con esquema '{schema_name}' no encontrada"
         )
+    _TENANT_CACHE[clean_schema] = empresa.id
+    _TENANT_CACHE[empresa.schema_name.lower()] = empresa.id
     return empresa
 

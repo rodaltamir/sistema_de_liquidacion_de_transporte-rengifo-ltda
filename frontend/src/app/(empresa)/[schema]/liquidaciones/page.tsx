@@ -1400,6 +1400,8 @@ export default function LiquidacionesPage() {
                       <th className="py-2 px-2 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-left">TRAMO</th>
                       <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">CLIENTE</th>
                       <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">PRODUCTO</th>
+                      <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">N° FACTURA</th>
+                      <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">FECHA FACTURA</th>
                       <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Volumen en Lt. Origen</th>
                       <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Volumen Recepcionado/Descargado</th>
                       <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Merma T/Tr</th>
@@ -1472,6 +1474,18 @@ export default function LiquidacionesPage() {
                                   <td className="py-1 px-2 text-slate-700 dark:text-slate-300 print:text-slate-800 uppercase text-[10px] border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.tramo}</td>
                                   <td className="py-1 px-1 text-center font-bold text-slate-600 dark:text-slate-300 print:text-slate-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.cliente || "YPFB"}</td>
                                   <td className="py-1 px-1 text-center font-bold text-amber-700 dark:text-amber-400 print:text-blue-900 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.producto}</td>
+                                  <td className="py-1 px-1 text-center font-mono font-bold text-slate-800 dark:text-slate-200 border-x border-slate-200 dark:border-slate-800 print:border-slate-200 whitespace-nowrap">
+                                    {v.nro_factura && v.nro_factura.trim() ? (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-mono font-bold">
+                                        {v.nro_factura}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] text-slate-400">S/F</span>
+                                    )}
+                                  </td>
+                                  <td className="py-1 px-1.5 text-center text-slate-500 dark:text-slate-400 print:text-slate-600 border-x border-slate-200 dark:border-slate-800 print:border-slate-200 whitespace-nowrap font-mono text-[10px]">
+                                    {v.fecha_factura ? formatDate(v.fecha_factura) : "-"}
+                                  </td>
                                   <td className="py-1 px-1.5 text-right font-mono text-slate-700 dark:text-slate-200 print:text-slate-800 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.volumen_origen_litros, 0)}</td>
                                   <td className="py-1 px-1.5 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400 print:text-slate-900 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.volumen_recepcionado_litros, 0)}</td>
                                   <td className="py-1 px-1 text-right font-mono text-slate-700 dark:text-slate-300 print:text-slate-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">
@@ -1491,7 +1505,7 @@ export default function LiquidacionesPage() {
 
                             {/* FILA ESPECIAL: Subtotal del Grupo con Facturación */}
                             <tr className="bg-amber-100/70 dark:bg-amber-950/40 print:bg-amber-100/60 font-bold border-y-2 border-amber-300 dark:border-amber-700 text-[10.5px]">
-                              <td colSpan={8} className="py-2 px-2.5 text-left border-x border-amber-300 dark:border-amber-700">
+                              <td colSpan={10} className="py-2 px-2.5 text-left border-x border-amber-300 dark:border-amber-700">
                                 <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-2">TOTAL {group.producto}</span>
                                 <span className="text-slate-700 dark:text-slate-300 font-medium">| FACTURA: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
                                 <span className="text-slate-700 dark:text-slate-300 font-medium ml-2">| FECHA FACTURA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
@@ -1513,7 +1527,7 @@ export default function LiquidacionesPage() {
 
                     {/* Fila de Totales Pág 2 */}
                     <tr className="bg-slate-100 dark:bg-slate-800/90 print:bg-slate-100 font-black text-slate-900 dark:text-white print:text-slate-900 border-t-2 border-b border-slate-300 dark:border-slate-700 print:border-slate-400 text-xs">
-                      <td colSpan={8} className="py-2.5 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
+                      <td colSpan={10} className="py-2.5 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
                         TOTAL GENERAL:
                       </td>
                       <td className="py-2.5 px-1.5 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
