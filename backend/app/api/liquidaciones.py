@@ -4,7 +4,7 @@ from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import Response
 from typing import List, Optional
-from sqlalchemy import func, or_, cast, Integer
+from sqlalchemy import func, or_, cast, Integer, Numeric
 from app.db.session import get_tenant_session
 from app.api.deps import verify_tenant_exists
 from app.models.public import Empresa
@@ -104,7 +104,7 @@ def resolve_period_and_trips(
             if d_digits and h_digits:
                 d_val = min(int(d_digits), int(h_digits))
                 h_val = max(int(d_digits), int(h_digits))
-                num_col = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Integer)
+                num_col = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Numeric)
                 query_viajes = query_viajes.filter(num_col.between(d_val, h_val))
                 display_label = f"Facturas N° {d_val} al {h_val}"
             else:
@@ -922,7 +922,7 @@ def get_facturas_disponibles(
     """
     session = get_tenant_session(schema_name)
     try:
-        num_clean = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Integer)
+        num_clean = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Numeric)
         
         rows = session.query(
             Viaje.nro_factura,

@@ -14,7 +14,7 @@ from app.services.calculation_engine import calculate_viaje_values, determine_tr
 from app.services.excel_export import generate_viajes_template_excel, export_viajes_list_excel
 from app.services.excel_importer import get_excel_sheets, parse_excel_viajes_data, execute_import_viajes
 
-from sqlalchemy import func, or_, cast, Integer
+from sqlalchemy import func, or_, cast, Integer, Numeric
 
 router = APIRouter(prefix="/tenants/{schema_name}/viajes", tags=["Viajes y Despachos"])
 
@@ -91,7 +91,7 @@ def get_facturas_disponibles_viajes(
     """
     session = get_tenant_session(schema_name)
     try:
-        num_clean = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Integer)
+        num_clean = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Numeric)
         rows = session.query(
             Viaje.nro_factura,
             func.count(Viaje.id).label("total_viajes"),
@@ -163,7 +163,7 @@ def list_viajes(
             if d_digits and h_digits:
                 d_val = min(int(d_digits), int(h_digits))
                 h_val = max(int(d_digits), int(h_digits))
-                num_col = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Integer)
+                num_col = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Numeric)
                 query = query.filter(num_col.between(d_val, h_val))
             else:
                 query = query.filter(Viaje.nro_factura.between(d_s, h_s))
@@ -185,7 +185,7 @@ def list_viajes(
                     h_digits = re.sub(r'[^0-9]', '', h_s)
                     if d_digits and h_digits:
                         d_val, h_val = min(int(d_digits), int(h_digits)), max(int(d_digits), int(h_digits))
-                        num_col = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Integer)
+                        num_col = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Numeric)
                         query = query.filter(num_col.between(d_val, h_val))
                     else:
                         query = query.filter(Viaje.nro_factura.between(d_s, h_s))
@@ -557,7 +557,7 @@ def export_viajes_excel(
             if d_digits and h_digits:
                 d_val = min(int(d_digits), int(h_digits))
                 h_val = max(int(d_digits), int(h_digits))
-                num_col = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Integer)
+                num_col = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Numeric)
                 query = query.filter(num_col.between(d_val, h_val))
             else:
                 query = query.filter(Viaje.nro_factura.between(d_s, h_s))
@@ -629,7 +629,17 @@ def export_viajes_excel(
             empresa=empresa_dict,
             params=params,
             order_by=order_by or "fecha",
-            order_dir=order_dir or "asc"
+            order_dir=order_dir or "asc",
+            periodo=periodo or periodo_mes or "",
+            placa=placa or "",
+            nro_factura=nro_factura or "",
+            factura_desde=factura_desde or "",
+            factura_hasta=factura_hasta or "",
+            facturas=facturas or [],
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            cliente=cliente or "",
+            producto=producto or ""
         )
         clean_emp = "".join([c if c.isalnum() else "_" for c in empresa.name])[:20]
         filename = f"Despachos_Viajes_{clean_emp}_{order_by}_{order_dir}.xlsx"
