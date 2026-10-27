@@ -13,6 +13,11 @@ class LiquidacionCreate(BaseModel):
     fecha_hasta: Optional[date] = None
     fecha_emision: Optional[date] = None
     notas: Optional[str] = None
+    # Filtrado por Facturas
+    nro_factura: Optional[str] = None
+    factura_desde: Optional[str] = None
+    factura_hasta: Optional[str] = None
+    facturas: Optional[List[str]] = None
     # Deducciones opcionales personalizadas (si se desea modificar los valores estándar)
     desc_merma_bs: Optional[float] = None
     desc_comision_usd_m3_bs: Optional[float] = None
@@ -68,6 +73,7 @@ class LiquidacionDetalleResponse(LiquidacionResponse):
 class ResumenPlacaItem(BaseModel):
     placa: str
     tipo_flota: str  # "Propia" | "Apoyo" | "Externa"
+    conductor_nombre: Optional[str] = None
     viajes_count: int
     volumen_origen_litros: float
     volumen_recepcionado_litros: float
@@ -80,6 +86,16 @@ class ResumenPlacaItem(BaseModel):
     liquidacion_id: Optional[int] = None
     codigo: Optional[str] = None
     fecha_emision: Optional[date] = None
+    facturas: List[str] = []
+    fecha_min: Optional[date] = None
+    fecha_max: Optional[date] = None
+    # Aliases de compatibilidad directa con UI
+    total_viajes: Optional[int] = None
+    volumen_cargado_litros: Optional[float] = None
+    total_deducciones_bs: Optional[float] = None
+    tipo_unidad: Optional[str] = None
+    estado_liquidacion: Optional[str] = None
+    liquidacion_codigo: Optional[str] = None
 
 class ResumenFlotaPeriodoResponse(BaseModel):
     placas: List[ResumenPlacaItem]
@@ -102,6 +118,10 @@ class LiquidacionBatchCreate(BaseModel):
     fecha_desde: Optional[date] = None
     fecha_hasta: Optional[date] = None
     fecha_emision: Optional[date] = None
+    nro_factura: Optional[str] = None
+    factura_desde: Optional[str] = None
+    factura_hasta: Optional[str] = None
+    facturas: Optional[List[str]] = None
 
 class LiquidacionBatchResponse(BaseModel):
     message: str

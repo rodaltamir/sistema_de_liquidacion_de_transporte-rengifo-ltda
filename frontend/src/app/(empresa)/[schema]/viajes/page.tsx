@@ -35,7 +35,11 @@ import {
   ArrowDownUp,
   Building2,
   LayoutGrid,
-  Table
+  Table,
+  Receipt,
+  Hash,
+  Layers,
+  ArrowRight
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch, getApiUrl } from "@/lib/api";
@@ -140,6 +144,16 @@ function ViajesContent() {
   const [activeFilterLabel, setActiveFilterLabel] = useState("");
   const [dateFilterQuery, setDateFilterQuery] = useState("");
   const [periodosDisponibles, setPeriodosDisponibles] = useState<any[]>([]);
+
+  // Filtro por Factura(s) correlativas o rango
+  const [metodoFiltro, setMetodoFiltro] = useState<"periodo" | "factura">("periodo");
+  const [modoFactura, setModoFactura] = useState<"unica" | "rango">("unica");
+  const [facturaInput, setFacturaInput] = useState<string>("");
+  const [facturaDesdeInput, setFacturaDesdeInput] = useState<string>("");
+  const [facturaHastaInput, setFacturaHastaInput] = useState<string>("");
+  const [facturasDisponibles, setFacturasDisponibles] = useState<any[]>([]);
+  const [searchFacturaChip, setSearchFacturaChip] = useState<string>("");
+
   const [placaFiltro, setPlacaFiltro] = useState("");
   const [productoFiltro, setProductoFiltro] = useState("TODOS");
   const [search, setSearch] = useState("");
@@ -288,8 +302,22 @@ function ViajesContent() {
   }, [schema]);
 
   useEffect(() => {
+    if (metodoFiltro === "factura") {
+      let facLabel = "";
+      if (modoFactura === "unica") {
+        facLabel = facturaInput.trim() ? `Factura N° ${facturaInput.trim()}` : "Todas las Facturas";
+      } else {
+        facLabel = (facturaDesdeInput.trim() && facturaHastaInput.trim())
+          ? `Facturas N° ${facturaDesdeInput.trim()} al ${facturaHastaInput.trim()}`
+          : (facturaDesdeInput.trim() ? `Desde Factura N° ${facturaDesdeInput.trim()}` : (facturaHastaInput.trim() ? `Hasta Factura N° ${facturaHastaInput.trim()}` : "Todas las Facturas"));
+      }
+      setActiveFilterLabel(facLabel);
+    }
+  }, [metodoFiltro, modoFactura, facturaInput, facturaDesdeInput, facturaHastaInput]);
+
+  useEffect(() => {
     loadViajes();
-  }, [schema, periodo, dateFilterQuery, placaFiltro]);
+  }, [schema, periodo, dateFilterQuery, placaFiltro, metodoFiltro, modoFactura, facturaInput, facturaDesdeInput, facturaHastaInput]);
 
   // Si viene acción de URL para abrir modal de nuevo viaje o seleccionar pestaña
   useEffect(() => {
@@ -382,17 +410,19 @@ function ViajesContent() {
 
   const loadInitialData = async () => {
     try {
-      const [uData, uApoyoData, pData, cData, catData] = await Promise.all([
+      const [uData, uApoyoData, pData, cData, catData, fData] = await Promise.all([
         apiFetch(`/tenants/${schema}/unidades/`).catch(() => []),
         apiFetch(`/tenants/${schema}/apoyo/unidades/todas`).catch(() => []),
         apiFetch(`/tenants/${schema}/viajes/periodos`).catch(() => []),
         apiFetch(`/tenants/${schema}/clientes/`).catch(() => []),
-        apiFetch(`/tenants/${schema}/parametros/catalogos`).catch(() => null)
+        apiFetch(`/tenants/${schema}/parametros/catalogos`).catch(() => null),
+        apiFetch(`/tenants/${schema}/viajes/facturas-disponibles`).catch(() => [])
       ]);
       setUnidades(Array.isArray(uData) ? uData : []);
       setUnidadesApoyo(Array.isArray(uApoyoData) ? uApoyoData : []);
       setPeriodosDisponibles(Array.isArray(pData) ? pData : []);
       setClientes(Array.isArray(cData) ? cData : []);
+      setFacturasDisponibles(Array.isArray(fData) ? fData : []);
       if (catData) {
         if (Array.isArray(catData.productos) && catData.productos.length > 0) {
           setCatalogProductos(catData.productos);
@@ -504,17 +534,54 @@ function ViajesContent() {
     }
   };
 
+  const handleSelectFacturaChip = (facNum: string) => {
+    if (modoFactura === "unica") {
+      setFacturaInput(facNum);
+    } else {
+      if (!facturaDesdeInput || (facturaDesdeInput && facturaHastaInput)) {
+        setFacturaDesdeInput(facNum);
+        setFacturaHastaInput("");
+      } else {
+        const dNum = parseInt(facturaDesdeInput.replace(/\D/g, ""), 10);
+        const hNum = parseInt(facNum.replace(/\D/g, ""), 10);
+        if (!isNaN(dNum) && !isNaN(hNum)) {
+          if (hNum < dNum) {
+            setFacturaDesdeInput(facNum);
+            setFacturaHastaInput(facturaDesdeInput);
+          } else {
+            setFacturaHastaInput(facNum);
+          }
+        } else {
+          setFacturaHastaInput(facNum);
+        }
+      }
+    }
+  };
+
   const loadViajes = async () => {
     setLoading(true);
     try {
       let query = "";
       const params: string[] = [];
-      if (dateFilterQuery) {
-        params.push(dateFilterQuery);
-      } else if (periodo) {
-        params.push(`periodo_mes=${periodo}`);
+      if (metodoFiltro === "factura") {
+        if (modoFactura === "unica" && facturaInput.trim()) {
+          params.push(`nro_factura=${encodeURIComponent(facturaInput.trim())}`);
+        } else if (modoFactura === "rango") {
+          if (facturaDesdeInput.trim()) {
+            params.push(`factura_desde=${encodeURIComponent(facturaDesdeInput.trim())}`);
+          }
+          if (facturaHastaInput.trim()) {
+            params.push(`factura_hasta=${encodeURIComponent(facturaHastaInput.trim())}`);
+          }
+        }
+      } else {
+        if (dateFilterQuery) {
+          params.push(dateFilterQuery);
+        } else if (periodo) {
+          params.push(`periodo_mes=${encodeURIComponent(periodo)}`);
+        }
       }
-      if (placaFiltro) params.push(`placa=${placaFiltro}`);
+      if (placaFiltro) params.push(`placa=${encodeURIComponent(placaFiltro)}`);
       if (params.length > 0) query = `?${params.join("&")}`;
 
       const data = await apiFetch(`/tenants/${schema}/viajes/${query}`).catch(() => []);
@@ -1108,10 +1175,23 @@ function ViajesContent() {
     try {
       setIsExportingExcel(true);
       const params: string[] = [];
-      if (dateFilterQuery) {
-        params.push(dateFilterQuery);
-      } else if (periodo) {
-        params.push(`periodo_mes=${encodeURIComponent(periodo)}`);
+      if (metodoFiltro === "factura") {
+        if (modoFactura === "unica" && facturaInput.trim()) {
+          params.push(`nro_factura=${encodeURIComponent(facturaInput.trim())}`);
+        } else if (modoFactura === "rango") {
+          if (facturaDesdeInput.trim()) {
+            params.push(`factura_desde=${encodeURIComponent(facturaDesdeInput.trim())}`);
+          }
+          if (facturaHastaInput.trim()) {
+            params.push(`factura_hasta=${encodeURIComponent(facturaHastaInput.trim())}`);
+          }
+        }
+      } else {
+        if (dateFilterQuery) {
+          params.push(dateFilterQuery);
+        } else if (periodo) {
+          params.push(`periodo_mes=${encodeURIComponent(periodo)}`);
+        }
       }
       if (placaFiltro) {
         params.push(`placa=${encodeURIComponent(placaFiltro)}`);
@@ -1591,12 +1671,258 @@ function ViajesContent() {
         </button>
       </div>
 
-      {/* Visualizador de Meses y Filtros de Fechas */}
-      <DatePeriodFilter
-        currentPeriodoMes={periodo}
-        periodosDisponibles={periodosDisponibles}
-        onChange={handleDateFilterChange}
-      />
+      {/* Selector de Método de Filtrado: Fechas vs Facturas */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setMetodoFiltro("periodo")}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
+            metodoFiltro === "periodo"
+              ? "bg-amber-500 text-slate-950 shadow-sm"
+              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800"
+          }`}
+        >
+          <Calendar className="w-4 h-4" />
+          <span>📅 Filtrar por Fechas y Períodos</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMetodoFiltro("factura")}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
+            metodoFiltro === "factura"
+              ? "bg-amber-500 text-slate-950 shadow-sm"
+              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800"
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>🧾 Filtrar por Factura(s)</span>
+          {facturasDisponibles.length > 0 && (
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+              metodoFiltro === "factura" ? "bg-slate-950/20 text-slate-950 font-black" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+            }`}>
+              {facturasDisponibles.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Condicional: Filtro por Fechas O Filtro por Factura */}
+      {metodoFiltro === "periodo" ? (
+        <DatePeriodFilter
+          currentPeriodoMes={periodo}
+          periodosDisponibles={periodosDisponibles}
+          onChange={handleDateFilterChange}
+        />
+      ) : (
+        /* Panel interactivo de Facturas */
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-3.5 animate-fadeIn">
+          {/* Fila Superior: Modalidad de Factura y Entradas */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Receipt className="w-4 h-4 text-amber-500" />
+                <span>Modo de Filtrado:</span>
+              </span>
+
+              <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-950 p-1 border border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setModoFactura("unica")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                    modoFactura === "unica"
+                      ? "bg-amber-500 text-slate-950 shadow-sm"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  }`}
+                >
+                  <Hash className="w-3.5 h-3.5" />
+                  <span>Factura Única</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoFactura("rango")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                    modoFactura === "rango"
+                      ? "bg-amber-500 text-slate-950 shadow-sm"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Rango Sucesivo de Facturas</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Inputs de Factura */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {modoFactura === "unica" ? (
+                <div className="flex items-center gap-2">
+                  <div className="relative flex items-center">
+                    <Receipt className="w-3.5 h-3.5 absolute left-3 text-amber-500 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="N° Factura (ej. 1315)"
+                      value={facturaInput}
+                      onChange={(e) => setFacturaInput(e.target.value)}
+                      className="pl-8 pr-8 py-1.5 text-xs font-bold bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-amber-500 dark:text-white w-48"
+                    />
+                    {facturaInput && (
+                      <button
+                        type="button"
+                        onClick={() => setFacturaInput("")}
+                        className="absolute right-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                        title="Limpiar"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                  {facturaInput && (
+                    <button
+                      type="button"
+                      onClick={() => setFacturaInput("")}
+                      className="text-xs px-2.5 py-1.5 text-slate-500 hover:text-rose-500 dark:text-slate-400 transition"
+                    >
+                      Ver todas
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="relative flex items-center">
+                    <input
+                      type="text"
+                      placeholder="Desde Factura (ej. 1310)"
+                      value={facturaDesdeInput}
+                      onChange={(e) => setFacturaDesdeInput(e.target.value)}
+                      className="px-3 py-1.5 text-xs font-bold bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-amber-500 dark:text-white w-36"
+                    />
+                  </div>
+
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+
+                  <div className="relative flex items-center">
+                    <input
+                      type="text"
+                      placeholder="Hasta Factura (ej. 1318)"
+                      value={facturaHastaInput}
+                      onChange={(e) => setFacturaHastaInput(e.target.value)}
+                      className="px-3 py-1.5 text-xs font-bold bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-amber-500 dark:text-white w-36"
+                    />
+                  </div>
+
+                  {(facturaDesdeInput || facturaHastaInput) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFacturaDesdeInput("");
+                        setFacturaHastaInput("");
+                      }}
+                      className="text-xs px-2.5 py-1.5 text-slate-500 hover:text-rose-500 dark:text-slate-400 transition"
+                      title="Limpiar rango"
+                    >
+                      Limpiar rango
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Fila de Facturas Sucesivas (Barra de Facturas Correlativas) */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-3.5 h-3.5 text-amber-500" />
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Fila de Facturas Sucesivas
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  (Haz clic en una factura para filtrar al instante)
+                </span>
+              </div>
+
+              {/* Buscador rápido dentro de la fila de facturas */}
+              <div className="relative flex items-center">
+                <Search className="w-3 h-3 absolute left-2.5 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Buscar en fila (ej. 131...)"
+                  value={searchFacturaChip}
+                  onChange={(e) => setSearchFacturaChip(e.target.value)}
+                  className="pl-7 pr-2.5 py-1 text-[11px] bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:border-amber-500 dark:text-white w-44"
+                />
+              </div>
+            </div>
+
+            {/* Contenedor con Scroll Horizontal de Facturas */}
+            <div className="flex items-center gap-1.5 overflow-x-auto py-2 px-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
+              {facturasDisponibles.length === 0 ? (
+                <div className="text-xs text-slate-400 py-2 italic flex items-center gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                  <span>No hay facturas registradas en los despachos importados.</span>
+                </div>
+              ) : (
+                facturasDisponibles
+                  .filter((f) => {
+                    if (!searchFacturaChip.trim()) return true;
+                    return String(f.nro_factura).toLowerCase().includes(searchFacturaChip.trim().toLowerCase());
+                  })
+                  .slice(0, 100) // Mostrar las primeras 100 consecutivas para fluidez máxima
+                  .map((f) => {
+                    const isSelected = modoFactura === "unica"
+                      ? facturaInput.trim() === f.nro_factura
+                      : (facturaDesdeInput.trim() === f.nro_factura || facturaHastaInput.trim() === f.nro_factura);
+
+                    // Comprobar si está dentro del rango sucesivo
+                    let isInRange = false;
+                    if (modoFactura === "rango" && facturaDesdeInput && facturaHastaInput) {
+                      const dNum = parseInt(facturaDesdeInput.replace(/\D/g, ""), 10);
+                      const hNum = parseInt(facturaHastaInput.replace(/\D/g, ""), 10);
+                      const curNum = parseInt(f.nro_factura.replace(/\D/g, ""), 10);
+                      if (!isNaN(dNum) && !isNaN(hNum) && !isNaN(curNum)) {
+                        isInRange = curNum >= Math.min(dNum, hNum) && curNum <= Math.max(dNum, hNum);
+                      }
+                    }
+
+                    return (
+                      <button
+                        key={`chip-fac-${f.nro_factura}`}
+                        type="button"
+                        onClick={() => handleSelectFacturaChip(f.nro_factura)}
+                        className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition active:scale-95 ${
+                          isSelected
+                            ? "bg-amber-500 text-slate-950 font-bold border-amber-600 shadow-md scale-105"
+                            : isInRange
+                            ? "bg-amber-500/15 border-amber-500/50 text-amber-700 dark:text-amber-300 font-semibold"
+                            : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-500/60 hover:bg-amber-500/5"
+                        }`}
+                        title={`Factura ${f.nro_factura}: ${f.total_viajes} viajes, ${formatCurrency(f.flete_total)}`}
+                      >
+                        <span className="font-mono font-bold tracking-tight">#{f.nro_factura}</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                          isSelected ? "bg-slate-950 text-amber-400 font-bold" : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                        }`}>
+                          {f.total_viajes}v
+                        </span>
+                      </button>
+                    );
+                  })
+              )}
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-slate-400 px-1 pt-1">
+              <span>
+                💡 {modoFactura === "unica" ? "Haz clic en una factura para cargarla inmediatamente." : "Haz clic en dos facturas para marcar el inicio y fin del rango correlativo."}
+              </span>
+              {facturasDisponibles.length > 100 && (
+                <span className="italic">Mostrando 100 de {facturasDisponibles.length} facturas (usa el buscador para encontrar cualquier número)</span>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* Métricas Clave Dinámicas (según pestaña activa) */}
       {activeMainTab === "planilla" ? (

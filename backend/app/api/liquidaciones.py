@@ -1,9 +1,10 @@
 import json
+import re
 from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import Response
 from typing import List, Optional
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, cast, Integer
 from app.db.session import get_tenant_session
 from app.api.deps import verify_tenant_exists
 from app.models.public import Empresa
@@ -32,10 +33,15 @@ def resolve_period_and_trips(
     anio: Optional[int] = None,
     semestre: Optional[int] = None,
     fecha_desde: Optional[date] = None,
-    fecha_hasta: Optional[date] = None
+    fecha_hasta: Optional[date] = None,
+    nro_factura: Optional[str] = None,
+    factura_desde: Optional[str] = None,
+    factura_hasta: Optional[str] = None,
+    facturas: Optional[List[str]] = None
 ):
     """
     Resuelve los viajes y etiquetas de periodo para cualquier tipo de consolidación:
+    - Factura(s): Factura única, rango de facturas correlativas, o lista de facturas
     - Anual: Todos los viajes del año seleccionado
     - Semestral: Todos los viajes del 1er (ene-jun) o 2do (jul-dic) semestre
     - Personalizado: Todos los viajes dentro del rango fecha_desde a fecha_hasta
@@ -50,8 +56,87 @@ def resolve_period_and_trips(
     if not is_todas:
         query_viajes = query_viajes.filter(Viaje.placa == p_clean)
 
+    # 0. Modo Factura (Factura única, rango sucesivo o lista de facturas)
+    is_factura_mode = (
+        tipo_periodo == "factura" or
+        bool(nro_factura) or
+        bool(factura_desde) or
+        bool(facturas) or
+        (periodo_mes and (periodo_mes.startswith("FAC-") or periodo_mes.startswith("FACS-")))
+    )
+
+    if is_factura_mode:
+        # Si se pasó codificado en periodo_mes, decodificarlo
+        if not nro_factura and not factura_desde and not facturas and periodo_mes:
+            if periodo_mes.startswith("FAC-"):
+                val = periodo_mes.replace("FAC-", "")
+                if "_" in val:
+                    parts = val.split("_")
+                    factura_desde = parts[0]
+                    factura_hasta = parts[1]
+                else:
+                    nro_factura = val
+            elif periodo_mes.startswith("FACS-"):
+                val = periodo_mes.replace("FACS-", "")
+                if "_" in val:
+                    parts = val.split("_")
+                    factura_desde = parts[0]
+                    factura_hasta = parts[1]
+                else:
+                    facturas = [val]
+
+        if facturas and len(facturas) > 0:
+            clean_facs = [str(f).strip() for f in facturas if f and str(f).strip()]
+            query_viajes = query_viajes.filter(Viaje.nro_factura.in_(clean_facs))
+            if len(clean_facs) == 1:
+                periodo_label = f"FAC-{clean_facs[0]}"
+                codigo_periodo = f"LIQ-FAC-{clean_facs[0]}-{target_placa_code}"
+                display_label = f"Factura N° {clean_facs[0]}"
+            else:
+                periodo_label = f"FACS-{clean_facs[0]}_{clean_facs[-1]}"
+                codigo_periodo = f"LIQ-FACS-{clean_facs[0]}_{clean_facs[-1]}-{target_placa_code}"
+                display_label = f"Facturas ({len(clean_facs)} sel: {clean_facs[0]}..{clean_facs[-1]})"
+        elif factura_desde and factura_hasta:
+            d_s = str(factura_desde).strip()
+            h_s = str(factura_hasta).strip()
+            d_digits = re.sub(r'[^0-9]', '', d_s)
+            h_digits = re.sub(r'[^0-9]', '', h_s)
+            if d_digits and h_digits:
+                d_val = min(int(d_digits), int(h_digits))
+                h_val = max(int(d_digits), int(h_digits))
+                num_col = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Integer)
+                query_viajes = query_viajes.filter(num_col.between(d_val, h_val))
+                display_label = f"Facturas N° {d_val} al {h_val}"
+            else:
+                query_viajes = query_viajes.filter(Viaje.nro_factura.between(d_s, h_s))
+                display_label = f"Facturas {d_s} al {h_s}"
+            periodo_label = f"FAC-{d_s}_{h_s}"
+            codigo_periodo = f"LIQ-FAC-{d_s}_{h_s}-{target_placa_code}"
+        elif nro_factura or factura_desde:
+            target_fac = str(nro_factura or factura_desde).strip()
+            query_viajes = query_viajes.filter(
+                or_(
+                    func.trim(Viaje.nro_factura) == target_fac,
+                    Viaje.nro_factura.ilike(f"%{target_fac}%")
+                )
+            )
+            periodo_label = f"FAC-{target_fac}"
+            codigo_periodo = f"LIQ-FAC-{target_fac}-{target_placa_code}"
+            display_label = f"Factura N° {target_fac}"
+        else:
+            query_viajes = query_viajes.filter(
+                Viaje.nro_factura.isnot(None),
+                func.trim(Viaje.nro_factura) != ""
+            )
+            periodo_label = "FAC-TODAS"
+            codigo_periodo = f"LIQ-FAC-TODAS-{target_placa_code}"
+            display_label = "Todas las Facturas"
+
+        if is_todas:
+            display_label += " (Todas las Placas)"
+
     # 1. Modo Anual
-    if tipo_periodo == "anual" or (anio and not semestre and not fecha_desde and (not periodo_mes or periodo_mes.startswith("ANUAL-") or len(periodo_mes) == 4)):
+    elif tipo_periodo == "anual" or (anio and not semestre and not fecha_desde and (not periodo_mes or periodo_mes.startswith("ANUAL-") or len(periodo_mes) == 4)):
         target_year = anio or (int(periodo_mes.replace("ANUAL-", "")) if periodo_mes and (periodo_mes.startswith("ANUAL-") or len(periodo_mes) == 4) else date.today().year)
         query_viajes = query_viajes.filter(
             or_(
@@ -114,12 +199,41 @@ def list_liquidaciones(
     semestre: Optional[int] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
+    tipo_periodo: Optional[str] = None,
+    nro_factura: Optional[str] = None,
+    factura_desde: Optional[str] = None,
+    factura_hasta: Optional[str] = None,
+    facturas: Optional[List[str]] = Query(None),
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     session = get_tenant_session(schema_name)
     try:
         query = session.query(Liquidacion)
-        if periodo_mes:
+        if nro_factura:
+            query = query.filter(
+                or_(
+                    Liquidacion.periodo_mes.contains(nro_factura),
+                    Liquidacion.codigo.contains(nro_factura)
+                )
+            )
+        elif factura_desde and factura_hasta:
+            query = query.filter(
+                or_(
+                    Liquidacion.periodo_mes == f"FAC-{factura_desde}_{factura_hasta}",
+                    Liquidacion.codigo.contains(f"FAC-{factura_desde}_{factura_hasta}")
+                )
+            )
+        elif facturas and len(facturas) > 0:
+            query = query.filter(
+                or_(*[
+                    or_(
+                        Liquidacion.periodo_mes.contains(f),
+                        Liquidacion.codigo.contains(f)
+                    )
+                    for f in facturas if f
+                ])
+            )
+        elif periodo_mes:
             query = query.filter(Liquidacion.periodo_mes == periodo_mes)
         elif anio and semestre:
             sem_tag = f"{anio}-S{semestre}"
@@ -163,12 +277,16 @@ def get_liquidacion_consolidada(
     semestre: Optional[int] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
+    nro_factura: Optional[str] = None,
+    factura_desde: Optional[str] = None,
+    factura_hasta: Optional[str] = None,
+    facturas: Optional[List[str]] = Query(None),
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     """
-    Retorna la planilla oficial consolidada (Hojas 2 y 3) para cualquier periodo (Anual, Semestral, Personalizado o Mensual).
+    Retorna la planilla oficial consolidada (Hojas 2 y 3) para cualquier periodo o factura (Factura única, Rango de facturas, Anual, Semestral, Personalizado o Mensual).
     Si ya fue guardada en base de datos la retorna. Si no, calcula dinámicamente en tiempo real
-    todos los fletes, mermas, deducciones y líquido pagable basándose en los viajes del periodo.
+    todos los fletes, mermas, deducciones y líquido pagable basándose en los viajes del periodo o facturas.
     Si placa es '__TODAS__' o 'TODAS', consolida todos los camiones de la flota.
     """
     session = get_tenant_session(schema_name)
@@ -185,7 +303,11 @@ def get_liquidacion_consolidada(
             anio=anio,
             semestre=semestre,
             fecha_desde=fecha_desde,
-            fecha_hasta=fecha_hasta
+            fecha_hasta=fecha_hasta,
+            nro_factura=nro_factura,
+            factura_desde=factura_desde,
+            factura_hasta=factura_hasta,
+            facturas=facturas
         )
 
         params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
@@ -324,11 +446,15 @@ def get_resumen_placas(
     semestre: Optional[int] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
+    nro_factura: Optional[str] = None,
+    factura_desde: Optional[str] = None,
+    factura_hasta: Optional[str] = None,
+    facturas: Optional[List[str]] = Query(None),
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     """
     Retorna la tabla resumen por cisterna para validación previa o posterior a la liquidación:
-    - Lista de placas con viajes en el período
+    - Lista de placas con viajes en el período o por facturas
     - Tipo de flota (Propia vs Apoyo)
     - Conteo de viajes, volúmenes, flete bruto, descuentos y líquido pagable
     - Estado (Liquidada vs Pendiente de Generar)
@@ -344,7 +470,11 @@ def get_resumen_placas(
             anio=anio,
             semestre=semestre,
             fecha_desde=fecha_desde,
-            fecha_hasta=fecha_hasta
+            fecha_hasta=fecha_hasta,
+            nro_factura=nro_factura,
+            factura_desde=factura_desde,
+            factura_hasta=factura_hasta,
+            facturas=facturas
         )
 
         params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
@@ -422,21 +552,34 @@ def get_resumen_placas(
             tot_desc += t_desc
             tot_liquido += l_pagable
 
+            p_facs = sorted(list({str(v.nro_factura).strip() for v in p_viajes if v.nro_factura and str(v.nro_factura).strip()}))
+            f_min = min([v.fecha_carga for v in p_viajes if v.fecha_carga], default=None)
+            f_max = max([v.fecha_descarga for v in p_viajes if v.fecha_descarga] or [v.fecha_carga for v in p_viajes if v.fecha_carga], default=None)
+
             items.append(ResumenPlacaItem(
                 placa=p_placa,
                 tipo_flota=t_flota,
                 viajes_count=len(p_viajes),
+                total_viajes=len(p_viajes),
                 volumen_origen_litros=round(v_orig, 2),
+                volumen_cargado_litros=round(v_orig, 2),
                 volumen_recepcionado_litros=round(v_rec, 2),
                 volumen_facturado_litros=round(v_fact, 2),
                 flete_total_bruto_bs=round(f_bruto, 2),
                 desc_merma_bs=round(d_merma, 2),
                 total_descuentos_bs=round(t_desc, 2),
+                total_deducciones_bs=round(t_desc, 2),
                 liquido_pagable_bs=round(l_pagable, 2),
                 estado=estado,
+                estado_liquidacion="liquidada" if estado == "Liquidada" else "pendiente",
                 liquidacion_id=liq_id,
                 codigo=codigo,
-                fecha_emision=fecha_em
+                liquidacion_codigo=codigo,
+                tipo_unidad="propia" if t_flota == "Propia" else "apoyo",
+                fecha_emision=fecha_em,
+                facturas=p_facs,
+                fecha_min=f_min,
+                fecha_max=f_max
             ))
 
         return ResumenFlotaPeriodoResponse(
@@ -475,7 +618,11 @@ def generate_liquidaciones_batch(
             anio=batch_in.anio,
             semestre=batch_in.semestre,
             fecha_desde=batch_in.fecha_desde,
-            fecha_hasta=batch_in.fecha_hasta
+            fecha_hasta=batch_in.fecha_hasta,
+            nro_factura=batch_in.nro_factura,
+            factura_desde=batch_in.factura_desde,
+            factura_hasta=batch_in.factura_hasta,
+            facturas=batch_in.facturas
         )
 
         if not viajes_todos:
@@ -598,6 +745,10 @@ def export_resumen_flota_periodo_excel(
     semestre: Optional[int] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
+    nro_factura: Optional[str] = None,
+    factura_desde: Optional[str] = None,
+    factura_hasta: Optional[str] = None,
+    facturas: Optional[List[str]] = Query(None),
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     session = get_tenant_session(schema_name)
@@ -610,6 +761,10 @@ def export_resumen_flota_periodo_excel(
             semestre=semestre,
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
+            nro_factura=nro_factura,
+            factura_desde=factura_desde,
+            factura_hasta=factura_hasta,
+            facturas=facturas,
             empresa=empresa
         )
         params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
@@ -655,7 +810,11 @@ def generate_liquidacion(
             anio=liq_in.anio,
             semestre=liq_in.semestre,
             fecha_desde=liq_in.fecha_desde,
-            fecha_hasta=liq_in.fecha_hasta
+            fecha_hasta=liq_in.fecha_hasta,
+            nro_factura=liq_in.nro_factura,
+            factura_desde=liq_in.factura_desde,
+            factura_hasta=liq_in.factura_hasta,
+            facturas=liq_in.facturas
         )
 
         if not viajes:
@@ -751,6 +910,53 @@ def generate_liquidacion(
     finally:
         session.close()
 
+@router.get("/facturas-disponibles")
+def get_facturas_disponibles(
+    schema_name: str,
+    empresa: Empresa = Depends(verify_tenant_exists)
+):
+    """
+    Retorna la lista de todas las facturas registradas en los despachos,
+    con conteo de viajes, flete acumulado, volumen y fechas mín/máx,
+    ordenadas naturalmente de forma correlativa descendente.
+    """
+    session = get_tenant_session(schema_name)
+    try:
+        num_clean = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Integer)
+        
+        rows = session.query(
+            Viaje.nro_factura,
+            func.count(Viaje.id).label("total_viajes"),
+            func.coalesce(func.sum(Viaje.flete_total_bs), 0.0).label("flete_total"),
+            func.coalesce(func.sum(Viaje.volumen_recepcionado_litros), 0.0).label("volumen_total"),
+            func.min(Viaje.fecha_carga).label("fecha_min"),
+            func.max(Viaje.fecha_carga).label("fecha_max"),
+            func.max(Viaje.fecha_factura).label("fecha_factura")
+        ).filter(
+            Viaje.nro_factura.isnot(None),
+            func.trim(Viaje.nro_factura) != ""
+        ).group_by(
+            Viaje.nro_factura
+        ).order_by(
+            num_clean.desc().nulls_last(),
+            Viaje.nro_factura.desc()
+        ).all()
+
+        result = []
+        for r in rows:
+            result.append({
+                "nro_factura": str(r[0]).strip(),
+                "total_viajes": int(r[1]),
+                "flete_total": round(float(r[2] or 0), 2),
+                "volumen_total": round(float(r[3] or 0), 2),
+                "fecha_min": r[4].strftime("%Y-%m-%d") if r[4] else None,
+                "fecha_max": r[5].strftime("%Y-%m-%d") if r[5] else None,
+                "fecha_factura": r[6].strftime("%Y-%m-%d") if r[6] else None,
+            })
+        return result
+    finally:
+        session.close()
+
 @router.get("/{id}", response_model=LiquidacionDetalleResponse)
 def get_liquidacion_detalle(schema_name: str, id: int, empresa: Empresa = Depends(verify_tenant_exists)):
     session = get_tenant_session(schema_name)
@@ -833,6 +1039,10 @@ def export_liquidacion_excel(
     semestre: Optional[int] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
+    nro_factura: Optional[str] = None,
+    factura_desde: Optional[str] = None,
+    factura_hasta: Optional[str] = None,
+    facturas: Optional[List[str]] = Query(None),
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     session = get_tenant_session(schema_name)
@@ -855,7 +1065,11 @@ def export_liquidacion_excel(
                 anio=anio,
                 semestre=semestre,
                 fecha_desde=fecha_desde,
-                fecha_hasta=fecha_hasta
+                fecha_hasta=fecha_hasta,
+                nro_factura=nro_factura,
+                factura_desde=factura_desde,
+                factura_hasta=factura_hasta,
+                facturas=facturas
             )
             if not viajes:
                 raise HTTPException(status_code=400, detail="No se encontraron viajes para exportar en este período")
@@ -907,6 +1121,10 @@ def export_liquidacion_pdf(
     semestre: Optional[int] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
+    nro_factura: Optional[str] = None,
+    factura_desde: Optional[str] = None,
+    factura_hasta: Optional[str] = None,
+    facturas: Optional[List[str]] = Query(None),
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     session = get_tenant_session(schema_name)
@@ -929,7 +1147,11 @@ def export_liquidacion_pdf(
                 anio=anio,
                 semestre=semestre,
                 fecha_desde=fecha_desde,
-                fecha_hasta=fecha_hasta
+                fecha_hasta=fecha_hasta,
+                nro_factura=nro_factura,
+                factura_desde=factura_desde,
+                factura_hasta=factura_hasta,
+                facturas=facturas
             )
             if not viajes:
                 raise HTTPException(status_code=400, detail="No se encontraron viajes para exportar en este período")

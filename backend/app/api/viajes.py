@@ -1,5 +1,6 @@
 import io
 import json
+import re
 from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from fastapi.responses import Response
@@ -13,7 +14,7 @@ from app.services.calculation_engine import calculate_viaje_values, determine_tr
 from app.services.excel_export import generate_viajes_template_excel, export_viajes_list_excel
 from app.services.excel_importer import get_excel_sheets, parse_excel_viajes_data, execute_import_viajes
 
-from sqlalchemy import func
+from sqlalchemy import func, or_, cast, Integer
 
 router = APIRouter(prefix="/tenants/{schema_name}/viajes", tags=["Viajes y Despachos"])
 
@@ -78,6 +79,53 @@ def get_periodos_disponibles(
         session.close()
 
 
+@router.get("/facturas-disponibles")
+def get_facturas_disponibles_viajes(
+    schema_name: str,
+    empresa: Empresa = Depends(verify_tenant_exists)
+):
+    """
+    Retorna la lista de todas las facturas registradas en los despachos,
+    con conteo de viajes, flete acumulado, volumen y fechas mín/máx,
+    ordenadas naturalmente de forma correlativa descendente.
+    """
+    session = get_tenant_session(schema_name)
+    try:
+        num_clean = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Integer)
+        rows = session.query(
+            Viaje.nro_factura,
+            func.count(Viaje.id).label("total_viajes"),
+            func.coalesce(func.sum(Viaje.flete_total_bs), 0.0).label("flete_total"),
+            func.coalesce(func.sum(Viaje.volumen_recepcionado_litros), 0.0).label("volumen_total"),
+            func.min(Viaje.fecha_carga).label("fecha_min"),
+            func.max(Viaje.fecha_carga).label("fecha_max"),
+            func.max(Viaje.fecha_factura).label("fecha_factura")
+        ).filter(
+            Viaje.nro_factura.isnot(None),
+            func.trim(Viaje.nro_factura) != ""
+        ).group_by(
+            Viaje.nro_factura
+        ).order_by(
+            num_clean.desc().nulls_last(),
+            Viaje.nro_factura.desc()
+        ).all()
+
+        result = []
+        for r in rows:
+            result.append({
+                "nro_factura": str(r[0]).strip(),
+                "total_viajes": int(r[1]),
+                "flete_total": round(float(r[2] or 0), 2),
+                "volumen_total": round(float(r[3] or 0), 2),
+                "fecha_min": r[4].strftime("%Y-%m-%d") if r[4] else None,
+                "fecha_max": r[5].strftime("%Y-%m-%d") if r[5] else None,
+                "fecha_factura": r[6].strftime("%Y-%m-%d") if r[6] else None,
+            })
+        return result
+    finally:
+        session.close()
+
+
 @router.get("/", response_model=List[ViajeResponse])
 def list_viajes(
     schema_name: str,
@@ -90,6 +138,10 @@ def list_viajes(
     producto: Optional[str] = None,
     tramo: Optional[str] = None,
     nro_factura: Optional[str] = None,
+    factura_desde: Optional[str] = None,
+    factura_hasta: Optional[str] = None,
+    facturas: Optional[List[str]] = Query(None),
+    tipo_periodo: Optional[str] = None,
     facturado: Optional[str] = None,
     search: Optional[str] = None,
     orden: Optional[str] = None,
@@ -100,8 +152,48 @@ def list_viajes(
     session = get_tenant_session(schema_name)
     try:
         query = session.query(Viaje)
-        if periodo_mes:
-            query = query.filter(Viaje.periodo_mes == periodo_mes)
+        if facturas and len(facturas) > 0:
+            clean_facs = [str(f).strip() for f in facturas if f and str(f).strip()]
+            query = query.filter(Viaje.nro_factura.in_(clean_facs))
+        elif factura_desde and factura_hasta:
+            d_s = str(factura_desde).strip()
+            h_s = str(factura_hasta).strip()
+            d_digits = re.sub(r'[^0-9]', '', d_s)
+            h_digits = re.sub(r'[^0-9]', '', h_s)
+            if d_digits and h_digits:
+                d_val = min(int(d_digits), int(h_digits))
+                h_val = max(int(d_digits), int(h_digits))
+                num_col = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Integer)
+                query = query.filter(num_col.between(d_val, h_val))
+            else:
+                query = query.filter(Viaje.nro_factura.between(d_s, h_s))
+        elif nro_factura or factura_desde:
+            target_fac = str(nro_factura or factura_desde).strip()
+            query = query.filter(
+                or_(
+                    func.trim(Viaje.nro_factura) == target_fac,
+                    Viaje.nro_factura.ilike(f"%{target_fac}%")
+                )
+            )
+        elif periodo_mes:
+            if periodo_mes.startswith("FAC-"):
+                val = periodo_mes.replace("FAC-", "")
+                if "_" in val:
+                    parts = val.split("_")
+                    d_s, h_s = parts[0], parts[1]
+                    d_digits = re.sub(r'[^0-9]', '', d_s)
+                    h_digits = re.sub(r'[^0-9]', '', h_s)
+                    if d_digits and h_digits:
+                        d_val, h_val = min(int(d_digits), int(h_digits)), max(int(d_digits), int(h_digits))
+                        num_col = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Integer)
+                        query = query.filter(num_col.between(d_val, h_val))
+                    else:
+                        query = query.filter(Viaje.nro_factura.between(d_s, h_s))
+                else:
+                    query = query.filter(Viaje.nro_factura == val)
+            else:
+                query = query.filter(Viaje.periodo_mes == periodo_mes)
+
         if anio:
             query = query.filter(Viaje.periodo_mes.startswith(f"{anio}-"))
         if fecha_desde:
@@ -116,8 +208,6 @@ def list_viajes(
             query = query.filter(Viaje.producto == producto.upper().strip())
         if tramo:
             query = query.filter(Viaje.tramo == tramo.upper().strip())
-        if nro_factura:
-            query = query.filter(Viaje.nro_factura.ilike(f"%{nro_factura.strip()}%"))
         if facturado == "si":
             query = query.filter(Viaje.nro_factura.isnot(None), Viaje.nro_factura != "")
         elif facturado == "no":
@@ -444,6 +534,10 @@ def export_viajes_excel(
     placa: Optional[str] = Query(None),
     producto: Optional[str] = Query(None),
     tramo: Optional[str] = Query(None),
+    nro_factura: Optional[str] = Query(None),
+    factura_desde: Optional[str] = Query(None),
+    factura_hasta: Optional[str] = Query(None),
+    facturas: Optional[List[str]] = Query(None),
     search: Optional[str] = Query(None),
     order_by: Optional[str] = Query("fecha"),
     order_dir: Optional[str] = Query("asc"),
@@ -452,9 +546,41 @@ def export_viajes_excel(
     session = get_tenant_session(schema_name)
     try:
         query = session.query(Viaje)
-        p = periodo_mes or periodo
-        if p:
-            query = query.filter(Viaje.periodo_mes == p)
+        if facturas and len(facturas) > 0:
+            clean_facs = [str(f).strip() for f in facturas if f and str(f).strip()]
+            query = query.filter(Viaje.nro_factura.in_(clean_facs))
+        elif factura_desde and factura_hasta:
+            d_s = str(factura_desde).strip()
+            h_s = str(factura_hasta).strip()
+            d_digits = re.sub(r'[^0-9]', '', d_s)
+            h_digits = re.sub(r'[^0-9]', '', h_s)
+            if d_digits and h_digits:
+                d_val = min(int(d_digits), int(h_digits))
+                h_val = max(int(d_digits), int(h_digits))
+                num_col = cast(func.nullif(func.regexp_replace(Viaje.nro_factura, r'[^0-9]', '', 'g'), ''), Integer)
+                query = query.filter(num_col.between(d_val, h_val))
+            else:
+                query = query.filter(Viaje.nro_factura.between(d_s, h_s))
+        elif nro_factura or factura_desde:
+            target_fac = str(nro_factura or factura_desde).strip()
+            query = query.filter(
+                or_(
+                    func.trim(Viaje.nro_factura) == target_fac,
+                    Viaje.nro_factura.ilike(f"%{target_fac}%")
+                )
+            )
+        else:
+            p = periodo_mes or periodo
+            if p:
+                if p.startswith("FAC-"):
+                    val = p.replace("FAC-", "")
+                    if "_" in val:
+                        parts = val.split("_")
+                        query = query.filter(Viaje.nro_factura.between(parts[0], parts[1]))
+                    else:
+                        query = query.filter(Viaje.nro_factura == val)
+                else:
+                    query = query.filter(Viaje.periodo_mes == p)
         if anio:
             query = query.filter(Viaje.periodo_mes.startswith(f"{anio}-"))
         if fecha_desde:
