@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import Response
 from typing import List, Optional
@@ -204,11 +204,25 @@ def list_liquidaciones(
     factura_desde: Optional[str] = None,
     factura_hasta: Optional[str] = None,
     facturas: Optional[List[str]] = Query(None),
+    search: Optional[str] = None,
+    estado: Optional[str] = None,
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     session = get_tenant_session(schema_name)
     try:
         query = session.query(Liquidacion)
+        if search and search.strip():
+            s = f"%{search.strip()}%"
+            query = query.filter(
+                or_(
+                    Liquidacion.placa.ilike(s),
+                    Liquidacion.codigo.ilike(s),
+                    Liquidacion.periodo_mes.ilike(s)
+                )
+            )
+        if estado and estado.strip() and estado.upper() != "TODOS":
+            query = query.filter(Liquidacion.estado.ilike(f"%{estado.strip()}%"))
+
         if nro_factura:
             query = query.filter(
                 or_(
@@ -263,7 +277,11 @@ def list_liquidaciones(
             p_upper = placa.upper().strip()
             if p_upper not in ["TODAS", "__TODAS__", "ALL", "TODAS LAS PLACAS", "CONSOLIDADO"]:
                 query = query.filter(Liquidacion.placa == p_upper)
-        return query.order_by(Liquidacion.periodo_mes.desc(), Liquidacion.created_at.desc()).all()
+        return query.order_by(
+            func.coalesce(Liquidacion.updated_at, Liquidacion.created_at).desc(),
+            Liquidacion.created_at.desc(),
+            Liquidacion.id.desc()
+        ).all()
     finally:
         session.close()
 
@@ -685,7 +703,8 @@ def generate_liquidaciones_batch(
                 session.flush()
             else:
                 liq.fecha_emision = fecha_emision
-                liq.estado = "Generada"
+                liq.estado = "Editada"
+                liq.updated_at = datetime.now(timezone.utc)
                 for k, val in p_resumen.items():
                     setattr(liq, k, val)
                 session.flush()
@@ -718,6 +737,7 @@ def generate_liquidaciones_batch(
         else:
             liq_todas.fecha_emision = fecha_emision
             liq_todas.estado = "Consolidado General"
+            liq_todas.updated_at = datetime.now(timezone.utc)
             for k, val in resumen_consolidado.items():
                 setattr(liq_todas, k, val)
 
@@ -894,6 +914,8 @@ def generate_liquidacion(
             liq.fecha_emision = fecha_emision
             liq.firmas_json = json.dumps(firmas_dict)
             liq.notas = liq_in.notas or liq.notas
+            liq.estado = "Consolidado General" if is_todas else ("Editada con Ajustes" if overrides else "Editada")
+            liq.updated_at = datetime.now(timezone.utc)
             session.commit()
             session.refresh(liq)
 

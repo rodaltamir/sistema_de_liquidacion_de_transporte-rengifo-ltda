@@ -8,6 +8,7 @@ class ParametroBase(BaseModel):
     merma_tolerancia_gasolina_pct: float = 0.25
     merma_tolerancia_iya_pct: float = 0.20
     merma_tolerancia_crudo_pct: float = 0.15
+    merma_tolerancia_otro_pct: float = 0.00
 
     precio_merma_diesel_litro_bs: float = 3.72
     precio_merma_gasolina_litro_bs: float = 3.74
@@ -35,6 +36,7 @@ class ParametroUpdate(BaseModel):
     merma_tolerancia_gasolina_pct: Optional[float] = None
     merma_tolerancia_iya_pct: Optional[float] = None
     merma_tolerancia_crudo_pct: Optional[float] = None
+    merma_tolerancia_otro_pct: Optional[float] = None
 
     precio_merma_diesel_litro_bs: Optional[float] = None
     precio_merma_gasolina_litro_bs: Optional[float] = None

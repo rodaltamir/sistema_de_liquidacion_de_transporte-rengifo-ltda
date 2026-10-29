@@ -1,3 +1,4 @@
+import json
 import calendar
 from datetime import date
 from typing import Dict, Any, List, Optional
@@ -23,9 +24,25 @@ def get_tolerancia_pct(producto: str, params: Optional[ParametroLiquidacion] = N
     Retorna el porcentaje de tolerancia contractual de merma según el producto.
     Basado en los estándares YPFB y regulaciones del sector hidrocarburos.
     """
-    prod = producto.upper() if producto else ""
-    if "SOYA" in prod or "GIRASOL" in prod or "ACERO" in prod or "PLANCHAS" in prod:
-        return 0.0                                   # Carga seca / Granel
+    if not producto:
+        return 0.0
+
+    prod = producto.upper().strip()
+
+    # 1. Tolerancia personalizada configurada para este producto específico en el catálogo
+    if params and params.productos_json:
+        try:
+            items = json.loads(params.productos_json)
+            for it in items:
+                if isinstance(it, dict):
+                    if it.get("nombre", "").upper().strip() == prod and it.get("tolerancia_pct") is not None:
+                        return float(it["tolerancia_pct"])
+        except Exception:
+            pass
+
+    # 2. Cargas secas conocidas sin merma
+    if any(k in prod for k in ["SOYA", "GIRASOL", "ACERO", "PLANCHAS", "PLANCHA", "GRANEL"]):
+        return 0.0
     elif "GASOLINA" in prod:
         return params.merma_tolerancia_gasolina_pct if (params and params.merma_tolerancia_gasolina_pct is not None) else 0.25
     elif "DIESEL" in prod or "DO" in prod or "DIÉSEL" in prod:
@@ -34,7 +51,12 @@ def get_tolerancia_pct(producto: str, params: Optional[ParametroLiquidacion] = N
         return params.merma_tolerancia_iya_pct if (params and params.merma_tolerancia_iya_pct is not None) else 0.20
     elif "CRUDO" in prod:
         return params.merma_tolerancia_crudo_pct if (params and params.merma_tolerancia_crudo_pct is not None) else 0.15
-    return params.merma_tolerancia_diesel_pct if (params and params.merma_tolerancia_diesel_pct is not None) else 0.15
+
+    # 3. Tolerancia para Otros Productos configurada en parámetros
+    if params and getattr(params, "merma_tolerancia_otro_pct", None) is not None:
+        return float(params.merma_tolerancia_otro_pct)
+
+    return 0.0
 
 def get_precio_merma(producto: str, params: Optional[ParametroLiquidacion] = None, override_precio: float = None) -> float:
     """

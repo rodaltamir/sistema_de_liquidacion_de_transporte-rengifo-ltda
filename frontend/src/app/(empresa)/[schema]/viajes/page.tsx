@@ -45,6 +45,7 @@ import Swal from "sweetalert2";
 import { apiFetch, getApiUrl } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
+import { getSavedState, saveState } from "@/lib/storage";
 import DatePeriodFilter, { DateFilterChangeEvent } from "@/components/DatePeriodFilter";
 import SaveNewCatalogModal from "@/components/SaveNewCatalogModal";
 import ModalPortal from "@/components/ModalPortal";
@@ -53,6 +54,11 @@ import ImportExcelModal from "@/components/ImportExcelModal";
 interface ItemDescuento {
   concepto: string;
   monto: number;
+}
+
+interface ProductoCatalogItem {
+  nombre: string;
+  tolerancia_pct: number;
 }
 
 interface Viaje {
@@ -178,12 +184,18 @@ function ViajesContent() {
   // Pestaña Principal: "planilla" o "historial"
   const [activeMainTab, setActiveMainTab] = useState<"planilla" | "historial">("planilla");
   const [tablaModo, setTablaModo] = useState<"compacta" | "extendida">("compacta");
+  const [isHydrated, setIsHydrated] = useState(false);
 
   // Catálogos dinámicos por empresa
   const [catalogProductos, setCatalogProductos] = useState<string[]>([
     "GASOLINA",
     "DIESEL",
     "INSUMOS Y ADITIVOS"
+  ]);
+  const [catalogProductosDetalle, setCatalogProductosDetalle] = useState<ProductoCatalogItem[]>([
+    { nombre: "GASOLINA", tolerancia_pct: 0.25 },
+    { nombre: "DIESEL", tolerancia_pct: 0.15 },
+    { nombre: "INSUMOS Y ADITIVOS", tolerancia_pct: 0.20 }
   ]);
   const [catalogTramos, setCatalogTramos] = useState<string[]>([
     "ARICA - TAMBO QUEMADO - LA PAZ",
@@ -316,8 +328,52 @@ function ViajesContent() {
   }, [metodoFiltro, modoFactura, facturaInput, facturaDesdeInput, facturaHastaInput]);
 
   useEffect(() => {
-    loadViajes();
-  }, [schema, periodo, dateFilterQuery, placaFiltro, metodoFiltro, modoFactura, facturaInput, facturaDesdeInput, facturaHastaInput]);
+    if (schema && isHydrated) {
+      loadViajes();
+    }
+  }, [schema, isHydrated, periodo, dateFilterQuery, placaFiltro, metodoFiltro, modoFactura, facturaInput, facturaDesdeInput, facturaHastaInput]);
+
+  // Memoria Inteligente: persistir configuración y filtros
+  useEffect(() => {
+    if (!isHydrated || !schema) return;
+    saveState(`transporte_${schema}_viajes_memoria`, {
+      periodo,
+      activeFilterLabel,
+      dateFilterQuery,
+      metodoFiltro,
+      modoFactura,
+      facturaInput,
+      facturaDesdeInput,
+      facturaHastaInput,
+      placaFiltro,
+      productoFiltro,
+      sortBy,
+      sortDir,
+      pageSize,
+      activeMainTab,
+      tablaModo,
+      historialFacturadoFilter
+    });
+  }, [
+    isHydrated,
+    schema,
+    periodo,
+    activeFilterLabel,
+    dateFilterQuery,
+    metodoFiltro,
+    modoFactura,
+    facturaInput,
+    facturaDesdeInput,
+    facturaHastaInput,
+    placaFiltro,
+    productoFiltro,
+    sortBy,
+    sortDir,
+    pageSize,
+    activeMainTab,
+    tablaModo,
+    historialFacturadoFilter
+  ]);
 
   // Si viene acción de URL para abrir modal de nuevo viaje o seleccionar pestaña
   useEffect(() => {
@@ -338,8 +394,13 @@ function ViajesContent() {
     const mReal = Math.round((vRec - vOri) * 10) / 10;
 
     let tol = 0.25;
-    const prodUpper = (formData.producto || "").toUpperCase();
-    if (prodUpper.includes("DIESEL") || prodUpper.includes("DIÉSEL") || prodUpper === "DO") {
+    const prodUpper = (formData.producto || "").toUpperCase().trim();
+    const matchedDetalle = catalogProductosDetalle.find(
+      p => p.nombre.toUpperCase().trim() === prodUpper
+    );
+    if (matchedDetalle && matchedDetalle.tolerancia_pct !== undefined && matchedDetalle.tolerancia_pct !== null) {
+      tol = Number(matchedDetalle.tolerancia_pct);
+    } else if (prodUpper.includes("DIESEL") || prodUpper.includes("DIÉSEL") || prodUpper === "DO") {
       tol = 0.15;
     } else if (prodUpper.includes("IYA") || prodUpper.includes("INSUMOS") || prodUpper.includes("ADIT")) {
       tol = 0.20;
@@ -405,7 +466,8 @@ function ViajesContent() {
     formData.tipo_tarifa,
     formData.precio_merma_litro_bs,
     formData.descuentos_adicionales,
-    formData.descuentos_mermas
+    formData.descuentos_mermas,
+    catalogProductosDetalle
   ]);
 
   const loadInitialData = async () => {
@@ -427,13 +489,44 @@ function ViajesContent() {
         if (Array.isArray(catData.productos) && catData.productos.length > 0) {
           setCatalogProductos(catData.productos);
         }
+        if (Array.isArray(catData.productos_detalle) && catData.productos_detalle.length > 0) {
+          setCatalogProductosDetalle(catData.productos_detalle);
+        } else if (Array.isArray(catData.productos)) {
+          setCatalogProductosDetalle(catData.productos.map((p: string) => {
+            const pUp = p.toUpperCase();
+            const tol = pUp.includes("DIESEL") ? 0.15 : (pUp.includes("GASOLINA") ? 0.25 : (pUp.includes("IYA") ? 0.20 : 0.0));
+            return { nombre: pUp, tolerancia_pct: tol };
+          }));
+        }
         if (Array.isArray(catData.tramos) && catData.tramos.length > 0) {
           setCatalogTramos(catData.tramos);
         }
       }
-      if (Array.isArray(pData) && pData.length > 0 && !periodo) {
-        setPeriodo(pData[0].periodo_mes);
+      // Memoria Inteligente: restaurar filtros previos si existen
+      const saved = getSavedState<any>(`transporte_${schema}_viajes_memoria`, null);
+      if (saved) {
+        if (saved.periodo !== undefined) setPeriodo(saved.periodo);
+        if (saved.activeFilterLabel !== undefined) setActiveFilterLabel(saved.activeFilterLabel);
+        if (saved.dateFilterQuery !== undefined) setDateFilterQuery(saved.dateFilterQuery);
+        if (saved.metodoFiltro !== undefined) setMetodoFiltro(saved.metodoFiltro);
+        if (saved.modoFactura !== undefined) setModoFactura(saved.modoFactura);
+        if (saved.facturaInput !== undefined) setFacturaInput(saved.facturaInput);
+        if (saved.facturaDesdeInput !== undefined) setFacturaDesdeInput(saved.facturaDesdeInput);
+        if (saved.facturaHastaInput !== undefined) setFacturaHastaInput(saved.facturaHastaInput);
+        if (saved.placaFiltro !== undefined) setPlacaFiltro(saved.placaFiltro);
+        if (saved.productoFiltro !== undefined) setProductoFiltro(saved.productoFiltro);
+        if (saved.sortBy !== undefined) setSortBy(saved.sortBy);
+        if (saved.sortDir !== undefined) setSortDir(saved.sortDir);
+        if (saved.pageSize !== undefined) setPageSize(saved.pageSize);
+        if (saved.activeMainTab !== undefined) setActiveMainTab(saved.activeMainTab);
+        if (saved.tablaModo !== undefined) setTablaModo(saved.tablaModo);
+        if (saved.historialFacturadoFilter !== undefined) setHistorialFacturadoFilter(saved.historialFacturadoFilter);
+      } else {
+        if (Array.isArray(pData) && pData.length > 0 && !periodo) {
+          setPeriodo(pData[0].periodo_mes);
+        }
       }
+      setIsHydrated(true);
     } catch (err) {
       console.error(err);
     }
@@ -483,32 +576,75 @@ function ViajesContent() {
   };
 
   const handleCreateNuevoProducto = async () => {
-    const { value: nuevoProd } = await Swal.fire({
+    const { value: formValues } = await Swal.fire({
       title: "Nuevo Producto de Transporte",
-      text: "Se guardará permanentemente en el catálogo de esta empresa.",
-      input: "text",
-      inputPlaceholder: "ej. PLANCHAS DE ACERO, SOYA A GRANEL...",
+      html: `
+        <div style="text-align: left; font-size: 13px; color: #cbd5e1; display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
+          <div>
+            <label style="display: block; font-weight: 700; font-size: 11px; text-transform: uppercase; color: #94a3b8; margin-bottom: 4px;">
+              Nombre del Producto *
+            </label>
+            <input id="swal-input-prod-nombre" class="swal2-input" placeholder="ej. CRUDO, ALCOHOL, PLANCHAS DE ACERO..." style="margin: 0; width: 100%; box-sizing: border-box; background: #1e293b; color: #f8fafc; border: 1px solid #334155; border-radius: 8px; font-size: 13px; padding: 10px;" />
+          </div>
+          <div>
+            <label style="display: block; font-weight: 700; font-size: 11px; text-transform: uppercase; color: #94a3b8; margin-bottom: 4px;">
+              Tolerancia de Merma (%) *
+            </label>
+            <input id="swal-input-prod-tol" type="number" step="0.01" min="0" max="100" class="swal2-input" placeholder="ej. 0.20 para 0.20%, 0.00 para cargas secas" value="0.20" style="margin: 0; width: 100%; box-sizing: border-box; background: #1e293b; color: #f8fafc; border: 1px solid #334155; border-radius: 8px; font-size: 13px; padding: 10px;" />
+            <span style="font-size: 10px; color: #64748b; margin-top: 2px; display: block;">Rango permitido: 0.00% a 100.00% (ej. 0.15% para Diesel, 0.25% Gasolina)</span>
+          </div>
+        </div>
+      `,
       showCancelButton: true,
       confirmButtonText: "Guardar Producto",
       cancelButtonText: "Cancelar",
       confirmButtonColor: "#f59e0b",
       background: "#0f172a",
-      color: "#f8fafc"
+      color: "#f8fafc",
+      focusConfirm: false,
+      preConfirm: () => {
+        const nombreInput = document.getElementById("swal-input-prod-nombre") as HTMLInputElement;
+        const tolInput = document.getElementById("swal-input-prod-tol") as HTMLInputElement;
+        const nombre = nombreInput?.value?.trim() || "";
+        const tolStr = tolInput?.value?.trim() || "";
+
+        if (!nombre) {
+          Swal.showValidationMessage("Por favor ingrese el nombre del producto.");
+          return false;
+        }
+
+        const tolNum = parseFloat(tolStr);
+        if (isNaN(tolNum) || tolNum < 0 || tolNum > 100) {
+          Swal.showValidationMessage("La tolerancia debe ser un valor numérico entre 0.00% y 100.00%.");
+          return false;
+        }
+
+        return {
+          nombre: nombre.toUpperCase(),
+          tolerancia_pct: Math.round(tolNum * 100) / 100
+        };
+      }
     });
-    if (nuevoProd && nuevoProd.trim()) {
-      const prodUpper = nuevoProd.trim().toUpperCase();
+
+    if (formValues) {
+      const prodUpper = formValues.nombre;
+      const tolVal = formValues.tolerancia_pct;
       try {
         await apiFetch(`/tenants/${schema}/parametros/productos`, {
           method: "POST",
-          body: JSON.stringify({ producto: prodUpper })
+          body: JSON.stringify({ producto: prodUpper, tolerancia_pct: tolVal })
         });
         setCatalogProductos(prev => Array.from(new Set([...prev, prodUpper])));
+        setCatalogProductosDetalle(prev => {
+          const filtered = prev.filter(p => p.nombre.toUpperCase() !== prodUpper);
+          return [...filtered, { nombre: prodUpper, tolerancia_pct: tolVal }];
+        });
         setFormData(prev => ({ ...prev, producto: prodUpper }));
         Swal.fire({
           icon: "success",
           title: "Producto registrado",
-          text: `El producto ${prodUpper} ahora está disponible para la empresa.`,
-          timer: 1600,
+          text: `El producto ${prodUpper} con tolerancia del ${tolVal}% ha sido guardado exitosamente.`,
+          timer: 1800,
           showConfirmButton: false,
           background: "#0f172a",
           color: "#f8fafc"
@@ -518,6 +654,136 @@ function ViajesContent() {
           icon: "error",
           title: "Error",
           text: e.message || "No se pudo guardar el producto",
+          background: "#0f172a",
+          color: "#f8fafc"
+        });
+      }
+    }
+  };
+
+  const handleEditProducto = async () => {
+    const currentProd = formData.producto?.trim() || "";
+    if (!currentProd) {
+      Swal.fire({
+        icon: "info",
+        title: "Seleccione un producto",
+        text: "Por favor seleccione el producto que desea editar en los botones de abajo.",
+        confirmButtonColor: "#f59e0b",
+        background: "#0f172a",
+        color: "#f8fafc"
+      });
+      return;
+    }
+
+    const currentUpper = currentProd.toUpperCase();
+    const matched = catalogProductosDetalle.find(p => p.nombre.toUpperCase() === currentUpper);
+    let defaultTol = 0.20;
+    if (matched && matched.tolerancia_pct !== undefined && matched.tolerancia_pct !== null) {
+      defaultTol = matched.tolerancia_pct;
+    } else if (currentUpper.includes("DIESEL") || currentUpper.includes("DIÉSEL") || currentUpper === "DO") {
+      defaultTol = 0.15;
+    } else if (currentUpper.includes("GASOLINA")) {
+      defaultTol = 0.25;
+    } else if (currentUpper.includes("IYA") || currentUpper.includes("INSUMOS") || currentUpper.includes("ADIT")) {
+      defaultTol = 0.20;
+    } else if (currentUpper.includes("PLANCHA") || currentUpper.includes("SOYA") || currentUpper.includes("ACERO") || currentUpper.includes("GIRASOL")) {
+      defaultTol = 0.00;
+    }
+
+    const { value: formValues } = await Swal.fire({
+      title: "Editar Producto de Transporte",
+      html: `
+        <div style="text-align: left; font-size: 13px; color: #cbd5e1; display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
+          <div>
+            <label style="display: block; font-weight: 700; font-size: 11px; text-transform: uppercase; color: #94a3b8; margin-bottom: 4px;">
+              Nombre del Producto *
+            </label>
+            <input id="swal-edit-prod-nombre" class="swal2-input" value="${currentProd}" placeholder="Nombre del producto..." style="margin: 0; width: 100%; box-sizing: border-box; background: #1e293b; color: #f8fafc; border: 1px solid #334155; border-radius: 8px; font-size: 13px; padding: 10px;" />
+          </div>
+          <div>
+            <label style="display: block; font-weight: 700; font-size: 11px; text-transform: uppercase; color: #94a3b8; margin-bottom: 4px;">
+              Tolerancia de Merma (%) *
+            </label>
+            <input id="swal-edit-prod-tol" type="number" step="0.01" min="0" max="100" class="swal2-input" value="${defaultTol}" style="margin: 0; width: 100%; box-sizing: border-box; background: #1e293b; color: #f8fafc; border: 1px solid #334155; border-radius: 8px; font-size: 13px; padding: 10px;" />
+            <span style="font-size: 10px; color: #64748b; margin-top: 2px; display: block;">Rango permitido: 0.00% a 100.00%</span>
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: "Actualizar Producto",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#0284c7",
+      background: "#0f172a",
+      color: "#f8fafc",
+      focusConfirm: false,
+      preConfirm: () => {
+        const nombreInput = document.getElementById("swal-edit-prod-nombre") as HTMLInputElement;
+        const tolInput = document.getElementById("swal-edit-prod-tol") as HTMLInputElement;
+        const nombre = nombreInput?.value?.trim() || "";
+        const tolStr = tolInput?.value?.trim() || "";
+
+        if (!nombre) {
+          Swal.showValidationMessage("Por favor ingrese el nombre del producto.");
+          return false;
+        }
+
+        const tolNum = parseFloat(tolStr);
+        if (isNaN(tolNum) || tolNum < 0 || tolNum > 100) {
+          Swal.showValidationMessage("La tolerancia debe ser un valor numérico entre 0.00% y 100.00%.");
+          return false;
+        }
+
+        return {
+          nombre: nombre.toUpperCase(),
+          tolerancia_pct: Math.round(tolNum * 100) / 100
+        };
+      }
+    });
+
+    if (formValues) {
+      const newProdUpper = formValues.nombre;
+      const newTolVal = formValues.tolerancia_pct;
+      try {
+        await apiFetch(`/tenants/${schema}/parametros/productos`, {
+          method: "PUT",
+          body: JSON.stringify({ 
+            producto: newProdUpper, 
+            tolerancia_pct: newTolVal,
+            nombre_anterior: currentUpper
+          })
+        });
+
+        setCatalogProductos(prev => {
+          const idx = prev.findIndex(p => p.toUpperCase() === currentUpper);
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = newProdUpper;
+            return Array.from(new Set(next));
+          }
+          return Array.from(new Set([...prev, newProdUpper]));
+        });
+
+        setCatalogProductosDetalle(prev => {
+          const filtered = prev.filter(p => p.nombre.toUpperCase() !== currentUpper && p.nombre.toUpperCase() !== newProdUpper);
+          return [...filtered, { nombre: newProdUpper, tolerancia_pct: newTolVal }];
+        });
+
+        setFormData(prev => ({ ...prev, producto: newProdUpper }));
+
+        Swal.fire({
+          icon: "success",
+          title: "Producto actualizado",
+          text: `El producto ${newProdUpper} (Tolerancia: ${newTolVal}%) se actualizó correctamente.`,
+          timer: 1800,
+          showConfirmButton: false,
+          background: "#0f172a",
+          color: "#f8fafc"
+        });
+      } catch (e: any) {
+        Swal.fire({
+          icon: "error",
+          title: "Error al actualizar",
+          text: e.message || "No se pudo actualizar el producto",
           background: "#0f172a",
           color: "#f8fafc"
         });
@@ -702,6 +968,9 @@ function ViajesContent() {
 
   const openEditModal = (v: Viaje) => {
     setEditingViaje(v);
+    if (v.producto && !catalogProductos.includes(v.producto)) {
+      setCatalogProductos(prev => Array.from(new Set([...prev, v.producto])));
+    }
 
     let parsedAdic: ItemDescuento[] = [];
     if (Array.isArray(v.descuentos_adicionales)) {
@@ -751,6 +1020,9 @@ function ViajesContent() {
 
   const handleDuplicate = (v: Viaje) => {
     setEditingViaje(null); // Es un registro nuevo
+    if (v.producto && !catalogProductos.includes(v.producto)) {
+      setCatalogProductos(prev => Array.from(new Set([...prev, v.producto])));
+    }
     const today = new Date().toISOString().split("T")[0];
 
     let parsedAdic: ItemDescuento[] = [];
@@ -3617,22 +3889,42 @@ function ViajesContent() {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
                     Producto Transportado *
                   </label>
-                  <button
-                    type="button"
-                    onClick={handleCreateNuevoProducto}
-                    className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-0.5"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Nuevo Producto</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {formData.producto && (
+                      <button
+                        type="button"
+                        onClick={handleEditProducto}
+                        className="text-[11px] font-bold text-sky-600 dark:text-sky-400 hover:text-sky-500 hover:underline flex items-center gap-1 bg-sky-500/10 px-2 py-0.5 rounded-lg border border-sky-500/20 transition cursor-pointer"
+                        title={`Editar producto seleccionado (${formData.producto}) y su tolerancia`}
+                      >
+                        <Edit className="w-3 h-3" />
+                        <span>Editar Producto</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleCreateNuevoProducto}
+                      className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:text-amber-500 hover:underline flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20 transition cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Nuevo Producto</span>
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {catalogProductos.map((prodName) => {
-                    const pUpper = prodName.toUpperCase();
-                    let tol = "0.25%";
-                    if (pUpper.includes("DIESEL") || pUpper.includes("DIÉSEL") || pUpper === "DO") tol = "0.15%";
-                    else if (pUpper.includes("IYA") || pUpper.includes("INSUMOS") || pUpper.includes("ADIT")) tol = "0.20%";
-                    else if (pUpper.includes("PLANCHA") || pUpper.includes("SOYA") || pUpper.includes("GIRASOL") || pUpper.includes("ACERO")) tol = "0.00%";
+                    const pUpper = prodName.toUpperCase().trim();
+                    const det = catalogProductosDetalle.find(d => d.nombre.toUpperCase().trim() === pUpper);
+                    let tolStr = "0.25%";
+                    if (det && det.tolerancia_pct !== undefined && det.tolerancia_pct !== null) {
+                      tolStr = `${det.tolerancia_pct}%`;
+                    } else if (pUpper.includes("DIESEL") || pUpper.includes("DIÉSEL") || pUpper === "DO") {
+                      tolStr = "0.15%";
+                    } else if (pUpper.includes("IYA") || pUpper.includes("INSUMOS") || pUpper.includes("ADIT")) {
+                      tolStr = "0.20%";
+                    } else if (pUpper.includes("PLANCHA") || pUpper.includes("SOYA") || pUpper.includes("GIRASOL") || pUpper.includes("ACERO")) {
+                      tolStr = "0.00%";
+                    }
 
                     const isSelected = formData.producto === prodName;
                     return (
@@ -3640,14 +3932,14 @@ function ViajesContent() {
                         key={prodName}
                         type="button"
                         onClick={() => setFormData({ ...formData, producto: prodName })}
-                        className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-0.5 ${
+                        className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
                           isSelected
                             ? "bg-amber-500/10 border-amber-500 text-amber-600 dark:text-amber-400 font-black shadow-sm ring-1 ring-amber-500/30"
                             : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300"
                         }`}
                       >
                         <span className="text-xs font-bold leading-tight truncate max-w-full">{prodName}</span>
-                        <span className="text-[10px] font-mono opacity-80">Tolerancia: {tol}</span>
+                        <span className="text-[10px] font-mono opacity-80">Tolerancia: {tolStr}</span>
                       </button>
                     );
                   })}

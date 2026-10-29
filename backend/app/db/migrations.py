@@ -18,10 +18,15 @@ def ensure_tenant_columns(schema_name: str):
         conn.execute(text(f'UPDATE "{schema_name}".viajes SET volumen_facturado = ROUND((volumen_recepcionado_litros / 1000.0)::numeric, 3) WHERE volumen_facturado IS NULL;'))
         
         # Parámetros y catálogos de empresa (Productos y Tramos)
+        conn.execute(text(f'ALTER TABLE "{schema_name}".parametros_liquidacion ADD COLUMN IF NOT EXISTS merma_tolerancia_otro_pct DOUBLE PRECISION DEFAULT 0.00;'))
         conn.execute(text(f'ALTER TABLE "{schema_name}".parametros_liquidacion ADD COLUMN IF NOT EXISTS productos_json TEXT DEFAULT \'["GASOLINA", "DIESEL", "INSUMOS Y ADITIVOS"]\';'))
         conn.execute(text(f'ALTER TABLE "{schema_name}".parametros_liquidacion ADD COLUMN IF NOT EXISTS tramos_json TEXT DEFAULT \'["ARICA - TAMBO QUEMADO - LA PAZ", "IQUIQUE - PISIGA - ORURO", "MEJILLONES - OLLAGÜE - UYUNI"]\';'))
         conn.execute(text(f'UPDATE "{schema_name}".parametros_liquidacion SET productos_json = \'["GASOLINA", "DIESEL", "INSUMOS Y ADITIVOS"]\' WHERE productos_json IS NULL;'))
         conn.execute(text(f'UPDATE "{schema_name}".parametros_liquidacion SET tramos_json = \'["ARICA - TAMBO QUEMADO - LA PAZ", "IQUIQUE - PISIGA - ORURO", "MEJILLONES - OLLAGÜE - UYUNI"]\' WHERE tramos_json IS NULL;'))
+
+        # Liquidaciones: trazabilidad de estado y fecha de edición / ajustes
+        conn.execute(text(f'ALTER TABLE "{schema_name}".liquidaciones ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE;'))
+        conn.execute(text(f'ALTER TABLE "{schema_name}".liquidaciones ADD COLUMN IF NOT EXISTS estado VARCHAR(50) DEFAULT \'Generada\';'))
 
         # ÍNDICES DE ALTO RENDIMIENTO (Aceleración de búsquedas, filtros y ordenamiento)
         conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{schema_name}_viajes_fecha_carga" ON "{schema_name}".viajes (fecha_carga DESC);'))

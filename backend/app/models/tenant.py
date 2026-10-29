@@ -65,6 +65,7 @@ class ParametroLiquidacion(Base):
     merma_tolerancia_gasolina_pct = Column(Float, default=0.25)  # 0.25% YPFB Gasolina
     merma_tolerancia_iya_pct = Column(Float, default=0.20)       # 0.20% Insumos y Aditivos
     merma_tolerancia_crudo_pct = Column(Float, default=0.15)     # 0.15% Petróleo Crudo
+    merma_tolerancia_otro_pct = Column(Float, default=0.00)      # Tolerancia Otra / Otros Productos (%)
 
     # Precios de Merma de Referencia (Bs/Litro)
     precio_merma_diesel_litro_bs = Column(Float, default=3.72)
@@ -211,9 +212,10 @@ class Liquidacion(Base):
 
     # Firmas congeladas al momento de generar la liquidación
     firmas_json = Column(Text, nullable=True)
-    estado = Column(String(50), default="Generada")              # "Borrador", "Generada", "Pagada", "Anulada"
+    estado = Column(String(50), default="Generada")              # "Borrador", "Generada", "Editada", "Pagada", "Anulada"
     notas = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
     viajes_items = relationship("Viaje", back_populates="liquidacion")
 

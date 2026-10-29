@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useState, useEffect, useRef } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { 
   Settings, 
   Save, 
@@ -12,7 +12,6 @@ import {
   Users, 
   CheckCircle2, 
   Info,
-  Scale,
   Building2,
   Sun,
   Moon,
@@ -35,11 +34,36 @@ import { apiFetch } from "@/lib/api";
 import { useTheme, Theme } from "@/context/ThemeContext";
 
 export default function ConfiguracionPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col justify-center items-center py-32 gap-3">
+        <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
+        <span className="text-slate-500 dark:text-slate-400 text-xs font-semibold tracking-wider uppercase">
+          Cargando Configuración...
+        </span>
+      </div>
+    }>
+      <ConfiguracionContent />
+    </Suspense>
+  );
+}
+
+function ConfiguracionContent() {
   const routeParams = useParams();
+  const searchParams = useSearchParams();
   const schema = (routeParams?.schema as string) || "";
   const { theme, setTheme, resolvedTheme } = useTheme();
 
-  const [activeTab, setActiveTab] = useState<"empresa" | "parametros" | "tema">("empresa");
+  const tabParam = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState<"empresa" | "parametros" | "tema">(
+    tabParam === "parametros" || tabParam === "tema" ? tabParam : "empresa"
+  );
+
+  useEffect(() => {
+    if (tabParam === "parametros" || tabParam === "tema" || tabParam === "empresa") {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
   const [loading, setLoading] = useState(true);
   const [savingParametros, setSavingParametros] = useState(false);
   const [savingEmpresa, setSavingEmpresa] = useState(false);
@@ -74,6 +98,7 @@ export default function ConfiguracionPage() {
     merma_tolerancia_gasolina_pct: 0.25,
     merma_tolerancia_iya_pct: 0.20,
     merma_tolerancia_crudo_pct: 0.15,
+    merma_tolerancia_otro_pct: 0.00,
     precio_merma_diesel_litro_bs: 3.72,
     precio_merma_gasolina_litro_bs: 3.74,
     precio_merma_general_bs: 7.45,
@@ -107,6 +132,7 @@ export default function ConfiguracionPage() {
           merma_tolerancia_gasolina_pct: paramData.merma_tolerancia_gasolina_pct ?? 0.25,
           merma_tolerancia_iya_pct: paramData.merma_tolerancia_iya_pct ?? 0.20,
           merma_tolerancia_crudo_pct: paramData.merma_tolerancia_crudo_pct ?? 0.15,
+          merma_tolerancia_otro_pct: paramData.merma_tolerancia_otro_pct ?? 0.00,
           precio_merma_diesel_litro_bs: paramData.precio_merma_diesel_litro_bs ?? 3.72,
           precio_merma_gasolina_litro_bs: paramData.precio_merma_gasolina_litro_bs ?? 3.74,
           precio_merma_general_bs: paramData.precio_merma_general_bs ?? 7.45,
@@ -385,6 +411,7 @@ export default function ConfiguracionPage() {
       merma_tolerancia_diesel_pct: Number(formData.merma_tolerancia_diesel_pct) || 0,
       merma_tolerancia_gasolina_pct: Number(formData.merma_tolerancia_gasolina_pct) || 0,
       merma_tolerancia_iya_pct: Number(formData.merma_tolerancia_iya_pct) || 0,
+      merma_tolerancia_otro_pct: Number(formData.merma_tolerancia_otro_pct) || 0,
       precio_merma_general_bs: Number(formData.precio_merma_general_bs) || 0,
       tipo_cambio_usd_bob: Number(formData.tipo_cambio_usd_bob) || 6.96,
       comision_usd_m3: Number(formData.comision_usd_m3) || 0,
@@ -453,7 +480,7 @@ export default function ConfiguracionPage() {
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-              Datos institucionales de la empresa, apariencia visual (modo claro/oscuro) y parámetros técnicos YPFB
+              Datos institucionales de la empresa, apariencia visual (modo claro/oscuro) y parámetros técnicos del sistema
             </p>
           </div>
         </div>
@@ -496,7 +523,7 @@ export default function ConfiguracionPage() {
             }`}
           >
             <Fuel className="w-3.5 h-3.5" />
-            <span>Parámetros YPFB</span>
+            <span>Parámetros</span>
           </button>
         </div>
       </div>
@@ -883,46 +910,12 @@ export default function ConfiguracionPage() {
       )}
 
       {/* ======================================================== */}
-      {/* PESTAÑA 3: PARÁMETROS TÉCNICOS Y NORMATIVA YPFB           */}
+      {/* PESTAÑA 3: PARÁMETROS TÉCNICOS EDITABLES                 */}
       {/* ======================================================== */}
       {activeTab === "parametros" && (
         <form onSubmit={handleSaveParametros} className="space-y-6">
           
-          {/* BLOQUE 1: SUSTENTO LEGAL Y NORMATIVO */}
-          <div className="bg-white dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl space-y-4 transition-colors duration-200">
-            <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center">
-                <Scale className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                  1. Marco Legal y Cláusula Contractual de Liquidación
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Régimen tributario y de hidrocarburos del Estado Plurinacional</p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-200 leading-relaxed flex items-start gap-3">
-              <Info className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <b>Base Legal Aplicable:</b> Los contratos de flete de hidrocarburos con YPFB se rigen bajo la Ley 843 (Art. 4) que establece el momento de perfeccionamiento del hecho generador tras la conciliación de mermas y acta de conformidad. Las deducciones del 7% y BOL-GART responden a fondos de retención de garantía y cobertura logística.
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                Leyenda Legal al Pie de la Planilla
-              </label>
-              <textarea
-                rows={3}
-                value={formData.leyenda_legal}
-                onChange={(e) => setFormData({ ...formData, leyenda_legal: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl p-3 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 leading-relaxed"
-              />
-            </div>
-          </div>
-
-          {/* BLOQUE 2: TOLERANCIAS DE MERMA Y PRECIOS */}
+          {/* BLOQUE 1: TOLERANCIAS DE MERMA Y PRECIOS */}
           <div className="bg-white dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl space-y-4 transition-colors duration-200">
             <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
               <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center">
@@ -930,13 +923,13 @@ export default function ConfiguracionPage() {
               </div>
               <div>
                 <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                  2. Porcentajes de Tolerancia de Merma y Factores de Descuento
+                  1. Porcentajes de Tolerancia de Merma y Factores de Descuento
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Límites permisibles de evaporación y transporte por tipo de producto</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
                   Tolerancia Diesel (%)
@@ -1005,6 +998,29 @@ export default function ConfiguracionPage() {
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Estándar: 0.20%</span>
               </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
+                  Tolerancia Otra / Otros (%)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.merma_tolerancia_otro_pct}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData({ ...formData, merma_tolerancia_otro_pct: v === "" ? ("" as any) : v });
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                      setFormData((prev) => ({ ...prev, merma_tolerancia_otro_pct: 0 }));
+                    }
+                  }}
+                  placeholder="0.00"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">Productos sin tasa específica</span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
@@ -1056,7 +1072,7 @@ export default function ConfiguracionPage() {
             </div>
           </div>
 
-          {/* BLOQUE 3: COMISIONES Y DEDUCCIONES ESTÁNDAR */}
+          {/* BLOQUE 2: COMISIONES Y DEDUCCIONES ESTÁNDAR */}
           <div className="bg-white dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl space-y-4 transition-colors duration-200">
             <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
               <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center">
@@ -1064,9 +1080,9 @@ export default function ConfiguracionPage() {
               </div>
               <div>
                 <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                  3. Descuentos y Deducciones del Líquido Pagable
+                  2. Descuentos y Deducciones del Líquido Pagable
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Comisiones porcentuales, retenciones impositivas y costos logísticos</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Comisiones porcentuales, retenciones y costos logísticos</p>
               </div>
             </div>
 

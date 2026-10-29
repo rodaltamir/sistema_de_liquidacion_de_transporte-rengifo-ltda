@@ -36,3 +36,19 @@ export function formatDate(dateStr: string | null | undefined): string {
     return dateStr;
   }
 }
+
+export function formatDateTime(dateStr: string | Date | null | undefined): string {
+  if (!dateStr) return '-';
+  try {
+    const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+    if (isNaN(d.getTime())) return String(dateStr);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${minutes}`;
+  } catch {
+    return String(dateStr);
+  }
+}

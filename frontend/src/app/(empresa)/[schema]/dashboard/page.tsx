@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency, formatNumber, formatM3, formatLitros, formatDate } from "@/lib/format";
+import { getSavedState, saveState } from "@/lib/storage";
 import DatePeriodFilter, { DateFilterChangeEvent } from "@/components/DatePeriodFilter";
 
 export default function EmpresaDashboardPage() {
@@ -36,6 +37,17 @@ export default function EmpresaDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [currentFilterQuery, setCurrentFilterQuery] = useState(`anio=${currentYear}`);
   const [activeLabel, setActiveLabel] = useState(`Gestión ${currentYear}`);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    if (!schema) return;
+    const saved = getSavedState<any>(`transporte_${schema}_dashboard_memoria`, null);
+    if (saved) {
+      if (saved.currentFilterQuery !== undefined) setCurrentFilterQuery(saved.currentFilterQuery);
+      if (saved.activeLabel !== undefined) setActiveLabel(saved.activeLabel);
+    }
+    setIsHydrated(true);
+  }, [schema]);
 
   const loadDashboard = async (query = "") => {
     setLoading(true);
@@ -56,8 +68,19 @@ export default function EmpresaDashboardPage() {
   };
 
   useEffect(() => {
-    loadDashboard(currentFilterQuery);
-  }, [schema, currentFilterQuery]);
+    if (schema && isHydrated) {
+      loadDashboard(currentFilterQuery);
+    }
+  }, [schema, isHydrated, currentFilterQuery]);
+
+  // Memoria Inteligente: persistir filtro del Dashboard
+  useEffect(() => {
+    if (!schema || !isHydrated) return;
+    saveState(`transporte_${schema}_dashboard_memoria`, {
+      currentFilterQuery,
+      activeLabel
+    });
+  }, [schema, isHydrated, currentFilterQuery, activeLabel]);
 
   const handleFilterChange = (filter: DateFilterChangeEvent) => {
     setActiveLabel(filter.label);

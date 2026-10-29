@@ -108,14 +108,21 @@ export default function EmpresaLayout({
       href: `/${schema}/viajes`,
       icon: Navigation,
       description: "Despachos, fletes y mermas",
-      isActive: (path: string) => path === `/${schema}/viajes` || path.startsWith(`/${schema}/historial`)
+      isActive: (path: string) => path.startsWith(`/${schema}/viajes`)
     },
     {
       name: "Liquidaciones",
       href: `/${schema}/liquidaciones`,
       icon: FileSpreadsheet,
-      description: "Planillas oficiales y exportación",
+      description: "Planillas oficiales y cálculo",
       isActive: (path: string) => path.startsWith(`/${schema}/liquidaciones`)
+    },
+    {
+      name: "Historial",
+      href: `/${schema}/historial`,
+      icon: History,
+      description: "Historial de liquidaciones emitidas",
+      isActive: (path: string) => path.startsWith(`/${schema}/historial`)
     },
     {
       name: "Flota y Clientes",
@@ -140,7 +147,7 @@ export default function EmpresaLayout({
     pathname.startsWith(`/${schema}/apoyo`) ? "Flota de Apoyo" :
     pathname.startsWith(`/${schema}/clientes`) ? "Clientes" :
     pathname.startsWith(`/${schema}/flota`) ? "Flota Propia" :
-    pathname.startsWith(`/${schema}/historial`) ? "Historial de Viajes" :
+    pathname.startsWith(`/${schema}/historial`) ? "Historial de Liquidaciones" :
     pathname.startsWith(`/${schema}/viajes`) ? "Viajes" :
     pathname.startsWith(`/${schema}/liquidaciones`) ? "Liquidaciones" :
     pathname.startsWith(`/${schema}/configuracion`) ? "Configuración" :

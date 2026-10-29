@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect, Fragment } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useState, useEffect, Fragment } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { 
   FileSpreadsheet, 
   Download, 
-  Printer, 
   Calendar, 
   Truck, 
   Plus, 
@@ -32,12 +31,17 @@ import {
   Receipt,
   ArrowRight,
   Hash,
-  X
+  X,
+  Pin,
+  Clock,
+  Settings,
+  History
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
-import { formatCurrency, formatNumber, formatDate } from "@/lib/format";
+import { formatCurrency, formatNumber, formatDate, formatDateTime } from "@/lib/format";
+import { getSavedState, saveState } from "@/lib/storage";
 import DatePeriodFilter, { DateFilterChangeEvent, FilterMode } from "@/components/DatePeriodFilter";
 import ModalPortal from "@/components/ModalPortal";
 import { useTheme } from "@/context/ThemeContext";
@@ -55,6 +59,21 @@ const getVolFactM3 = (v: any) => {
 };
 
 export default function LiquidacionesPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <div className="w-8 h-8 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
+        <span className="text-xs text-slate-400 font-semibold tracking-wider uppercase">Cargando Liquidaciones...</span>
+      </div>
+    }>
+      <LiquidacionesContent />
+    </Suspense>
+  );
+}
+
+function LiquidacionesContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const routeParams = useParams();
   const schema = (routeParams?.schema as string) || "";
   const { resolvedTheme } = useTheme();
@@ -97,16 +116,51 @@ export default function LiquidacionesPage() {
 
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [adjustData, setAdjustData] = useState<any>({});
+  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
     loadInitialData();
   }, [schema]);
 
   useEffect(() => {
-    if (schema) {
+    if (schema && isHydrated) {
       loadLiquidacionesData();
     }
-  }, [schema, metodoFiltro, modoFactura, facturaInput, facturaDesdeInput, facturaHastaInput, filterMode, dateFilterQuery, selectedPlaca, periodo]);
+  }, [schema, isHydrated, metodoFiltro, modoFactura, facturaInput, facturaDesdeInput, facturaHastaInput, filterMode, dateFilterQuery, selectedPlaca, periodo]);
+
+  // Memoria Inteligente: persistir filtros y vista al cambiar
+  useEffect(() => {
+    if (!isHydrated || !schema) return;
+    saveState(`transporte_${schema}_liquidaciones_memoria`, {
+      selectedPlaca,
+      periodo,
+      filterMode,
+      dateFilterQuery,
+      activeFilterLabel,
+      metodoFiltro,
+      modoFactura,
+      facturaInput,
+      facturaDesdeInput,
+      facturaHastaInput,
+      activeFleetTab,
+      activeTab
+    });
+  }, [
+    isHydrated,
+    schema,
+    selectedPlaca,
+    periodo,
+    filterMode,
+    dateFilterQuery,
+    activeFilterLabel,
+    metodoFiltro,
+    modoFactura,
+    facturaInput,
+    facturaDesdeInput,
+    facturaHastaInput,
+    activeFleetTab,
+    activeTab
+  ]);
 
   const loadInitialData = async () => {
     try {
@@ -138,22 +192,60 @@ export default function LiquidacionesPage() {
       );
       setPlacasViajes(distinctTripPlacas);
 
-      // Periodo preferido inicial
-      let initPeriodo = "";
-      if (validLiqs.length > 0 && validLiqs[0].periodo_mes) {
-        initPeriodo = validLiqs[0].periodo_mes;
-      } else if (validPeriodos.length > 0 && validPeriodos[0].periodo_mes) {
-        initPeriodo = validPeriodos[0].periodo_mes;
-      } else if (validViajes.length > 0 && validViajes[0].periodo_mes) {
-        initPeriodo = validViajes[0].periodo_mes;
+      // Memoria Inteligente: restaurar filtros y configuración previa si existe
+      const saved = getSavedState<any>(`transporte_${schema}_liquidaciones_memoria`, null);
+      if (saved) {
+        if (saved.selectedPlaca !== undefined) setSelectedPlaca(saved.selectedPlaca);
+        if (saved.periodo !== undefined) setPeriodo(saved.periodo);
+        if (saved.filterMode !== undefined) setFilterMode(saved.filterMode);
+        if (saved.dateFilterQuery !== undefined) setDateFilterQuery(saved.dateFilterQuery);
+        if (saved.activeFilterLabel !== undefined) setActiveFilterLabel(saved.activeFilterLabel);
+        if (saved.metodoFiltro !== undefined) setMetodoFiltro(saved.metodoFiltro);
+        if (saved.modoFactura !== undefined) setModoFactura(saved.modoFactura);
+        if (saved.facturaInput !== undefined) setFacturaInput(saved.facturaInput);
+        if (saved.facturaDesdeInput !== undefined) setFacturaDesdeInput(saved.facturaDesdeInput);
+        if (saved.facturaHastaInput !== undefined) setFacturaHastaInput(saved.facturaHastaInput);
+        if (saved.activeFleetTab !== undefined) setActiveFleetTab(saved.activeFleetTab);
+        if (saved.activeTab !== undefined) setActiveTab(saved.activeTab);
       } else {
-        initPeriodo = new Date().toISOString().slice(0, 7);
-      }
-      setPeriodo(initPeriodo);
-      setDateFilterQuery(`periodo_mes=${initPeriodo}`);
+        // Periodo preferido inicial
+        let initPeriodo = "";
+        if (validLiqs.length > 0 && validLiqs[0].periodo_mes) {
+          initPeriodo = validLiqs[0].periodo_mes;
+        } else if (validPeriodos.length > 0 && validPeriodos[0].periodo_mes) {
+          initPeriodo = validPeriodos[0].periodo_mes;
+        } else if (validViajes.length > 0 && validViajes[0].periodo_mes) {
+          initPeriodo = validViajes[0].periodo_mes;
+        } else {
+          initPeriodo = new Date().toISOString().slice(0, 7);
+        }
+        setPeriodo(initPeriodo);
+        setDateFilterQuery(`periodo_mes=${initPeriodo}`);
 
-      // Placa preferida inicial: por defecto '__TODAS__' para permitir la visualización consolidada y matriz de validación
-      setSelectedPlaca("__TODAS__");
+        // Placa preferida inicial: por defecto '__TODAS__' para permitir la visualización consolidada y matriz de validación
+        setSelectedPlaca("__TODAS__");
+      }
+
+      // Priorizar parámetros si viene redirigido desde el Historial u otro módulo
+      const urlPlaca = searchParams.get("placa");
+      const urlPeriodo = searchParams.get("periodo");
+      const urlFactura = searchParams.get("factura");
+      if (urlPlaca) {
+        setSelectedPlaca(urlPlaca === "TODAS" ? "__TODAS__" : urlPlaca);
+      }
+      if (urlPeriodo) {
+        setPeriodo(urlPeriodo);
+        setDateFilterQuery(`periodo_mes=${urlPeriodo}`);
+        setFilterMode("mes");
+        setMetodoFiltro("periodo");
+      }
+      if (urlFactura) {
+        setMetodoFiltro("factura");
+        setModoFactura("unica");
+        setFacturaInput(urlFactura);
+      }
+
+      setIsHydrated(true);
     } catch (err) {
       console.error(err);
     } finally {
@@ -416,12 +508,12 @@ export default function LiquidacionesPage() {
           body: JSON.stringify(payload)
         });
 
-        await Swal.fire({
+        const swalBatchRes = await Swal.fire({
           icon: "success",
           title: "¡Liquidaciones de Flota Procesadas!",
           html: `
             <div style="text-align: left; font-size: 0.875rem; line-height: 1.6;">
-              <p>${res.message || "Se consolidaron las liquidaciones con éxito."}</p>
+              <p>${res.message || "Se consolidaron las liquidaciones con éxito y se registraron en el Historial."}</p>
               <div style="margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); font-size: 0.8rem;">
                 <div>🚛 <strong>Cisternas liquidadas:</strong> ${res.total_placas}</div>
                 <div>📦 <strong>Total despachos:</strong> ${res.total_viajes} viajes</div>
@@ -432,9 +524,17 @@ export default function LiquidacionesPage() {
           `,
           background: swalBg,
           color: swalColor,
+          showDenyButton: true,
           confirmButtonColor: "#10b981",
-          confirmButtonText: "Aceptar"
+          denyButtonColor: "#0284c7",
+          confirmButtonText: "Ver Consolidado",
+          denyButtonText: "Ver en Historial"
         });
+
+        if (swalBatchRes.isDenied) {
+          router.push(`/${schema}/historial?periodo=${encodeURIComponent(payload.periodo_mes)}`);
+          return;
+        }
 
         loadLiquidacionesData();
       } catch (err: any) {
@@ -501,12 +601,12 @@ export default function LiquidacionesPage() {
         body: JSON.stringify(payload)
       });
 
-      Swal.fire({
+      const swalRes = await Swal.fire({
         icon: "success",
         title: "¡Liquidación Generada con Éxito!",
         html: `
           <div style="text-align: left; font-size: 0.875rem; line-height: 1.6;">
-            <p>La planilla oficial para la cisterna <strong>${targetPlaca}</strong> ha sido consolidada.</p>
+            <p>La planilla oficial para la cisterna <strong>${targetPlaca}</strong> ha sido consolidada y registrada en el Historial.</p>
             <div style="margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); font-size: 0.8rem;">
               <div>📋 <strong>Código:</strong> ${res.codigo}</div>
               <div>📅 <strong>Período:</strong> ${res.periodo_mes}</div>
@@ -517,9 +617,17 @@ export default function LiquidacionesPage() {
         `,
         background: swalBg,
         color: swalColor,
+        showDenyButton: true,
         confirmButtonColor: "#10b981",
-        confirmButtonText: "Ver Planilla"
+        denyButtonColor: "#0284c7",
+        confirmButtonText: "Ver Planilla Aquí",
+        denyButtonText: "Ir al Historial"
       });
+
+      if (swalRes.isDenied) {
+        router.push(`/${schema}/historial?placa=${encodeURIComponent(targetPlaca)}&periodo=${encodeURIComponent(res.periodo_mes)}`);
+        return;
+      }
 
       const detalle = await apiFetch(`/tenants/${schema}/liquidaciones/${res.id}`);
       setActiveLiq(detalle);
@@ -815,7 +923,7 @@ export default function LiquidacionesPage() {
             <FileSpreadsheet className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">
                 Planillas de Liquidación
               </h1>
@@ -824,6 +932,76 @@ export default function LiquidacionesPage() {
                   {activeLiq.codigo}
                 </span>
               )}
+
+              {/* Símbolo / Pin de Liquidación Oficial Generada y Fecha (Solo del Sistema) */}
+              {selectedPlaca === "__TODAS__" ? (
+                (() => {
+                  const liqsGuardadas = rangeLiquidaciones.filter(l => l.id && l.id > 0);
+                  const countGeneradas = liqsGuardadas.length;
+                  const totalPlacas = resumenFlota?.total_placas || (unidades.length + unidadesApoyo.length) || rangeLiquidaciones.length || 0;
+                  const ultimaFecha = liqsGuardadas
+                    .map(l => l.created_at)
+                    .filter(Boolean)
+                    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+
+                  if (countGeneradas > 0) {
+                    return (
+                      <span
+                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 shadow-xs"
+                        title="Liquidaciones oficiales consolidadas y guardadas en el sistema para este período."
+                      >
+                        <Pin className="w-3.5 h-3.5 fill-emerald-500 text-emerald-500 -rotate-45" />
+                        <span>Flota Liquidada ({countGeneradas}{totalPlacas > 0 ? ` de ${totalPlacas}` : ""} cisternas)</span>
+                        {ultimaFecha && (
+                          <>
+                            <span className="text-emerald-700/50 dark:text-emerald-400/50">|</span>
+                            <span className="font-mono text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-emerald-500" />
+                              {formatDateTime(ultimaFecha)}
+                            </span>
+                          </>
+                        )}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 shadow-xs"
+                      title="Vista preliminar de flota calculada en tiempo real. Haz clic en 'Liquidar Toda la Flota' para consolidar formalmente."
+                    >
+                      <Clock className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Vista Previa de Flota (Pendiente de Generar)</span>
+                    </span>
+                  );
+                })()
+              ) : activeLiq ? (
+                activeLiq.id && activeLiq.id > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 shadow-xs"
+                    title={`Liquidación oficial consolidada y guardada en el sistema.`}
+                  >
+                    <Pin className="w-3.5 h-3.5 fill-emerald-500 text-emerald-500 -rotate-45" />
+                    <span>Liquidación Oficial Generada</span>
+                    {activeLiq.created_at && (
+                      <>
+                        <span className="text-emerald-700/50 dark:text-emerald-400/50">|</span>
+                        <span className="font-mono text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-emerald-500" />
+                          {formatDateTime(activeLiq.created_at)}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                ) : (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 shadow-xs"
+                    title="Vista preliminar calculada en tiempo real. Haz clic en 'Generar Liquidación' para consolidar el registro oficial."
+                  >
+                    <Clock className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Vista Previa (Pendiente de Generar)</span>
+                  </span>
+                )
+              ) : null}
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Detalle de fletes, cálculo de mermas y liquidación oficial neta por cisterna.
@@ -831,19 +1009,8 @@ export default function LiquidacionesPage() {
           </div>
         </div>
 
-        {/* Acciones de exportación directas */}
+        {/* Acciones de exportación directas y configuración de parámetros */}
         <div className="flex items-center gap-2 flex-wrap">
-          {selectedPlaca === "__TODAS__" && (
-            <button
-              onClick={downloadResumenFlotaExcel}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm transition active:scale-95"
-              title="Descargar Resumen Consolidado de la Flota en Excel (.xlsx)"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Resumen Flota Excel</span>
-            </button>
-          )}
-
           <button
             onClick={downloadExcel}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition active:scale-95"
@@ -862,35 +1029,23 @@ export default function LiquidacionesPage() {
             <span>PDF</span>
           </button>
 
-          {activeLiq && (
-            <>
-              <button
-                onClick={() => window.print()}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition active:scale-95"
-                title="Imprimir"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Imprimir</span>
-              </button>
+          <button
+            onClick={() => router.push(`/${schema}/configuracion?tab=parametros`)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-amber-500/10 hover:border-amber-500/50 hover:text-amber-600 dark:hover:text-amber-400 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 transition active:scale-95"
+            title="Ir a Configuración de Parámetros del Sistema"
+          >
+            <SlidersHorizontal className="w-4 h-4 text-amber-500" />
+            <span>Parámetros</span>
+          </button>
 
-              <button
-                onClick={openAdjustModal}
-                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-amber-600 dark:text-amber-400 border border-slate-200 dark:border-slate-700 transition"
-                title="Ajustar deducciones"
-              >
-                <SlidersHorizontal className="w-4 h-4" />
-              </button>
-
-              {activeLiq.id && activeLiq.id > 0 && (
-                <button
-                  onClick={handleDeleteLiquidacion}
-                  className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700 transition"
-                  title="Eliminar liquidación"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-            </>
+          {activeLiq && activeLiq.id && activeLiq.id > 0 && (
+            <button
+              onClick={handleDeleteLiquidacion}
+              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700 transition"
+              title="Eliminar liquidación guardada"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
           )}
         </div>
       </div>
@@ -1269,6 +1424,40 @@ export default function LiquidacionesPage() {
               </>
             )}
           </button>
+
+          {/* Acceso Directo e Interconexión con Historial */}
+          <button
+            type="button"
+            onClick={() => router.push(`/${schema}/historial?placa=${encodeURIComponent(selectedPlaca === "__TODAS__" ? "TODAS" : selectedPlaca)}&periodo=${encodeURIComponent(periodo)}`)}
+            className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 cursor-pointer"
+            title="Ver historial de liquidaciones emitidas"
+          >
+            <History className="w-3.5 h-3.5 text-amber-500" />
+            <span>Ver en Historial</span>
+          </button>
+
+          {/* Indicador de Etapa / Estado en Historial */}
+          {activeLiq && activeLiq.id > 0 ? (
+            <button
+              type="button"
+              onClick={() => router.push(`/${schema}/historial?placa=${encodeURIComponent(activeLiq.placa)}&periodo=${encodeURIComponent(activeLiq.periodo_mes)}`)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 text-xs font-bold cursor-pointer hover:bg-emerald-500/20 transition"
+              title="Esta liquidación está registrada y consolidada en el Historial. Clic para inspeccionar."
+            >
+              <Pin className="w-3 h-3 fill-emerald-500 text-emerald-500 -rotate-45" />
+              <span>Registrada en Historial ({activeLiq.codigo})</span>
+              {activeLiq.updated_at && (
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono">
+                  • Editada
+                </span>
+              )}
+            </button>
+          ) : activeLiq && activeLiq.viajes && activeLiq.viajes.length > 0 ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-xs font-semibold">
+              <Clock className="w-3 h-3 text-amber-500" />
+              <span>Preliminar (Pendiente de Generar)</span>
+            </div>
+          ) : null}
         </div>
 
         {/* Pestañas de Visualización */}
@@ -1471,15 +1660,6 @@ export default function LiquidacionesPage() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <button
-                onClick={downloadResumenFlotaExcel}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm transition active:scale-95"
-                title="Descargar matriz en Excel (.xlsx)"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                <span>Exportar Resumen Excel</span>
-              </button>
-
               <button
                 onClick={handleGenerate}
                 disabled={loadingBatch}

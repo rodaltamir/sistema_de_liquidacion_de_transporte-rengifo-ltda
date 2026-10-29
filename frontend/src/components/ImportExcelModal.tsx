@@ -1010,7 +1010,7 @@ export default function ImportExcelModal({
         if (res.asociacion_id) {
           router.push(`/asociacion/${res.asociacion_id}`);
         } else if (finalSchema) {
-          router.push(`/${finalSchema}/historial`);
+          router.push(`/${finalSchema}/viajes`);
         }
       }
     } catch (err: any) {
