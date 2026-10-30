@@ -321,7 +321,7 @@ def create_viaje(
         if viaje_in.periodo_mes and viaje_in.periodo_mes.strip():
             periodo_determinado = viaje_in.periodo_mes.strip()
         else:
-            periodo_determinado = determine_trip_period(viaje_in.fecha_carga, viaje_in.fecha_descarga)
+            periodo_determinado = determine_trip_period(viaje_in.fecha_carga, viaje_in.fecha_descarga, viaje_in.fecha_factura)
 
         # Manejo de listas dinámicas de descuentos
         desc_adic_json, total_desc_adic = process_descuentos(viaje_in.descuentos_adicionales)
@@ -502,9 +502,12 @@ async def importar_viajes_excel(
         viajes_creados = result["total_importados"]
         viajes_actualizados = result["total_actualizados"]
         viajes_omitidos = result["total_omitidos"]
+        total_flete_bs = result.get("total_flete_bs", 0.0)
         clientes_reg = result.get("clientes_registrados", 0)
 
         msg_parts = [f"Se importaron {viajes_creados} viajes exitosamente."]
+        if viajes_actualizados > 0:
+            msg_parts.append(f"Se actualizaron {viajes_actualizados} viajes existentes.")
         if clientes_reg > 0:
             msg_parts.append(f"Se registraron {clientes_reg} clientes en el catálogo.")
 
@@ -514,6 +517,7 @@ async def importar_viajes_excel(
             "total_importados": viajes_creados,
             "total_actualizados": viajes_actualizados,
             "total_omitidos": viajes_omitidos,
+            "total_flete_bs": total_flete_bs,
             "clientes_registrados": clientes_reg,
             "total_filas_leidas": len(records_to_import),
             "periodos_detectados": result["periodos_detectados"],
@@ -730,7 +734,7 @@ def update_viaje(
         if "periodo_mes" in update_data and update_data["periodo_mes"]:
             viaje.periodo_mes = str(update_data["periodo_mes"]).strip()
         elif not viaje.periodo_mes:
-            viaje.periodo_mes = determine_trip_period(viaje.fecha_carga, viaje.fecha_descarga)
+            viaje.periodo_mes = determine_trip_period(viaje.fecha_carga, viaje.fecha_descarga, viaje.fecha_factura)
 
         session.commit()
         session.refresh(viaje)

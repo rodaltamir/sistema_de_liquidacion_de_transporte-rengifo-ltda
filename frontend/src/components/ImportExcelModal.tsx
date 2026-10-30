@@ -961,8 +961,8 @@ export default function ImportExcelModal({
             ${res.total_empresas_procesadas ? `<div>• <b>Empresas Procesadas:</b> ${res.total_empresas_procesadas} (${res.empresas_creadas || 0} creadas, ${res.empresas_reutilizadas || 0} reutilizadas)</div>` : ''}
             <div>• <b>Viajes Importados:</b> ${res.total_importados || res.total_viajes_importados || dynamicSummary.totalViajes}</div>
             <div>• <b>Cisternas Involucradas:</b> ${dynamicSummary.totalPlacas}</div>
-            <div>• <b>Flete Total:</b> ${formatCurrency(dynamicSummary.totalFleteBs)}</div>
-            <div>• <b>Períodos:</b> ${res.periodos_detectados?.join(", ") || "General"}</div>
+            <div>• <b>Flete Total:</b> ${formatCurrency(res.total_flete_bs || dynamicSummary.totalFleteBs)}</div>
+            <div>• <b>Períodos:</b> ${res.periodos_detectados?.join(", ") || dynamicSummary.periodos?.join(", ") || "General"}</div>
           </div>
           ${Array.isArray(res.empresas_detalle) && res.empresas_detalle.length > 0 ? `
             <div class="max-h-40 overflow-y-auto space-y-1 pr-1">

@@ -35,7 +35,8 @@ import {
   Pin,
   Clock,
   Settings,
-  History
+  History,
+  Calculator
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
@@ -902,6 +903,10 @@ function LiquidacionesContent() {
   const totalFleteConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.flete_total_bruto_bs || l.flete_total_bs || 0), 0);
   const totalLiquidoConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.liquido_pagable_bs || 0), 0);
   const totalDeduccionesConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.total_descuentos_bs ?? Math.max(0, (l.flete_total_bruto_bs || 0) - (l.liquido_pagable_bs || 0))), 0);
+  const totalMermasConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.descuento_merma_bs || l.total_mermas_bs || 0), 0);
+  const fleteFlota = resumenFlota?.total_flete_bruto_bs ?? activeLiq?.flete_total_bruto_bs ?? totalFleteConsolidado;
+  const mermasFlota = resumenFlota?.total_mermas_bs ?? activeLiq?.descuento_merma_bs ?? totalMermasConsolidado;
+  const fleteFlotaMenosMermas = Math.max(0, fleteFlota - mermasFlota);
 
   // Lista de placas filtradas para la matriz de validación de flota
   const filteredPlacas = (resumenFlota?.placas || []).filter((item: any) => {
@@ -1524,7 +1529,7 @@ function LiquidacionesContent() {
 
       {/* Resumen Ejecutivo de la Flota (cuando está en __TODAS__) */}
       {selectedPlaca === "__TODAS__" && (resumenFlota || activeLiq) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 no-print">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 no-print">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Cisternas Activas</span>
@@ -1544,12 +1549,28 @@ function LiquidacionesContent() {
             <div>
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Flete Bruto Flota</span>
               <div className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 font-mono mt-0.5">
-                {formatCurrency(resumenFlota?.total_flete_bruto_bs ?? activeLiq?.flete_total_bruto_bs ?? totalFleteConsolidado)}
+                {formatCurrency(fleteFlota)}
               </div>
               <span className="text-[10px] text-slate-400 font-medium">Facturación global acumulada</span>
             </div>
             <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 flex-shrink-0">
               <DollarSign className="w-4.5 h-4.5" />
+            </div>
+          </div>
+
+          {/* Flete Flota - Mermas (Dato Nuevo Solicitado) */}
+          <div className="bg-white dark:bg-slate-900 border border-blue-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-blue-50/10">
+            <div>
+              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Flete Flota - Mermas</span>
+              <div className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono mt-0.5">
+                {formatCurrency(fleteFlotaMenosMermas)}
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {mermasFlota > 0 ? `Mermas: -${formatCurrency(mermasFlota)}` : "Sin descuento por merma"}
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-500 flex-shrink-0">
+              <Calculator className="w-4.5 h-4.5" />
             </div>
           </div>
 
@@ -1583,7 +1604,7 @@ function LiquidacionesContent() {
 
       {/* Resumen Ejecutivo de Cisterna Individual */}
       {selectedPlaca !== "__TODAS__" && activeLiq && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 no-print">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 no-print">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Flete Bruto</span>
@@ -1594,6 +1615,22 @@ function LiquidacionesContent() {
             </div>
             <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 flex-shrink-0">
               <DollarSign className="w-4.5 h-4.5" />
+            </div>
+          </div>
+
+          {/* Flete - Mermas Cisterna */}
+          <div className="bg-white dark:bg-slate-900 border border-blue-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-blue-50/10">
+            <div>
+              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Flete - Mermas</span>
+              <div className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono mt-0.5">
+                {formatCurrency(Math.max(0, (activeLiq.flete_total_bruto_bs || 0) - (activeLiq.descuento_merma_bs || 0)))}
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {(activeLiq.descuento_merma_bs || 0) > 0 ? `Merma: -${formatCurrency(activeLiq.descuento_merma_bs || 0)}` : "Sin descuento de merma"}
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-500 flex-shrink-0">
+              <Calculator className="w-4.5 h-4.5" />
             </div>
           </div>
 
@@ -1711,6 +1748,7 @@ function LiquidacionesContent() {
                       <th className="py-3 px-2 text-right">Vol. Cargado (L)</th>
                       <th className="py-3 px-2 text-right">Vol. Recibido (L)</th>
                       <th className="py-3 px-3 text-right">Flete Bruto (Bs.)</th>
+                      <th className="py-3 px-3 text-right">Flete - Mermas (Bs.)</th>
                       <th className="py-3 px-3 text-right">Deducciones (Bs.)</th>
                       <th className="py-3 px-3 text-right">Líquido Pagable (Bs.)</th>
                       <th className="py-3 px-3 text-center">Estado</th>
@@ -1726,6 +1764,8 @@ function LiquidacionesContent() {
                       const volCargado = Number(item.volumen_cargado_litros ?? item.volumen_origen_litros ?? 0);
                       const volRec = Number(item.volumen_recepcionado_litros ?? 0);
                       const fleteBruto = Number(item.flete_total_bruto_bs ?? 0);
+                      const mermasVal = Number(item.total_mermas_bs ?? item.descuento_merma_bs ?? 0);
+                      const fleteMenosMermas = Math.max(0, fleteBruto - mermasVal);
                       const totalDeducciones = Number(item.total_deducciones_bs ?? item.total_descuentos_bs ?? 0);
                       const liquidoPagable = Number(item.liquido_pagable_bs ?? 0);
                       const isPropia = (item.tipo_flota || item.tipo_unidad || "").toLowerCase().includes("propia");
@@ -1793,6 +1833,9 @@ function LiquidacionesContent() {
                           </td>
                           <td className="py-3 px-3 text-right font-mono font-bold text-amber-600 dark:text-amber-400">
                             {formatCurrency(fleteBruto)}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                            {formatCurrency(fleteMenosMermas)}
                           </td>
                           <td className="py-3 px-3 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
                             {formatCurrency(totalDeducciones)}

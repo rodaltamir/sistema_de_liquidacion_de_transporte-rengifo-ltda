@@ -21,7 +21,8 @@ import {
   Users,
   ShieldCheck,
   FileCheck,
-  Sparkles
+  Sparkles,
+  Calculator
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency, formatNumber, formatM3, formatLitros, formatDate } from "@/lib/format";
@@ -162,8 +163,8 @@ export default function EmpresaDashboardPage() {
         onChange={handleFilterChange}
       />
 
-      {/* Grid de KPIs Principales (4 Tarjetas Compactas y Claras) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Grid de KPIs Principales (5 Tarjetas Compactas y Claras) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         
         {/* Flete Bruto Acumulado */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
@@ -176,6 +177,22 @@ export default function EmpresaDashboardPage() {
           </div>
           <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 flex-shrink-0">
             <DollarSign className="w-4.5 h-4.5" />
+          </div>
+        </div>
+
+        {/* Flete Bruto menos Mermas (Dato Solicitado) */}
+        <div className="bg-white dark:bg-slate-900 border border-blue-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-blue-50/10">
+          <div>
+            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Flete - Mermas</span>
+            <div className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono mt-0.5">
+              {formatCurrency(Math.max(0, (kpis.total_flete_bruto_bs || 0) - (kpis.total_merma_descontar_bs || 0)))}
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium">
+              {(kpis.total_merma_descontar_bs || 0) > 0 ? `Merma: -${formatCurrency(kpis.total_merma_descontar_bs)}` : "Sin retención"}
+            </span>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500 flex-shrink-0">
+            <Calculator className="w-4.5 h-4.5" />
           </div>
         </div>
 

@@ -81,7 +81,12 @@ def normalize_company_name(name: Any) -> str:
 
 def get_excel_sheets(file_bytes: bytes) -> List[str]:
     """Retorna los nombres de las hojas en el libro Excel de manera ultra rápida."""
-    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    if isinstance(file_bytes, str):
+        wb = openpyxl.load_workbook(file_bytes, read_only=True, data_only=True)
+    elif isinstance(file_bytes, (bytes, bytearray)):
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    else:
+        wb = openpyxl.load_workbook(file_bytes, read_only=True, data_only=True)
     sheets = list(wb.sheetnames)
     wb.close()
     return sheets
@@ -237,8 +242,13 @@ def detect_columns_and_header_row(rows_iter) -> Tuple[Optional[int], Dict[str, i
                     col_map["importe_total"] = c_idx
                 elif "FECHA" in val and ("FACTURA" in val or "FAC" in val or "EMISION" in val) and "fecha_factura" not in col_map:
                     col_map["fecha_factura"] = c_idx
-                elif ("FACTURA" in val or "FAC." in val or "NRO FAC" in val) and not any(k in val for k in ("FECHA", "EMITIDA", "EMPRESA", "CLIENTE", "IMPORTE", "TOTAL", "MONTO", "A FACTURAR")) and "nro_factura" not in col_map:
-                    col_map["nro_factura"] = c_idx
+                elif ("FACTURA" in val or "FAC" in val) and not any(k in val for k in (
+                    "FECHA", "EMITIDA", "EMPRESA", "CLIENTE", "IMPORTE", "TOTAL", "MONTO", "A FACTURAR",
+                    "Y OTROS", "OTROS", "OBS", "ESTADO", "DETALLE", "TIPO", "COMENTARIO", "NOTA"
+                )):
+                    is_exact_nro = any(k in val for k in ("N°", "NRO", "NUMERO", "NUM", "N.", "#"))
+                    if "nro_factura" not in col_map or is_exact_nro:
+                        col_map["nro_factura"] = c_idx
                 elif ("MIC" in val or "DTA" in val or "MCI" in val or "CRT" in val) and "FECHA" not in val:
                     col_map["mic_dta"] = c_idx
                 elif ("MIC" in val or "DTA" in val) and "FECHA" in val:
@@ -276,7 +286,12 @@ def parse_excel_viajes_data(
     - Conciliación de facturas de múltiples despachos con sus filas de subtotal.
     - Cuadre exacto de importes a facturar y volúmenes en m³ y litros.
     """
-    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    if isinstance(file_bytes, str):
+        wb = openpyxl.load_workbook(file_bytes, read_only=True, data_only=True)
+    elif isinstance(file_bytes, (bytes, bytearray)):
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    else:
+        wb = openpyxl.load_workbook(file_bytes, read_only=True, data_only=True)
     sheets = list(wb.sheetnames)
 
     # Determinación de hojas a procesar
@@ -413,6 +428,14 @@ def parse_excel_viajes_data(
                 continue
             consecutive_empty = 0
 
+            # Descartar filas de resumen financiero/contable al pie de la planilla
+            row_str = " ".join(str(c or "").upper() for c in row)
+            if any(kw in row_str for kw in (
+                "TOTAL VENTAS", "VENTAS NETAS", "V.N. SIN DERECHO", "V.B. CON DERECHO",
+                "V.N. CON DERECHO", "DEBITO FISCAL", "DEBITO ", "CREDITO FISCAL", "RESUMEN GESTION"
+            )):
+                continue
+
             def get_c(key: str) -> Any:
                 idx = col_map.get(key)
                 if idx is not None and idx < len(row):
@@ -449,22 +472,26 @@ def parse_excel_viajes_data(
             # -------------------------------------------------------------
             # 1. IDENTIFICACIÓN DE FILAS DE SUBTOTAL DE FACTURAS
             # -------------------------------------------------------------
-            # En planillas contables, las facturas con múltiples despachos tienen filas hijas
-            # y una fila de subtotal/resumen. Una fila de subtotal no tiene datos operacionales
-            # (ni placa, ni producto, ni plantas de carga/descarga ni tramo), aunque el contador
-            # haya copiado el nombre del cliente o el número de factura en dicha fila.
-            has_operational_fields = bool(
-                placa_raw or producto_raw or planta_c or planta_d or tramo_raw
-            )
-            is_subtotal_row = (
-                (not has_operational_fields) or 
-                placa_upper in ("TOTAL", "SUBTOTAL", "RESUMEN") or
-                col_a_upper in ("TOTAL", "SUBTOTAL", "RESUMEN")
-            )
+            fac_key = str(nro_fac_raw).strip() if nro_fac_raw else ""
+            prev_trips = facturas_trips.get(fac_key, []) if fac_key else []
+            sum_prev_imp = sum(t.get("flete_total_bs", 0.0) for t in prev_trips)
+            sum_prev_vol = sum(t.get("volumen_facturado_m3", 0.0) for t in prev_trips)
+
+            has_plate = bool(placa_upper and placa_upper not in ("NONE", "NULL", "-", ""))
+            is_subtotal_row = False
+
+            if placa_upper in ("TOTAL", "SUBTOTAL", "RESUMEN", "SUMA") or col_a_upper in ("TOTAL", "SUBTOTAL", "RESUMEN", "SUMA"):
+                is_subtotal_row = True
+            elif not has_plate:
+                if not col_a_upper or col_a_upper in ("NONE", "NULL", "-"):
+                    is_subtotal_row = True
+                elif prev_trips and abs(importe_raw - sum_prev_imp) < 1.0 and importe_raw > 0:
+                    is_subtotal_row = True
+                elif prev_trips and abs(vol_f_raw - sum_prev_vol) < 0.1 and vol_f_raw > 0:
+                    is_subtotal_row = True
 
             if is_subtotal_row:
-                if nro_fac_raw and (importe_raw > 0 or vol_f_raw > 0):
-                    fac_key = str(nro_fac_raw).strip()
+                if fac_key and (importe_raw > 0 or vol_f_raw > 0):
                     facturas_subtotales[fac_key] = {
                         "fila": r_idx,
                         "hoja": sheet_title,
@@ -577,30 +604,31 @@ def parse_excel_viajes_data(
             date_carga = date_carga_parsed
             date_descarga = date_descarga_parsed
 
+            # Período oficial (en ventas y facturación prima el mes de emisión de la factura)
+            if date_fac:
+                periodo = f"{date_fac.year}-{str(date_fac.month).zfill(2)}"
+            elif date_descarga_parsed:
+                periodo = f"{date_descarga_parsed.year}-{str(date_descarga_parsed.month).zfill(2)}"
+            elif date_carga_parsed:
+                periodo = f"{date_carga_parsed.year}-{str(date_carga_parsed.month).zfill(2)}"
+            elif sheet_year:
+                periodo = f"{sheet_year}-01"
+            else:
+                periodo = determine_trip_period(date_carga, date_descarga, date_fac)
+
             if not date_carga:
                 if date_descarga:
                     date_carga = date_descarga
                 elif date_fac:
                     date_carga = date_fac
                 elif sheet_year:
-                    date_carga = date(sheet_year, 1, 1)
+                    m_int = int(periodo[5:7]) if len(periodo) >= 7 and periodo[5:7].isdigit() else 1
+                    date_carga = date(sheet_year, m_int, 1)
                 else:
                     date_carga = date.today()
 
             if not date_descarga:
                 date_descarga = date_carga
-
-            # Período
-            if date_carga_parsed:
-                periodo = determine_trip_period(date_carga, date_descarga)
-            elif date_descarga_parsed:
-                periodo = determine_trip_period(date_descarga, None)
-            elif date_fac:
-                periodo = determine_trip_period(date_fac, None)
-            elif sheet_year:
-                periodo = f"{sheet_year}-01"
-            else:
-                periodo = determine_trip_period(date_carga, date_descarga)
 
             periodos_detectados.add(periodo)
             if clean_placa != "SIN PLACA":
@@ -957,6 +985,8 @@ def execute_import_viajes(
             session.commit()
             apoyo_cache = {}
 
+    matched_existing_ids = set()
+
     for rec in records:
         if rec.get("included") is False:
             continue
@@ -971,9 +1001,20 @@ def execute_import_viajes(
             if placa in ("TOTAL", "SUBTOTAL", "RESUMEN"):
                 continue
 
-            date_carga = parse_date_value(rec.get("fecha_carga")) or date.today()
-            date_descarga = parse_date_value(rec.get("fecha_descarga")) or date_carga
             date_fac = parse_date_value(rec.get("fecha_factura"))
+            date_carga = parse_date_value(rec.get("fecha_carga"))
+            date_descarga = parse_date_value(rec.get("fecha_descarga"))
+            rec_periodo = rec.get("periodo_mes")
+
+            if not date_carga:
+                date_carga = date_descarga or date_fac
+                if not date_carga and rec_periodo and len(rec_periodo) >= 7 and rec_periodo[:4].isdigit():
+                    date_carga = date(int(rec_periodo[:4]), int(rec_periodo[5:7]), 1)
+                elif not date_carga:
+                    date_carga = date.today()
+
+            if not date_descarga:
+                date_descarga = date_carga
             mic_str = clean_string(rec.get("mic_dta")).upper() or None
             if mic_str in ("FALTA MIC", "SIN MIC", "NONE", ""):
                 mic_str = None
@@ -1074,7 +1115,7 @@ def execute_import_viajes(
                 flete_total_override=flete_total_rec if flete_total_rec > 0 else None
             )
 
-            periodo = determine_trip_period(date_carga, date_descarga)
+            periodo = rec.get("periodo_mes") or determine_trip_period(date_carga, date_descarga, date_fac)
             periodos_detectados.add(periodo)
 
             # Buscar viaje existente para actualizar en lugar de duplicar
@@ -1082,42 +1123,43 @@ def execute_import_viajes(
             if rec.get("id"):
                 existing_viaje = session.query(Viaje).filter(Viaje.id == rec["id"]).first()
             elif nro_fac and placa and date_carga:
+                query = session.query(Viaje).filter(
+                    Viaje.nro_factura == nro_fac,
+                    Viaje.placa == placa
+                )
+                if matched_existing_ids:
+                    query = query.filter(Viaje.id.not_in(matched_existing_ids))
                 if placa == "SIN PLACA":
                     # Para servicios 'SIN PLACA', diferenciar despachos por tramo y flete
-                    existing_viaje = session.query(Viaje).filter(
-                        Viaje.nro_factura == nro_fac,
-                        Viaje.placa == "SIN PLACA",
+                    existing_viaje = query.filter(
                         Viaje.tramo == tramo,
                         Viaje.fecha_carga == date_carga
                     ).first()
                     if not existing_viaje and flete_total_rec > 0:
-                        existing_viaje = session.query(Viaje).filter(
-                            Viaje.nro_factura == nro_fac,
-                            Viaje.placa == "SIN PLACA",
+                        existing_viaje = query.filter(
                             Viaje.tramo == tramo,
                             func.abs(Viaje.flete_total_bs - flete_total_rec) < 0.05
                         ).first()
                 else:
-                    existing_viaje = session.query(Viaje).filter(
-                        Viaje.nro_factura == nro_fac,
-                        Viaje.placa == placa,
+                    existing_viaje = query.filter(
                         Viaje.fecha_carga == date_carga
                     ).first()
                     if not existing_viaje and placa:
                         # Búsqueda por factura y placa si es un viaje único de esa factura (ej. fecha reparada)
-                        candidates = session.query(Viaje).filter(
-                            Viaje.nro_factura == nro_fac,
-                            Viaje.placa == placa
-                        ).all()
+                        candidates = query.all()
                         if len(candidates) == 1:
                             existing_viaje = candidates[0]
             elif overwrite_duplicates and placa and date_carga:
-                existing_viaje = session.query(Viaje).filter(
+                query = session.query(Viaje).filter(
                     Viaje.placa == placa,
                     Viaje.fecha_carga == date_carga
-                ).first()
+                )
+                if matched_existing_ids:
+                    query = query.filter(Viaje.id.not_in(matched_existing_ids))
+                existing_viaje = query.first()
 
             if existing_viaje:
+                matched_existing_ids.add(existing_viaje.id)
                 existing_viaje.placa = placa
                 existing_viaje.unidad_id = u.id
                 existing_viaje.tramo = tramo
@@ -1181,6 +1223,8 @@ def execute_import_viajes(
                 estado="Pendiente"
             )
             session.add(nuevo_viaje)
+            session.flush()
+            matched_existing_ids.add(nuevo_viaje.id)
             viajes_creados += 1
         except Exception as row_ex:
             errores.append(f"Fila {rec.get('fila', '?')}: {str(row_ex)}")

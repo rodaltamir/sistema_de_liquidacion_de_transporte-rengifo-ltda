@@ -39,7 +39,8 @@ import {
   Receipt,
   Hash,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Calculator
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch, getApiUrl } from "@/lib/api";
@@ -1721,6 +1722,7 @@ function ViajesContent() {
     totalDescMermaBs,
     totalVolFacturado,
     totalFleteBs,
+    totalFleteMenosMermasBs,
     totalDescAdicBs,
     totalTodosDescuentos,
     totalLiquidoGeneral
@@ -1750,6 +1752,7 @@ function ViajesContent() {
       totalDescMermaBs: dMerma,
       totalVolFacturado: vFact,
       totalFleteBs: flete,
+      totalFleteMenosMermasBs: Math.max(0, flete - dMerma),
       totalDescAdicBs: dAdic,
       totalTodosDescuentos: totDesc,
       totalLiquidoGeneral: flete - totDesc
@@ -1762,6 +1765,8 @@ function ViajesContent() {
   const histSinFactura = useMemo(() => viajes.filter(v => !v.nro_factura || !v.nro_factura.trim()), [viajes]);
   const histMontoFacturadoBs = useMemo(() => histFacturados.reduce((acc, v) => acc + (v.flete_total_bs || 0), 0), [histFacturados]);
   const histMontoSinFacturaBs = useMemo(() => histSinFactura.reduce((acc, v) => acc + (v.flete_total_bs || 0), 0), [histSinFactura]);
+  const histMontoMermasBs = useMemo(() => viajes.reduce((acc, v) => acc + (v.merma_descontar_bs || 0), 0), [viajes]);
+  const histMontoNetoMermasBs = Math.max(0, histMontoFacturadoBs - histMontoMermasBs);
 
   // Componente de Paginación Inteligente
   const renderPagination = (totalItems: number, totalPages: number, itemLabel: string = "viajes") => {
@@ -2198,7 +2203,7 @@ function ViajesContent() {
 
       {/* Métricas Clave Dinámicas (según pestaña activa) */}
       {activeMainTab === "planilla" ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {/* Card 1: Flete Bruto Total & Líquido */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
             <div>
@@ -2217,7 +2222,23 @@ function ViajesContent() {
             </div>
           </div>
 
-          {/* Card 2: Vol. Recepcionado */}
+          {/* Card 2: Flete Bruto menos Mermas (Dato Nuevo Global) */}
+          <div className="bg-white dark:bg-slate-900 border border-blue-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-blue-50/10">
+            <div>
+              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Flete - Mermas</span>
+              <div className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono mt-0.5">
+                {formatCurrency(totalFleteMenosMermasBs)}
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {totalDescMermaBs > 0 ? `Mermas: -${formatCurrency(totalDescMermaBs)}` : "Sin descuento de merma"}
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500 flex-shrink-0">
+              <Calculator className="w-4.5 h-4.5" />
+            </div>
+          </div>
+
+          {/* Card 3: Vol. Recepcionado */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Vol. Recepcionado</span>
@@ -2231,7 +2252,7 @@ function ViajesContent() {
             </div>
           </div>
 
-          {/* Card 3: Descuentos Totales (Mermas + Adicionales) */}
+          {/* Card 4: Descuentos Totales (Mermas + Adicionales) */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Descuentos Totales</span>
@@ -2247,7 +2268,7 @@ function ViajesContent() {
             </div>
           </div>
 
-          {/* Card 4: Total Despachos */}
+          {/* Card 5: Total Despachos */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Despachos</span>
@@ -2262,7 +2283,7 @@ function ViajesContent() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {/* Historial Card 1: Total Registros */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
             <div>
@@ -2305,7 +2326,23 @@ function ViajesContent() {
             </div>
           </div>
 
-          {/* Historial Card 4: Pendiente por Facturar */}
+          {/* Historial Card 4: Flete - Mermas (Historial) */}
+          <div className="bg-white dark:bg-slate-900 border border-blue-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-blue-50/10">
+            <div>
+              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Flete - Mermas</span>
+              <div className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono mt-0.5">
+                {formatCurrency(histMontoNetoMermasBs)}
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {histMontoMermasBs > 0 ? `Mermas: -${formatCurrency(histMontoMermasBs)}` : "Flete sin descuento merma"}
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500 flex-shrink-0">
+              <Calculator className="w-4.5 h-4.5" />
+            </div>
+          </div>
+
+          {/* Historial Card 5: Pendiente por Facturar */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Por Facturar</span>
@@ -2874,6 +2911,7 @@ function ViajesContent() {
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700">
                         <div className="font-black text-amber-600 dark:text-amber-400 text-sm">{formatCurrency(totalFleteBs)}</div>
+                        <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold" title="Flete Bruto menos Descuento de Mermas">Flete-M: {formatCurrency(totalFleteMenosMermasBs)}</div>
                         {totalTodosDescuentos > 0 && (
                           <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">Líq: {formatCurrency(totalLiquidoGeneral)}</div>
                         )}
@@ -3101,6 +3139,7 @@ function ViajesContent() {
                       <td className="py-3 px-2 border-x border-slate-300 dark:border-slate-700"></td>
                       <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-black text-amber-600 dark:text-amber-400 text-sm">
                         <div>{formatCurrency(totalFleteBs)}</div>
+                        <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold" title="Flete Bruto menos Descuento de Mermas">Flete-M: {formatCurrency(totalFleteMenosMermasBs)}</div>
                         {totalTodosDescuentos > 0 && (
                           <div className="text-[10px] font-bold leading-tight mt-0.5">
                             <div className="text-rose-600 dark:text-rose-400">Desc: -{formatCurrency(totalTodosDescuentos)}</div>
@@ -3559,9 +3598,20 @@ function ViajesContent() {
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
         schema={schema}
-        onSuccess={() => {
-          loadViajes();
+        onSuccess={(result) => {
+          if (result?.periodos_detectados && result.periodos_detectados.length > 0) {
+            if (result.periodos_detectados.length === 1) {
+              setPeriodo(result.periodos_detectados[0]);
+              setDateFilterQuery("");
+              setActiveFilterLabel(`Período ${result.periodos_detectados[0]}`);
+            } else {
+              setPeriodo("");
+              setDateFilterQuery("");
+              setActiveFilterLabel("Histórico General (Todos los Periodos)");
+            }
+          }
           loadPeriodos();
+          loadViajes();
         }}
       />
 

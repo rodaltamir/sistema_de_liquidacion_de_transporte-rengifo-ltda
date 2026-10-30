@@ -29,7 +29,8 @@ import {
   Hash,
   ChevronLeft,
   ChevronRight,
-  Filter
+  Filter,
+  Calculator
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
@@ -357,14 +358,18 @@ function HistorialContent() {
   const kpis = useMemo(() => {
     const totalCount = filteredLiquidaciones.length;
     const fleteTotal = filteredLiquidaciones.reduce((acc, l) => acc + (Number(l.flete_total_bruto_bs) || 0), 0);
+    const mermasTotal = filteredLiquidaciones.reduce((acc, l) => acc + (Number(l.descuento_merma_bs ?? l.total_mermas_bs) || 0), 0);
     const deduccionesTotal = filteredLiquidaciones.reduce((acc, l) => acc + (Number(l.total_descuentos_bs) || 0), 0);
     const liquidoTotal = filteredLiquidaciones.reduce((acc, l) => acc + (Number(l.liquido_pagable_bs) || 0), 0);
+    const fleteMenosMermas = Math.max(0, fleteTotal - mermasTotal);
     const editadasCount = filteredLiquidaciones.filter((l) => (l.estado || "").toLowerCase().includes("editada")).length;
     const generadasCount = filteredLiquidaciones.filter((l) => l.estado === "Generada").length;
 
     return {
       totalCount,
       fleteTotal,
+      mermasTotal,
+      fleteMenosMermas,
       deduccionesTotal,
       liquidoTotal,
       editadasCount,
@@ -548,7 +553,7 @@ function HistorialContent() {
       </div>
 
       {/* Tarjetas KPI de Resumen Acumulado */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 flex items-center justify-center flex-shrink-0">
             <Receipt className="w-5 h-5" />
@@ -579,6 +584,24 @@ function HistorialContent() {
             </div>
             <div className="text-[10px] text-slate-400 truncate">
               Importe bruto acumulado
+            </div>
+          </div>
+        </div>
+
+        {/* Flete - Mermas (Dato Nuevo Historial) */}
+        <div className="bg-white dark:bg-slate-900 border border-blue-500/30 rounded-2xl p-4 shadow-sm flex items-center gap-3 bg-blue-50/10">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
+            <Calculator className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+              Flete - Mermas
+            </div>
+            <div className="text-lg font-black text-blue-600 dark:text-blue-400 font-mono truncate">
+              {formatCurrency(kpis.fleteMenosMermas)}
+            </div>
+            <div className="text-[10px] text-slate-400 truncate">
+              {kpis.mermasTotal > 0 ? `Mermas: -${formatCurrency(kpis.mermasTotal)}` : "Sin descuento merma"}
             </div>
           </div>
         </div>
@@ -937,6 +960,7 @@ function HistorialContent() {
                   <th className="py-3 px-3">Período / Criterio</th>
                   <th className="py-3 px-2 text-center">Despachos</th>
                   <th className="py-3 px-3 text-right">Flete Bruto</th>
+                  <th className="py-3 px-3 text-right">Flete - Mermas</th>
                   <th className="py-3 px-3 text-right">Deducciones</th>
                   <th className="py-3 px-3 text-right">Líquido Pagable</th>
                   <th className="py-3 px-3 text-center">Estado</th>
@@ -1010,6 +1034,11 @@ function HistorialContent() {
                       {/* Flete Total Bruto */}
                       <td className="py-3 px-3 text-right font-mono font-semibold text-slate-800 dark:text-slate-200">
                         {formatNumber(liq.flete_total_bruto_bs, 2)} Bs
+                      </td>
+
+                      {/* Flete - Mermas */}
+                      <td className="py-3 px-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                        {formatNumber(Math.max(0, (liq.flete_total_bruto_bs || 0) - (liq.descuento_merma_bs ?? liq.total_mermas_bs ?? 0)), 2)} Bs
                       </td>
 
                       {/* Deducciones */}

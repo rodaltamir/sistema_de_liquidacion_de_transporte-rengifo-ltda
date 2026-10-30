@@ -4,19 +4,20 @@ from datetime import date
 from typing import Dict, Any, List, Optional
 from app.models.tenant import ParametroLiquidacion
 
-def determine_trip_period(date_carga: date, date_descarga: Optional[date] = None) -> str:
+def determine_trip_period(date_carga: Optional[date] = None, date_descarga: Optional[date] = None, date_factura: Optional[date] = None) -> str:
     """
     Determina el periodo mensual único (YYYY-MM) al que pertenece un viaje.
-    En la digitalización y operativa de fletes y transporte en Bolivia (YPFB),
-    el viaje se ancla al mes de su fecha de carga (origen del despacho).
-    Garantiza que ningún viaje quede dividido entre dos meses ni desplazado erróneamente.
+    En la contabilidad y operativa de fletes y transporte en Bolivia (Facturación YPFB / Libro de Ventas SIAT),
+    la venta e ingreso se ancla al mes de emisión de su Factura (fecha_factura).
+    En caso de no contar aún con factura, se ancla a la fecha de carga o descarga operativa.
     """
-    if not date_carga:
-        if date_descarga:
-            return f"{date_descarga.year}-{str(date_descarga.month).zfill(2)}"
-        return date.today().strftime("%Y-%m")
-    
-    return f"{date_carga.year}-{str(date_carga.month).zfill(2)}"
+    if date_factura:
+        return f"{date_factura.year}-{str(date_factura.month).zfill(2)}"
+    if date_carga:
+        return f"{date_carga.year}-{str(date_carga.month).zfill(2)}"
+    if date_descarga:
+        return f"{date_descarga.year}-{str(date_descarga.month).zfill(2)}"
+    return date.today().strftime("%Y-%m")
 
 
 def get_tolerancia_pct(producto: str, params: Optional[ParametroLiquidacion] = None) -> float:
