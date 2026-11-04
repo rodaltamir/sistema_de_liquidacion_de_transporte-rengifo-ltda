@@ -72,6 +72,9 @@ services:
       PORT: 3001
     ports:
       - "3001:3001"
+    volumes:
+      - ./frontend/.next:/app/.next
+      - ./frontend/public:/app/public
     depends_on:
       - backend
     networks:

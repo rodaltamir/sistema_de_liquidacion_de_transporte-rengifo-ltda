@@ -115,6 +115,11 @@ function LiquidacionesContent() {
   const [activeFleetTab, setActiveFleetTab] = useState<"resumen" | "planilla">("planilla");
   const [activeTab, setActiveTab] = useState<"hoja1" | "hoja2" | "ambas">("ambas");
 
+  // Auditoría y filtrado de despachos con mermas
+  const [filtroMermasTabla, setFiltroMermasTabla] = useState<"todos" | "con_merma" | "sin_merma">("todos");
+  const [showModalAuditoriaMermas, setShowModalAuditoriaMermas] = useState(false);
+  const [busquedaModalMermas, setBusquedaModalMermas] = useState("");
+
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [adjustData, setAdjustData] = useState<any>({});
   const [isHydrated, setIsHydrated] = useState(false);
@@ -903,10 +908,27 @@ function LiquidacionesContent() {
   const totalFleteConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.flete_total_bruto_bs || l.flete_total_bs || 0), 0);
   const totalLiquidoConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.liquido_pagable_bs || 0), 0);
   const totalDeduccionesConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.total_descuentos_bs ?? Math.max(0, (l.flete_total_bruto_bs || 0) - (l.liquido_pagable_bs || 0))), 0);
-  const totalMermasConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.descuento_merma_bs || l.total_mermas_bs || 0), 0);
+  const totalMermasConsolidado = rangeLiquidaciones.reduce((acc, l) => acc + (l.desc_merma_bs ?? l.descuento_merma_bs ?? l.total_mermas_bs ?? 0), 0);
   const fleteFlota = resumenFlota?.total_flete_bruto_bs ?? activeLiq?.flete_total_bruto_bs ?? totalFleteConsolidado;
-  const mermasFlota = resumenFlota?.total_mermas_bs ?? activeLiq?.descuento_merma_bs ?? totalMermasConsolidado;
+  const mermasFlota = resumenFlota?.total_mermas_bs ?? activeLiq?.desc_merma_bs ?? activeLiq?.descuento_merma_bs ?? totalMermasConsolidado;
   const fleteFlotaMenosMermas = Math.max(0, fleteFlota - mermasFlota);
+
+  // Segmentación y Auditoría de Mermas
+  const allViajes = activeLiq?.viajes || [];
+  const viajesConMermas = allViajes.filter((v: any) => (Number(v.merma_descontar_bs) || 0) > 0);
+  const viajesSinMermas = allViajes.filter((v: any) => (Number(v.merma_descontar_bs) || 0) <= 0);
+
+  const auditMermasStats = {
+    totalViajes: allViajes.length,
+    conMermasCount: viajesConMermas.length,
+    sinMermasCount: viajesSinMermas.length,
+    volOrigen: viajesConMermas.reduce((s: number, v: any) => s + (Number(v.volumen_origen_litros) || 0), 0),
+    volRecepcion: viajesConMermas.reduce((s: number, v: any) => s + (Number(v.volumen_recepcionado_litros) || 0), 0),
+    mermaReal: viajesConMermas.reduce((s: number, v: any) => s + (Number(v.merma_real_litros) || 0), 0),
+    mermaTolerable: viajesConMermas.reduce((s: number, v: any) => s + (Number(v.merma_tolerable_litros) || 0), 0),
+    mermaExcedente: viajesConMermas.reduce((s: number, v: any) => s + (Number(v.merma_excedente_litros) || 0), 0),
+    totalMermasBs: viajesConMermas.reduce((s: number, v: any) => s + (Number(v.merma_descontar_bs) || 0), 0),
+  };
 
   // Lista de placas filtradas para la matriz de validación de flota
   const filteredPlacas = (resumenFlota?.placas || []).filter((item: any) => {
@@ -1561,24 +1583,45 @@ function LiquidacionesContent() {
           {/* Flete Flota - Mermas (Dato Nuevo Solicitado) */}
           <div className="bg-white dark:bg-slate-900 border border-blue-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-blue-50/10">
             <div>
-              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Flete Flota - Mermas</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Flete Flota - Mermas</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300">Auditado</span>
+              </div>
               <div className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono mt-0.5">
                 {formatCurrency(fleteFlotaMenosMermas)}
               </div>
-              <span className="text-[10px] text-slate-400 font-medium">
-                {mermasFlota > 0 ? `Mermas: -${formatCurrency(mermasFlota)}` : "Sin descuento por merma"}
-              </span>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <span className="text-[10px] text-slate-400 font-medium">
+                  {mermasFlota > 0 ? `Mermas: -${formatCurrency(mermasFlota)}` : "Sin descuento por merma"}
+                </span>
+                {mermasFlota > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowModalAuditoriaMermas(true)}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded transition cursor-pointer"
+                    title="Ver detalle y respaldo de los viajes con merma"
+                  >
+                    <Search className="w-2.5 h-2.5" />
+                    <span>Ver respaldo ({viajesConMermas.length} viajes)</span>
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-500 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowModalAuditoriaMermas(true)}
+              className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-500 flex-shrink-0 cursor-pointer hover:bg-blue-500/25 transition active:scale-95"
+              title="Clic para auditar el cálculo y origen de las mermas"
+            >
               <Calculator className="w-4.5 h-4.5" />
-            </div>
+            </button>
           </div>
 
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Deducciones Flota</span>
               <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 font-mono mt-0.5">
-                {formatCurrency(resumenFlota?.total_deducciones_bs ?? activeLiq?.total_descuentos_bs ?? totalDeduccionesConsolidado)}
+                {formatCurrency(resumenFlota?.total_deducciones_bs ?? resumenFlota?.total_descuentos_bs ?? activeLiq?.total_descuentos_bs ?? totalDeduccionesConsolidado)}
               </div>
               <span className="text-[10px] text-slate-400 font-medium">Mermas y comisiones globales</span>
             </div>
@@ -1623,10 +1666,10 @@ function LiquidacionesContent() {
             <div>
               <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Flete - Mermas</span>
               <div className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono mt-0.5">
-                {formatCurrency(Math.max(0, (activeLiq.flete_total_bruto_bs || 0) - (activeLiq.descuento_merma_bs || 0)))}
+                {formatCurrency(Math.max(0, (activeLiq.flete_total_bruto_bs || 0) - (activeLiq.desc_merma_bs ?? activeLiq.descuento_merma_bs ?? 0)))}
               </div>
               <span className="text-[10px] text-slate-400 font-medium">
-                {(activeLiq.descuento_merma_bs || 0) > 0 ? `Merma: -${formatCurrency(activeLiq.descuento_merma_bs || 0)}` : "Sin descuento de merma"}
+                {(activeLiq.desc_merma_bs ?? activeLiq.descuento_merma_bs ?? 0) > 0 ? `Merma: -${formatCurrency(activeLiq.desc_merma_bs ?? activeLiq.descuento_merma_bs ?? 0)}` : "Sin descuento de merma"}
               </span>
             </div>
             <div className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-500 flex-shrink-0">
@@ -1989,6 +2032,69 @@ function LiquidacionesContent() {
                 </div>
               </div>
 
+              {/* Barra de Filtros Rápidos de Despachos (Hoja 1) */}
+              <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4 bg-slate-50 dark:bg-slate-950/60 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 no-print">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase mr-1">Filtrar tabla:</span>
+                  <button
+                    type="button"
+                    onClick={() => setFiltroMermasTabla("todos")}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      filtroMermasTabla === "todos"
+                        ? "bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900 shadow-sm"
+                        : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"
+                    }`}
+                  >
+                    <span>Todos los Despachos</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
+                      {allViajes.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFiltroMermasTabla("con_merma")}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      filtroMermasTabla === "con_merma"
+                        ? "bg-rose-600 text-white shadow-sm"
+                        : "bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40"
+                    }`}
+                  >
+                    <Fuel className="w-3.5 h-3.5" />
+                    <span>Con Mermas YPFB</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 font-bold">
+                      {viajesConMermas.length} viajes • -Bs. {formatNumber(auditMermasStats.totalMermasBs || mermasFlota, 2)}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFiltroMermasTabla("sin_merma")}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      filtroMermasTabla === "sin_merma"
+                        ? "bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900 shadow-sm"
+                        : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"
+                    }`}
+                  >
+                    <span>Cargas Secas / Sin Merma</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
+                      {viajesSinMermas.length}
+                    </span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setShowModalAuditoriaMermas(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition cursor-pointer"
+                  >
+                    <Calculator className="w-3.5 h-3.5" />
+                    <span>Mermas (Bs. {formatNumber(auditMermasStats.totalMermasBs || mermasFlota, 2)})</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Tabla de Viajes de la Placa (17 Columnas oficiales con Fila Especial de Factura) */}
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-[11px] border-collapse">
@@ -2019,9 +2125,26 @@ function LiquidacionesContent() {
                     {(() => {
                       if (!activeLiq.viajes || activeLiq.viajes.length === 0) return null;
 
+                      let displayViajes = activeLiq.viajes || [];
+                      if (filtroMermasTabla === "con_merma") {
+                        displayViajes = displayViajes.filter((v: any) => (Number(v.merma_descontar_bs) || 0) > 0);
+                      } else if (filtroMermasTabla === "sin_merma") {
+                        displayViajes = displayViajes.filter((v: any) => (Number(v.merma_descontar_bs) || 0) <= 0);
+                      }
+
+                      if (displayViajes.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={19} className="py-10 text-center text-slate-400 text-xs font-semibold">
+                              No hay despachos registrados para este filtro ({filtroMermasTabla === "con_merma" ? "Con Mermas YPFB" : "Sin Mermas"}).
+                            </td>
+                          </tr>
+                        );
+                      }
+
                       // Agrupación de viajes por (tramo, producto, nro_factura)
                       const groupsMap: { [k: string]: { tramo: string; producto: string; factura: string; items: any[] } } = {};
-                      for (const v of activeLiq.viajes) {
+                      for (const v of displayViajes) {
                         const t = (v.tramo || "SIN TRAMO").trim().toUpperCase();
                         const p = (v.producto || "SIN PRODUCTO").trim().toUpperCase();
                         const f = (v.nro_factura || "").trim().toUpperCase() || "S/F";
@@ -2108,9 +2231,9 @@ function LiquidacionesContent() {
                             {/* FILA ESPECIAL: Subtotal del Grupo con Facturación */}
                             <tr className="bg-amber-100/70 dark:bg-amber-950/40 print:bg-amber-100/60 font-bold border-y-2 border-amber-300 dark:border-amber-700 text-[10.5px]">
                               <td colSpan={10} className="py-2 px-2.5 text-left border-x border-amber-300 dark:border-amber-700">
-                                <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-2">TOTAL {group.producto}</span>
+                                <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-1">TOTAL {group.producto}</span>
                                 <span className="text-slate-700 dark:text-slate-300 font-medium">| FACTURA: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
-                                <span className="text-slate-700 dark:text-slate-300 font-medium ml-2">| FECHA FACTURA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
+                                <span className="text-slate-700 dark:text-slate-300 font-medium ml-1">| FECHA FACTURA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
                               </td>
                               <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-900 dark:text-white">{formatNumber(grpVolOrig, 0)}</td>
                               <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-emerald-800 dark:text-emerald-300">{formatNumber(grpVolRec, 0)}</td>
@@ -2120,7 +2243,9 @@ function LiquidacionesContent() {
                               <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-rose-700 dark:text-rose-400">{formatNumber(grpMDesc, 2)}</td>
                               <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 0)}</td>
                               <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-slate-700 dark:text-slate-300">{formatNumber(grpTarifa, 2)}</td>
-                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-amber-900 dark:text-amber-400">{formatNumber(grpFlete, 2)}</td>
+                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-amber-900 dark:text-amber-400">
+                                {formatNumber(grpFlete, 2)}
+                              </td>
                             </tr>
                           </Fragment>
                         );
@@ -2128,34 +2253,58 @@ function LiquidacionesContent() {
                     })()}
 
                     {/* Fila de Totales Pág 2 */}
-                    <tr className="bg-slate-100 dark:bg-slate-800/90 print:bg-slate-100 font-black text-slate-900 dark:text-white print:text-slate-900 border-t-2 border-b border-slate-300 dark:border-slate-700 print:border-slate-400 text-xs">
-                      <td colSpan={10} className="py-2.5 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                        TOTAL GENERAL:
-                      </td>
-                      <td className="py-2.5 px-1.5 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                        {formatNumber(activeLiq.total_volumen_origen_litros, 0)}
-                      </td>
-                      <td className="py-2.5 px-1.5 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                        {formatNumber(activeLiq.total_volumen_recepcionado_litros, 0)}
-                      </td>
-                      <td className="py-2.5 px-1 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                        -{formatNumber(activeLiq.total_merma_real_litros, 1)}
-                      </td>
-                      <td className="py-2.5 px-1 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                        {formatNumber(activeLiq.total_merma_excedente_litros, 1)}
-                      </td>
-                      <td className="py-2.5 px-1 border-x border-slate-300 dark:border-slate-700 print:border-slate-300"></td>
-                      <td className="py-2.5 px-1.5 text-right font-mono text-rose-700 dark:text-rose-400 print:text-red-700 border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                        {formatNumber(activeLiq.desc_merma_bs, 1)}
-                      </td>
-                      <td className="py-2.5 px-1.5 text-right font-mono font-bold text-sky-800 dark:text-sky-300 border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                        {formatNumber((activeLiq?.viajes || []).reduce((sum: number, v: any) => sum + getVolFactLitros(v), 0), 0)}
-                      </td>
-                      <td className="py-2.5 px-1.5 border-x border-slate-300 dark:border-slate-700 print:border-slate-300"></td>
-                      <td className="py-2.5 px-2 text-right font-mono text-amber-900 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/15 print:bg-amber-50 border-x border-slate-300 dark:border-slate-700 print:border-slate-300 text-sm font-black">
-                        {formatNumber(activeLiq.flete_total_bruto_bs, 2)}
-                      </td>
-                    </tr>
+                    {(() => {
+                      let displayViajes = activeLiq.viajes || [];
+                      if (filtroMermasTabla === "con_merma") {
+                        displayViajes = displayViajes.filter((v: any) => (Number(v.merma_descontar_bs) || 0) > 0);
+                      } else if (filtroMermasTabla === "sin_merma") {
+                        displayViajes = displayViajes.filter((v: any) => (Number(v.merma_descontar_bs) || 0) <= 0);
+                      }
+                      const totVolOrig = displayViajes.reduce((s: number, v: any) => s + (Number(v.volumen_origen_litros) || 0), 0);
+                      const totVolRec = displayViajes.reduce((s: number, v: any) => s + (Number(v.volumen_recepcionado_litros) || 0), 0);
+                      const totMermaReal = displayViajes.reduce((s: number, v: any) => s + (Number(v.merma_real_litros) || 0), 0);
+                      const totMermaExc = displayViajes.reduce((s: number, v: any) => s + (Number(v.merma_excedente_litros) || 0), 0);
+                      const totMermaDesc = displayViajes.reduce((s: number, v: any) => s + (Number(v.merma_descontar_bs) || 0), 0);
+                      const totVolFact = displayViajes.reduce((s: number, v: any) => s + getVolFactLitros(v), 0);
+                      const totFleteBruto = displayViajes.reduce((s: number, v: any) => s + (Number(v.flete_total_bs) || 0), 0);
+
+                      const labelTotal = filtroMermasTabla === "con_merma"
+                        ? `SUBTOTAL (${displayViajes.length} DESPACHOS CON MERMA YPFB):`
+                        : filtroMermasTabla === "sin_merma"
+                        ? `SUBTOTAL (${displayViajes.length} DESPACHOS SIN MERMA):`
+                        : "TOTAL GENERAL:";
+
+                      return (
+                        <tr className="bg-slate-100 dark:bg-slate-800/90 print:bg-slate-100 font-black text-slate-900 dark:text-white print:text-slate-900 border-t-2 border-b border-slate-300 dark:border-slate-700 print:border-slate-400 text-xs">
+                          <td colSpan={10} className="py-2.5 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
+                            {labelTotal}
+                          </td>
+                          <td className="py-2.5 px-1.5 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
+                            {formatNumber(totVolOrig, 0)}
+                          </td>
+                          <td className="py-2.5 px-1.5 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
+                            {formatNumber(totVolRec, 0)}
+                          </td>
+                          <td className="py-2.5 px-1 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
+                            -{formatNumber(totMermaReal, 1)}
+                          </td>
+                          <td className="py-2.5 px-1 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
+                            {formatNumber(totMermaExc, 1)}
+                          </td>
+                          <td className="py-2.5 px-1 border-x border-slate-300 dark:border-slate-700 print:border-slate-300"></td>
+                          <td className="py-2.5 px-1.5 text-right font-mono text-rose-700 dark:text-rose-400 print:text-red-700 border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
+                            {formatNumber(totMermaDesc, 1)}
+                          </td>
+                          <td className="py-2.5 px-1.5 text-right font-mono font-bold text-sky-800 dark:text-sky-300 border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
+                            {formatNumber(totVolFact, 0)}
+                          </td>
+                          <td className="py-2.5 px-1.5 border-x border-slate-300 dark:border-slate-700 print:border-slate-300"></td>
+                          <td className="py-2.5 px-2 text-right font-mono text-amber-900 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/15 print:bg-amber-50 border-x border-slate-300 dark:border-slate-700 print:border-slate-300 text-sm font-black">
+                            {formatNumber(totFleteBruto, 2)}
+                          </td>
+                        </tr>
+                      );
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -2517,6 +2666,242 @@ function LiquidacionesContent() {
                   Guardar y Recalcular
                 </button>
               </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL AUDITORÍA TÉCNICA Y ORIGEN DE MERMAS (YPFB / ANH) */}
+      {/* ============================================================== */}
+      {showModalAuditoriaMermas && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+              
+              {/* Encabezado del Modal */}
+              <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-blue-50/50 dark:bg-blue-950/20">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/25 flex items-center justify-center flex-shrink-0">
+                    <Fuel className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                      <span>Auditoría y Respaldo de Mermas YPFB</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                        {activeLiq?.periodo_mes || periodo || "Gestión 2025"}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Trazabilidad matemática de los <strong>Bs. {formatNumber(auditMermasStats.totalMermasBs || mermasFlota, 2)}</strong> descontados según contrato ANH / YPFB.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowModalAuditoriaMermas(false)}
+                  className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 flex items-center justify-center transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Contenido con Scroll */}
+              <div className="p-6 overflow-y-auto space-y-6 text-xs text-slate-700 dark:text-slate-300">
+                
+                {/* Cuadro Explicativo de Fórmulas y Diferencia de Tarjetas */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Tarjeta Explicación 1 */}
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-black text-xs uppercase">
+                      <Calculator className="w-4 h-4" />
+                      <span>¿Por qué Flete - Mermas es Bs. {formatNumber(fleteFlotaMenosMermas, 2)}?</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
+                      La tarjeta azul <strong>Flete Flota - Mermas</strong> refleja el flete facturado menos únicamente la penalización por combustible evaporado o faltante en ruta:
+                    </p>
+                    <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 font-mono text-[11px] space-y-1">
+                      <div className="flex justify-between">
+                        <span>Flete Bruto Flota:</span>
+                        <strong className="text-amber-600 dark:text-amber-400">Bs. {formatNumber(fleteFlota, 2)}</strong>
+                      </div>
+                      <div className="flex justify-between text-rose-600 dark:text-rose-400">
+                        <span>(-) Mermas Combustible YPFB:</span>
+                        <strong>-Bs. {formatNumber(auditMermasStats.totalMermasBs || mermasFlota, 2)}</strong>
+                      </div>
+                      <div className="flex justify-between pt-1 border-t border-slate-200 dark:border-slate-800 font-bold text-blue-600 dark:text-blue-400">
+                        <span>(=) Flete Flota - Mermas:</span>
+                        <span>Bs. {formatNumber(fleteFlotaMenosMermas, 2)}</span>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-slate-400 italic">
+                      * El <strong>Líquido Pagable Flota</strong> (Bs. {formatNumber(resumenFlota?.total_liquido_pagable_bs ?? activeLiq?.liquido_pagable_bs ?? 0, 2)}) es menor porque además de las mermas se descuentan las comisiones administrativas de flota (7%, 3%, Bol-Gart 7%, GPS, etc. por Bs. {formatNumber((resumenFlota?.total_deducciones_bs || activeLiq?.total_descuentos_bs || 0) - (auditMermasStats.totalMermasBs || mermasFlota), 2)}).
+                    </p>
+                  </div>
+
+                  {/* Tarjeta Explicación 2 */}
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-black text-xs uppercase">
+                      <Fuel className="w-4 h-4" />
+                      <span>¿De dónde salen los Bs. {formatNumber(auditMermasStats.totalMermasBs || mermasFlota, 2)}?</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
+                      En la gestión 2025 se realizaron <strong>{allViajes.length} despachos</strong> en total:
+                    </p>
+                    <ul className="text-[11px] space-y-1 list-disc list-inside text-slate-600 dark:text-slate-400">
+                      <li><strong>{auditMermasStats.sinMermasCount} viajes</strong> son cargas secas (minerales LAMBOL S.A., granos, cebada, fierro) o viajes dentro de tolerancia contractual: <strong>Merma = Bs. 0,00</strong>.</li>
+                      <li><strong>{auditMermasStats.conMermasCount} viajes</strong> son de combustible líquido para <strong>YPFB</strong> (Diesel e Insumos) donde la evaporación superó la tolerancia del 0.15%.</li>
+                    </ul>
+                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[11px] space-y-1">
+                      <div className="font-bold text-amber-900 dark:text-amber-300">Fórmula Contractual YPFB / ANH:</div>
+                      <div className="text-slate-600 dark:text-slate-300">
+                        Merma Excedente = {formatNumber(auditMermasStats.mermaExcedente, 0)} Litros a sancionar
+                      </div>
+                      <div className="text-slate-600 dark:text-slate-300">
+                        Tarifa Regulada = <strong>7,45 Bs / Litro</strong>
+                      </div>
+                      <div className="font-mono font-bold text-rose-700 dark:text-rose-400 pt-1 border-t border-amber-200 dark:border-amber-800">
+                        {formatNumber(auditMermasStats.mermaExcedente, 0)} L × 7,45 Bs/L = Bs. {formatNumber(auditMermasStats.totalMermasBs, 2)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5 KPIs de Volumen y Mermas */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Cargado Origen</span>
+                    <span className="font-mono font-black text-sm text-slate-800 dark:text-slate-200 mt-1 block">
+                      {formatNumber(auditMermasStats.volOrigen, 0)} L
+                    </span>
+                    <span className="text-[9px] text-slate-400">{auditMermasStats.conMermasCount} despachos</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Recibido YPFB</span>
+                    <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400 mt-1 block">
+                      {formatNumber(auditMermasStats.volRecepcion, 0)} L
+                    </span>
+                    <span className="text-[9px] text-slate-400">En plantas</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Pérdida en Ruta</span>
+                    <span className="font-mono font-black text-sm text-amber-600 dark:text-amber-400 mt-1 block">
+                      -{formatNumber(auditMermasStats.mermaReal, 0)} L
+                    </span>
+                    <span className="text-[9px] text-slate-400">Merma física total</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Tolerancia 0.15%</span>
+                    <span className="font-mono font-black text-sm text-slate-600 dark:text-slate-400 mt-1 block">
+                      {formatNumber(auditMermasStats.mermaTolerable, 0)} L
+                    </span>
+                    <span className="text-[9px] text-slate-400">Permitido sin costo</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50">
+                    <span className="text-[10px] uppercase font-bold text-rose-600 dark:text-rose-400 block">Total a Descontar</span>
+                    <span className="font-mono font-black text-sm text-rose-600 dark:text-rose-400 mt-1 block">
+                      Bs. {formatNumber(auditMermasStats.totalMermasBs, 2)}
+                    </span>
+                    <span className="text-[9px] text-rose-500 font-bold">{formatNumber(auditMermasStats.mermaExcedente, 0)} L × 7,45</span>
+                  </div>
+                </div>
+
+                {/* Barra de Búsqueda y Lista de los 52 Viajes */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="font-bold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <Fuel className="w-4 h-4 text-rose-500" />
+                      <span>Desglose Detallado de los {viajesConMermas.length} Viajes con Merma</span>
+                    </div>
+                    <div className="relative w-64">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={busquedaModalMermas}
+                        onChange={(e) => setBusquedaModalMermas(e.target.value)}
+                        placeholder="Buscar por placa, factura o tramo..."
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden max-h-80 overflow-y-auto">
+                    <table className="w-full text-left text-[11px] border-collapse">
+                      <thead className="bg-slate-100 dark:bg-slate-950 sticky top-0 border-b border-slate-200 dark:border-slate-800 text-[10px] uppercase font-bold text-slate-500">
+                        <tr>
+                          <th className="py-2 px-2 text-center">Nº</th>
+                          <th className="py-2 px-2">Placa</th>
+                          <th className="py-2 px-2">Fecha Descarga</th>
+                          <th className="py-2 px-2">Tramo</th>
+                          <th className="py-2 px-2 text-center">Factura</th>
+                          <th className="py-2 px-2 text-right">Vol. Origen</th>
+                          <th className="py-2 px-2 text-right">Vol. Recibido</th>
+                          <th className="py-2 px-2 text-right">Merma Real</th>
+                          <th className="py-2 px-2 text-center">Tolerable</th>
+                          <th className="py-2 px-2 text-right">Excedente</th>
+                          <th className="py-2 px-2 text-right font-bold text-rose-600">Descuento Bs.</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
+                        {viajesConMermas
+                          .filter((v: any) => {
+                            if (!busquedaModalMermas.trim()) return true;
+                            const q = busquedaModalMermas.toLowerCase();
+                            return (
+                              (v.placa || "").toLowerCase().includes(q) ||
+                              (v.nro_factura || "").toLowerCase().includes(q) ||
+                              (v.tramo || "").toLowerCase().includes(q) ||
+                              (v.producto || "").toLowerCase().includes(q)
+                            );
+                          })
+                          .map((v: any, idx: number) => (
+                            <tr key={v.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                              <td className="py-1.5 px-2 text-center text-slate-400">{idx + 1}</td>
+                              <td className="py-1.5 px-2 font-bold text-amber-600 dark:text-amber-400">{v.placa}</td>
+                              <td className="py-1.5 px-2 text-slate-500">{formatDate(v.fecha_descarga || v.fecha_carga)}</td>
+                              <td className="py-1.5 px-2 font-sans text-[10px] text-slate-600 dark:text-slate-400 truncate max-w-[150px]">{v.tramo}</td>
+                              <td className="py-1.5 px-2 text-center font-bold text-slate-700 dark:text-slate-300">{v.nro_factura || "-"}</td>
+                              <td className="py-1.5 px-2 text-right">{formatNumber(v.volumen_origen_litros, 0)} L</td>
+                              <td className="py-1.5 px-2 text-right text-emerald-600 dark:text-emerald-400 font-bold">{formatNumber(v.volumen_recepcionado_litros, 0)} L</td>
+                              <td className="py-1.5 px-2 text-right text-amber-600">-{formatNumber(v.merma_real_litros, 1)} L</td>
+                              <td className="py-1.5 px-2 text-center text-slate-400">{v.merma_tolerable_litros !== null ? Number(v.merma_tolerable_litros).toFixed(0) : "0"} L</td>
+                              <td className="py-1.5 px-2 text-right font-bold text-slate-800 dark:text-slate-200">{formatNumber(v.merma_excedente_litros, 1)} L</td>
+                              <td className="py-1.5 px-2 text-right font-black text-rose-600 dark:text-rose-400">Bs. {formatNumber(v.merma_descontar_bs, 2)}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Pie del Modal */}
+              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex items-center justify-between flex-wrap gap-2">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  Total auditado: <strong>{viajesConMermas.length} viajes</strong> por un valor exacto de <strong>Bs. {formatNumber(auditMermasStats.totalMermasBs, 2)}</strong>
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiltroMermasTabla("con_merma");
+                      setShowModalAuditoriaMermas(false);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition cursor-pointer"
+                  >
+                    Ver estos {viajesConMermas.length} viajes en la Planilla
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowModalAuditoriaMermas(false)}
+                    className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition cursor-pointer"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+
             </div>
           </div>
         </ModalPortal>

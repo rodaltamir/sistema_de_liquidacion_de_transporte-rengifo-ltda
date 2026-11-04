@@ -1,7 +1,8 @@
+# backend/app/services/excel_importer.py
 import io
 import re
 from datetime import date, datetime
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Set
 from dateutil import parser as date_parser
 import openpyxl
 from sqlalchemy.orm import Session
@@ -9,7 +10,6 @@ from sqlalchemy import func
 from app.models.tenant import Viaje, ParametroLiquidacion, UnidadTransporte, Cliente, EmpresaApoyo
 from app.db.session import sanitize_schema_name
 from app.services.calculation_engine import calculate_viaje_values, determine_trip_period
-
 
 # -------------------------------------------------------------------------
 # PALABRAS CLAVE PARA CLASIFICACIÓN INTELIGENTE DE CLIENTES Y TRANSPORTISTAS
@@ -28,116 +28,61 @@ KNOWN_CLIENT_KEYWORDS = [
 KNOWN_TRANSPORT_KEYWORDS = [
     "TRANS ", "TRANS.", "TRANSPORTE", "TRANSPORTES",
     "TRAILER", "LOGISTICA", "LOGISTIC", "COOP. TRANS", "COOPERATIVA", "LINEA", "CARGO", "FLOTA",
-    "DAYTEL", "MGTRAILER", "CITRANSCO", "ROSESTAR", "BRITANIC",
-    "REMOLINO", "QUELION", "PETRO FRAYER", "HANDEK", "COLMENA",
-    "FUENTES", "BRUMEBOL", "JACHI", "JARM", "TEMPESTAD", "TRUKSPER", "UNITED"
+    "EXPRESS", "INTERNACIONAL", "ASOCIACION", "SINDICATO", "UNION", "SERVICIOS DE TRANSPORTE"
 ]
-
-KNOWN_INDIVIDUAL_CARRIERS = [
-    "ROSMERY QUISPE", "GONZAYO"
-]
-
 
 def classify_entity_name(name: str) -> str:
-    """
-    Clasifica inteligentemente si una entidad es un CLIENTE que contrató el servicio
-    o una EMPRESA DE TRANSPORTE / Transportista asociado.
-    """
+    """Determina si un nombre corresponde a un Cliente o a una Empresa de Transporte."""
     if not name:
         return "cliente"
-    n_up = str(name).strip().upper()
-
-    # 1. Transportistas conocidos y palabras clave de transporte
-    for kw in KNOWN_TRANSPORT_KEYWORDS:
-        if kw in n_up:
-            return "empresa"
-
-    for ic in KNOWN_INDIVIDUAL_CARRIERS:
-        if ic in n_up:
-            return "empresa"
-
-    # 2. Clientes conocidos
+    name_upper = name.upper().strip()
     for kw in KNOWN_CLIENT_KEYWORDS:
-        if kw in n_up:
+        if kw in name_upper:
             return "cliente"
-
-    # 3. Entidades comerciales/industriales comunes (S.A., S.R.L., SRL, LTDA, SAS, INC.)
-    if any(s in n_up for s in ("S.A.", "S.A", "S.R.L.", "SRL", "LTDA", "LIMITADA", "SAS", "INC.")):
+    for kw in KNOWN_TRANSPORT_KEYWORDS:
+        if kw in name_upper:
+            return "empresa"
+    if any(legal in name_upper for legal in ["S.A.", "SOCIEDAD ANONIMA", "S.A", "SUCURSAL BOLIVIA", "S.A.C.", "AGROPECUARIA", "COMERCIAL", "INDUSTRIAL"]) and not any(kw in name_upper for kw in KNOWN_TRANSPORT_KEYWORDS):
         return "cliente"
-
+    if any(t_term in name_upper for t_term in ["TRANS", "CARGO", "LOGISTIC", "FLOTA", "TRUCKS"]):
+        return "empresa"
     return "cliente"
 
-
-
-
 def normalize_company_name(name: Any) -> str:
-    """Normaliza nombres de empresas (apóstrofes, espacios múltiples, mayúsculas)."""
+    """Limpia y estandariza nombres de empresas o clientes."""
     if not name:
         return ""
-    s = str(name).strip().replace("´", "").replace("`", "").replace("’", "").replace("'", "")
-    s = re.sub(r'\s+', ' ', s)
-    return s.upper()
-
+    clean = str(name).strip()
+    clean = re.sub(r'\s+', ' ', clean)
+    clean = clean.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
+    return clean.strip().upper()
 
 def get_excel_sheets(file_bytes: bytes) -> List[str]:
-    """Retorna los nombres de las hojas en el libro Excel de manera ultra rápida."""
+    """Lee los nombres de todas las hojas disponibles en un archivo Excel."""
     if isinstance(file_bytes, str):
-        wb = openpyxl.load_workbook(file_bytes, read_only=True, data_only=True)
-    elif isinstance(file_bytes, (bytes, bytearray)):
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+        wb = openpyxl.load_workbook(file_bytes, read_only=True)
     else:
-        wb = openpyxl.load_workbook(file_bytes, read_only=True, data_only=True)
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True)
     sheets = list(wb.sheetnames)
     wb.close()
     return sheets
 
-
 def parse_date_value(val: Any) -> Optional[date]:
-    """Parsea valores de fecha de forma robusta soportando datetime, date, str, errores tipográficos comunes y números de serie Excel."""
+    """Convierte celdas de fecha a datetime.date."""
     if val is None or val == "":
         return None
-    if isinstance(val, datetime):
-        return val.date()
-    if isinstance(val, date):
-        return val
-    if isinstance(val, (int, float)):
-        # Número de serie de Excel (días desde 1899-12-30)
+    if isinstance(val, (datetime, date)):
+        return val.date() if isinstance(val, datetime) else val
+
+    val_str = str(val).strip()
+    val_str = re.sub(r'\s*00:00(:00)?.*$', '', val_str)
+    val_str = val_str.replace('/', '-')
+
+    for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%Y%m%d', '%d/%m/%Y', '%Y/%m/%d', '%d-%m-%y', '%d/%m/%y'):
         try:
-            from datetime import timedelta
-            if 1000 <= val <= 100000:
-                return date(1899, 12, 30) + timedelta(days=int(val))
+            return datetime.strptime(val_str, fmt).date()
         except Exception:
             pass
-    val_str = str(val).strip()
-    if not val_str or val_str.upper() in (
-        "NONE", "NULL", "FALTA", "-", "0", 
-        "FECHA CARGA", "FECHA RECEPCIÓN", "FECHA RECEPCION", "FECHA DESCARGA", "FECHA FACTURA"
-    ):
-        return None
-
-    # Corrección de erratas frecuentes en planillas contables manuales:
-    # 1. Falta de barra antes de año de 4 dígitos: ej. "02/082024" -> "02/08/2024", "15/062025" -> "15/06/2025"
-    val_str = re.sub(r'(\d{1,2})[/-](\d{1,2})(20\d\d)\b', r'\1/\2/\3', val_str)
-    # 2. Año con dígito extra repetido: ej. "17/1/20204" -> "17/1/2024", "20244" -> "2024"
-    val_str = re.sub(r'(\b\d{1,2}[/-]\d{1,2}[/-])202\d{2}\b', r'\g<1>2024', val_str)
-    val_str = re.sub(r'\b20244\b', '2024', val_str)
-
-    # Extraer solo la parte de fecha si viene concatenada con hora
-    if " " in val_str:
-        part_date = val_str.split()[0]
-        if any(c in part_date for c in ("/", "-")):
-            val_str = part_date
-    elif "T" in val_str:
-        part_date = val_str.split("T")[0]
-        if any(c in part_date for c in ("/", "-")):
-            val_str = part_date
-
-    try:
-        dt = date_parser.parse(val_str, dayfirst=True)
-        if 1990 <= dt.year <= 2040:
-            return dt.date()
-    except Exception:
-        pass
 
     try:
         dt = date_parser.parse(val_str, dayfirst=False)
@@ -148,13 +93,27 @@ def parse_date_value(val: Any) -> Optional[date]:
 
     return None
 
+def clean_invoice_number(val: Any) -> Optional[str]:
+    """Extrae y limpia el número de factura."""
+    if val is None:
+        return None
+    val_str = str(val).strip()
+    if not val_str or val_str.upper() in ("NONE", "NULL", "-", "SIN FACTURA", "0"):
+        return None
+    if val_str.endswith(".0"):
+        val_str = val_str[:-2]
+    m = re.search(r'\b(\d+)\b', val_str)
+    if m:
+        return m.group(1)
+    return val_str
 
-def clean_float(val: Any, default: float = 0.0) -> float:
-    """Convierte un valor a float limpiando caracteres de moneda, separadores de miles y comas decimales."""
+def clean_float(val: Any, default: float = 0.0, hint: str = "generic") -> float:
+    """Convierte un valor a float limpiando monedas, separadores de miles y comas decimales."""
     if val is None or val == "":
         return default
     if isinstance(val, (int, float)):
-        return float(val)
+        v = float(val)
+        return round(v, 2) if hint == "currency" else round(v, 4) if hint == "volume" else v
     val_str = str(val).strip().upper()
     for prefix in ("BS.", "BS", "BOB", "$US", "USD", "$", "LTS", "LT", "M3"):
         val_str = val_str.replace(prefix, "")
@@ -169,16 +128,20 @@ def clean_float(val: Any, default: float = 0.0) -> float:
             # Formato estándar ej. 13,288.80
             val_str = val_str.replace(",", "")
         else:
-            # Formato europeo/latino ej. 13.288,80
+            # Formato latino ej. 13.288,80
             val_str = val_str.replace(".", "").replace(",", ".")
     elif "," in val_str:
         val_str = val_str.replace(",", ".")
 
     try:
-        return float(val_str)
+        res = float(val_str)
+        if hint == "currency":
+            return round(res, 2)
+        if hint == "volume":
+            return round(res, 4)
+        return res
     except Exception:
         return default
-
 
 def clean_string(val: Any) -> str:
     """Limpia cadenas de texto normalizando espacios y saltos de línea."""
@@ -187,11 +150,45 @@ def clean_string(val: Any) -> str:
     s = str(val).replace("\r", " ").replace("\n", " ").strip()
     return re.sub(r'\s+', ' ', s)
 
+def normalize_volumes(vol_o_raw: float, vol_r_raw: float, vol_f_raw: float) -> Tuple[float, float, float, float]:
+    """
+    Normaliza volúmenes evitando el error por miles (escalamiento de unidades).
+    Distingue con total precisión Litros (L) de Metros Cúbicos (m3).
+    Un camión cisterna estándar transporta entre 20,000 y 45,000 Litros (20 a 45 m3).
+    """
+    vol_o = round(vol_o_raw, 1)
+    vol_r = round(vol_r_raw, 1)
+
+    if vol_f_raw > 0:
+        if vol_f_raw > 500:
+            vol_m3 = round(vol_f_raw / 1000.0, 4)
+            vol_f_litros = round(vol_f_raw, 1)
+        else:
+            vol_m3 = round(vol_f_raw, 4)
+            vol_f_litros = round(vol_m3 * 1000.0, 1)
+    elif vol_r > 0:
+        if vol_r > 500:
+            vol_f_litros = vol_r
+            vol_m3 = round(vol_r / 1000.0, 4)
+        else:
+            vol_m3 = vol_r
+            vol_f_litros = round(vol_r * 1000.0, 1)
+    elif vol_o > 0:
+        if vol_o > 500:
+            vol_f_litros = vol_o
+            vol_m3 = round(vol_o / 1000.0, 4)
+        else:
+            vol_m3 = vol_o
+            vol_f_litros = round(vol_o * 1000.0, 1)
+    else:
+        vol_f_litros = 0.0
+        vol_m3 = 0.0
+
+    return vol_o, vol_r, vol_f_litros, vol_m3
 
 def detect_columns_and_header_row(rows_iter) -> Tuple[Optional[int], Dict[str, int]]:
     """
-    Escanea las primeras 15 filas para encontrar el encabezado y mapear dinámicamente las columnas.
-    Soporta formato Driver S.R.L. / Plantilla de Importación y formato oficial del sistema.
+    Escanea las primeras 15 filas para mapear dinámicamente las columnas canónicas.
     """
     col_map: Dict[str, int] = {}
     header_row_idx: Optional[int] = None
@@ -267,6 +264,403 @@ def detect_columns_and_header_row(rows_iter) -> Tuple[Optional[int], Dict[str, i
 
     return header_row_idx, col_map
 
+def reconcile_sheet_fletes(clean_records: List[Dict[str, Any]], facturas_subtotales: Dict[str, Dict[str, Any]]) -> None:
+    """
+    Reconcilia facturas agrupadas para evitar la deriva por milésimas.
+    Si una factura tiene subtotal en el Excel y la suma de sus viajes tiene una discrepancia
+    menor a 0.05 Bs (por centavos o milésimas), absorbe la diferencia en el último viaje
+    para que la suma sea 100% matemática y exacta.
+    """
+    fac_groups: Dict[str, List[Dict[str, Any]]] = {}
+    for r in clean_records:
+        fac = r.get("nro_factura")
+        if fac:
+            k = str(fac).strip()
+            if k not in fac_groups:
+                fac_groups[k] = []
+            fac_groups[k].append(r)
+
+    for fac_num, r_list in fac_groups.items():
+        sub_info = facturas_subtotales.get(fac_num)
+        if not sub_info:
+            continue
+        subtotal_target = round(float(sub_info.get("subtotal_importe_bs", 0.0)), 2)
+        if subtotal_target <= 0:
+            continue
+        sum_trips = round(sum(t.get("flete_total_bs", 0.0) for t in r_list), 2)
+        diff = round(subtotal_target - sum_trips, 2)
+        if 0 < abs(diff) <= 0.10 and r_list:
+            last_r = r_list[-1]
+            last_r["flete_total_bs"] = round(last_r["flete_total_bs"] + diff, 2)
+            last_r["reconciliado_subtotal"] = True
+
+def limpiar_datos_para_importacion(
+    ws,
+    sheet_title: str,
+    target_empresa_name: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Algoritmo de limpieza y saneamiento de datos previo a la importación (función de segundo plano).
+    - Identifica y aísla exclusivamente las columnas canónicas requeridas para la operación.
+    - Elimina columnas auxiliares y ruidosas de manera parcial únicamente para la importación.
+    - Desacopla las filas de subtotales de facturas para que no se confundan con viajes.
+    - Previene errores por miles (escalamiento de unidades) y milésimas (deriva decimal).
+    - Armoniza fechas con el año oficial de la hoja (sheet_year) para corregir errores de tipeo humano.
+    """
+    year_match = re.search(r'\b(20\d\d)\b', sheet_title)
+    sheet_year = int(year_match.group(1)) if year_match else None
+
+    sheet_upper = sheet_title.upper()
+    detected_sheet_company = None
+    if "DRIVER" in sheet_upper:
+        detected_sheet_company = "DRIVER S.R.L."
+    elif target_empresa_name:
+        detected_sheet_company = target_empresa_name
+
+    sample_rows = []
+    for r in ws.iter_rows(values_only=True):
+        sample_rows.append(r)
+        if len(sample_rows) >= 15:
+            break
+
+    if not detected_sheet_company:
+        for s_row in sample_rows:
+            for c_cell in s_row:
+                c_str = str(c_cell or "").upper()
+                if "DRIVER" in c_str:
+                    detected_sheet_company = "DRIVER S.R.L."
+                    break
+            if detected_sheet_company:
+                break
+
+    header_row_idx, col_map = detect_columns_and_header_row(sample_rows)
+    if not header_row_idx or "placa" not in col_map:
+        if ws.max_column and ws.max_column >= 18:
+            header_row_idx = 4
+            col_map = {
+                "fecha_carga": 1, "fecha_descarga": 2, "mic_dta": 3, "placa": 4,
+                "tramo": 5, "cliente": 6, "nro_factura": 7, "fecha_factura": 8,
+                "producto": 9, "vol_origen": 10, "vol_recepcion": 11,
+                "vol_facturado": 16, "tarifa": 17, "importe_total": 18
+            }
+        elif ws.max_column and ws.max_column >= 7:
+            header_row_idx = 1
+            col_map = {
+                "empresa": 0, "producto": 1, "planta_carga": 2, "planta_descarga": 4,
+                "placa": 5, "fecha_carga": 6, "fecha_descarga": 7, "vol_origen": 8,
+                "vol_recepcion": 9, "vol_facturado": 15, "tarifa": 16,
+                "importe_total": 17, "fecha_factura": 18, "nro_factura": 19, "mic_dta": 20
+            }
+
+    clean_records: List[Dict[str, Any]] = []
+    facturas_subtotales: Dict[str, Dict[str, Any]] = {}
+    facturas_trips_temp: Dict[str, List[Dict[str, Any]]] = {}
+    sheet_grand_total: float = 0.0
+
+    carrier_company = target_empresa_name or detected_sheet_company or "DRIVER S.R.L."
+    has_two_separate_entity_columns = (
+        col_map.get("empresa") is not None and 
+        col_map.get("cliente") is not None and 
+        col_map["empresa"] != col_map["cliente"]
+    )
+
+    last_seen_cliente: Optional[str] = None
+    invoice_clients: Dict[str, str] = {}
+    total_filas = 0
+    consecutive_empty = 0
+
+    for r_idx, row in enumerate(ws.iter_rows(values_only=True), 1):
+        if r_idx <= header_row_idx:
+            continue
+
+        if not any(c is not None and str(c).strip() != "" for c in row):
+            consecutive_empty += 1
+            if consecutive_empty >= 20:
+                break
+            continue
+        consecutive_empty = 0
+        total_filas += 1
+
+        row_str = " ".join(str(c or "").upper() for c in row)
+        if any(kw in row_str for kw in (
+            "TOTAL VENTAS", "VENTAS NETAS", "V.N. SIN DERECHO", "V.B. CON DERECHO",
+            "V.N. CON DERECHO", "DEBITO FISCAL", "DEBITO ", "CREDITO FISCAL", "RESUMEN GESTION"
+        )):
+            continue
+
+        def get_c(key: str) -> Any:
+            idx = col_map.get(key)
+            if idx is not None and idx < len(row):
+                return row[idx]
+            return None
+
+        placa_raw = clean_string(get_c("placa"))
+        empresa_raw = clean_string(get_c("empresa"))
+        cliente_raw = clean_string(get_c("cliente"))
+        producto_raw = clean_string(get_c("producto"))
+        planta_c = clean_string(get_c("planta_carga"))
+        planta_d = clean_string(get_c("planta_descarga"))
+        tramo_raw = clean_string(get_c("tramo"))
+
+        vol_o_raw = clean_float(get_c("vol_origen"), 0.0, hint="volume")
+        vol_r_raw = clean_float(get_c("vol_recepcion"), 0.0, hint="volume")
+        vol_f_raw = clean_float(get_c("vol_facturado"), 0.0, hint="volume")
+        tarifa_raw = clean_float(get_c("tarifa"), 0.0, hint="currency")
+        importe_raw = clean_float(get_c("importe_total"), 0.0, hint="currency")
+
+        nro_fac_clean = clean_invoice_number(get_c("nro_factura"))
+        mic_raw = clean_string(get_c("mic_dta"))
+        contrato_raw = clean_string(get_c("contrato"))
+
+        f_carga_raw = get_c("fecha_carga")
+        f_descarga_raw = get_c("fecha_descarga")
+        f_fac_raw = get_c("fecha_factura")
+
+        placa_upper = placa_raw.upper().strip()
+        col_a_raw = cliente_raw or empresa_raw
+        col_a_upper = col_a_raw.upper().strip()
+
+        fac_key = str(nro_fac_clean).strip() if nro_fac_clean else ""
+        prev_trips = facturas_trips_temp.get(fac_key, []) if fac_key else []
+        sum_prev_imp = sum(t.get("flete_total_bs", 0.0) for t in prev_trips)
+        sum_prev_vol = sum(t.get("volumen_facturado_m3", 0.0) for t in prev_trips)
+
+        has_plate = bool(placa_upper and placa_upper not in ("NONE", "NULL", "-", ""))
+        is_subtotal_row = False
+
+        if placa_upper in ("TOTAL", "SUBTOTAL", "RESUMEN", "SUMA") or col_a_upper in ("TOTAL", "SUBTOTAL", "RESUMEN", "SUMA"):
+            is_subtotal_row = True
+        elif not has_plate:
+            if not col_a_upper or col_a_upper in ("NONE", "NULL", "-"):
+                is_subtotal_row = True
+            elif prev_trips and abs(importe_raw - sum_prev_imp) < 1.0 and importe_raw > 0:
+                is_subtotal_row = True
+            elif prev_trips and abs(vol_f_raw - sum_prev_vol) < 0.1 and vol_f_raw > 0:
+                is_subtotal_row = True
+
+        if is_subtotal_row:
+            if fac_key and (importe_raw > 0 or vol_f_raw > 0):
+                facturas_subtotales[fac_key] = {
+                    "fila": r_idx,
+                    "hoja": sheet_title,
+                    "subtotal_vol_m3": vol_f_raw,
+                    "subtotal_importe_bs": importe_raw
+                }
+            elif not fac_key and importe_raw > 1000:
+                sheet_grand_total = importe_raw
+            continue
+
+        if not placa_upper and not col_a_upper and importe_raw == 0 and vol_f_raw == 0:
+            continue
+
+        is_sin_placa = not placa_upper or placa_upper in ("SIN PLACA", "SINPLACA", "FALTA PLACA", "FALTAPLACA", "S/P", "NONE", "NULL", "-")
+        clean_placa = "SIN PLACA" if is_sin_placa else placa_upper.replace(" ", "")
+
+        if has_two_separate_entity_columns:
+            clean_empresa = normalize_company_name(empresa_raw) or carrier_company
+            clean_cliente = normalize_company_name(cliente_raw)
+        else:
+            clean_empresa = carrier_company
+            clean_cliente = normalize_company_name(col_a_raw)
+
+        if not clean_cliente or clean_cliente in ("NONE", "NULL", "-", ""):
+            if nro_fac_clean and str(nro_fac_clean).strip() in invoice_clients:
+                clean_cliente = invoice_clients[str(nro_fac_clean).strip()]
+            elif last_seen_cliente:
+                clean_cliente = last_seen_cliente
+            else:
+                prod_u = clean_string(producto_raw).upper()
+                if any(x in prod_u for x in ("BOBINA", "ACERO", "FIERRO", "BARRA", "PLANCHA", "PERFIL")):
+                    clean_cliente = "CORPORACION ACEROS AREQUIPA S.A."
+                elif any(x in prod_u for x in ("SOYA", "GIRASOL", "HARINA", "COMPENSACION", "ACEITE")):
+                    clean_cliente = "INDUSTRIAS DE ACEITE S.A."
+                elif any(x in prod_u for x in ("FERTILIZANTE", "BORATO", "UREA")):
+                    clean_cliente = "FERTILIZANTES DE LOS ANDES S.R.L."
+                elif any(x in prod_u for x in ("MINERAL", "CONCENTRADO", "PLOMO", "ZINC", "ESTAÑO")):
+                    clean_cliente = "PRODECO S.R.L."
+                elif any(x in prod_u for x in ("MALTA", "CEBADA")):
+                    clean_cliente = "BOCKTRANS S.R.L."
+                elif any(x in prod_u for x in ("DIESEL", "GASOLINA", "GLP", "CRUDO", "PETROLEO", "INSUMOS", "IYA")):
+                    clean_cliente = "YPFB"
+                else:
+                    clean_cliente = "CLIENTE GENERAL"
+        else:
+            last_seen_cliente = clean_cliente
+            if nro_fac_clean:
+                invoice_clients[str(nro_fac_clean).strip()] = clean_cliente
+
+        if planta_c or planta_d:
+            orig = planta_c if planta_c and planta_c.upper() != "FALTA MIC" else ""
+            dest = planta_d if planta_d and planta_d.upper() != "FALTA MIC" else ""
+            if orig and dest:
+                clean_tramo = f"{orig} - {dest}".upper()
+            elif orig:
+                clean_tramo = orig.upper()
+            elif dest:
+                clean_tramo = dest.upper()
+            else:
+                clean_tramo = tramo_raw.upper() if tramo_raw else "TRAMO NO ESPECIFICADO"
+        else:
+            clean_tramo = tramo_raw.upper() if tramo_raw else "TRAMO NO ESPECIFICADO"
+
+        clean_prod = producto_raw.upper() if producto_raw else "DIESEL"
+
+        date_fac = parse_date_value(f_fac_raw)
+        date_carga_parsed = parse_date_value(f_carga_raw)
+        date_descarga_parsed = parse_date_value(f_descarga_raw)
+
+        # Si la hoja tiene año explícito (sheet_year), armonizar errores de tipeo de año
+        if sheet_year:
+            if date_carga_parsed and date_carga_parsed.year != sheet_year and abs(date_carga_parsed.year - sheet_year) <= 2:
+                try:
+                    date_carga_parsed = date(sheet_year, date_carga_parsed.month, date_carga_parsed.day)
+                except Exception:
+                    pass
+            if date_descarga_parsed and date_descarga_parsed.year != sheet_year and abs(date_descarga_parsed.year - sheet_year) <= 2:
+                try:
+                    date_descarga_parsed = date(sheet_year, date_descarga_parsed.month, date_descarga_parsed.day)
+                except Exception:
+                    pass
+            if date_fac and date_fac.year != sheet_year and abs(date_fac.year - sheet_year) <= 2:
+                try:
+                    date_fac = date(sheet_year, date_fac.month, date_fac.day)
+                except Exception:
+                    pass
+
+        sin_fechas_operativas = (date_carga_parsed is None and date_descarga_parsed is None)
+        date_carga = date_carga_parsed
+        date_descarga = date_descarga_parsed
+
+        if date_fac:
+            periodo = f"{date_fac.year}-{str(date_fac.month).zfill(2)}"
+        elif date_descarga_parsed:
+            periodo = f"{date_descarga_parsed.year}-{str(date_descarga_parsed.month).zfill(2)}"
+        elif date_carga_parsed:
+            periodo = f"{date_carga_parsed.year}-{str(date_carga_parsed.month).zfill(2)}"
+        elif sheet_year:
+            periodo = f"{sheet_year}-01"
+        else:
+            periodo = determine_trip_period(date_carga, date_descarga, date_fac)
+
+        if not date_carga:
+            if date_descarga:
+                date_carga = date_descarga
+            elif date_fac:
+                date_carga = date_fac
+            elif sheet_year:
+                m_int = int(periodo[5:7]) if len(periodo) >= 7 and periodo[5:7].isdigit() else 1
+                date_carga = date(sheet_year, m_int, 1)
+            else:
+                date_carga = date.today()
+
+        if not date_descarga:
+            date_descarga = date_carga
+
+        vol_o, vol_r, vol_f_litros, vol_m3 = normalize_volumes(vol_o_raw, vol_r_raw, vol_f_raw)
+
+        tarifa = tarifa_raw
+        if tarifa <= 0:
+            if importe_raw > 0 and vol_m3 > 0:
+                tarifa = round(importe_raw / vol_m3, 2)
+            elif importe_raw > 0:
+                tarifa = importe_raw
+            else:
+                tarifa = 392.00
+
+        if importe_raw > 0:
+            flete_calculado = round(importe_raw, 2)
+        elif vol_m3 > 0 and tarifa > 0:
+            flete_calculado = round(vol_m3 * tarifa, 2)
+        else:
+            flete_calculado = 0.0
+
+        tipo_tarifa = "BS_TOTAL_VIAJE" if (vol_m3 == 0 and flete_calculado > 0) else "BS_POR_M3"
+
+        clean_mic = mic_raw.upper().strip() if mic_raw and mic_raw.upper().strip() not in ("FALTA MIC", "SIN MIC", "NONE", "") else None
+        clean_contrato = contrato_raw.strip() if contrato_raw and contrato_raw.strip() not in ("NONE", "NULL", "") else None
+
+        if vol_o > 0 and vol_r > 0:
+            m_real = round(vol_r - vol_o, 1)
+            prod_u = clean_prod.upper()
+            tol_pct = 0.25 if "GASOLINA" in prod_u else 0.15 if ("DIESEL" in prod_u or prod_u == "DO") else 0.0
+            m_tol = round(vol_o * (tol_pct / 100.0), 1)
+            m_exc = max(0.0, round(abs(m_real) - m_tol, 1)) if abs(m_real) > m_tol else 0.0
+            m_desc_bs = round(m_exc * 7.45, 2)
+        else:
+            m_real = 0.0
+            tol_pct = 0.0
+            m_tol = 0.0
+            m_exc = 0.0
+            m_desc_bs = 0.0
+        liq_pagable = round(flete_calculado - m_desc_bs, 2)
+
+        rec = {
+            "hoja": sheet_title,
+            "fila_hoja": r_idx,
+            "empresa": clean_empresa,
+            "cliente": clean_cliente,
+            "entidad_origen": col_a_raw or clean_cliente,
+            "tipo_entidad": "cliente",
+            "es_apoyo": False,
+            "empresa_apoyo_nombre": None,
+            "placa": clean_placa,
+            "tramo": clean_tramo,
+            "producto": clean_prod,
+            "fecha_carga": date_carga.isoformat(),
+            "fecha_descarga": date_descarga.isoformat(),
+            "fecha_factura": date_fac.isoformat() if date_fac else None,
+            "sin_fechas_operativas": sin_fechas_operativas,
+            "fecha_asignada_de_factura": bool(sin_fechas_operativas and date_fac),
+            "nro_factura": nro_fac_clean,
+            "mic_dta": clean_mic,
+            "contrato": clean_contrato,
+            "volumen_origen_litros": vol_o,
+            "volumen_recepcionado_litros": vol_r,
+            "volumen_facturado": vol_f_litros,
+            "volumen_facturado_m3": round(vol_m3, 3),
+            "tarifa_flete": tarifa,
+            "tipo_tarifa": tipo_tarifa,
+            "flete_total_bs": flete_calculado,
+            "merma_real_litros": m_real,
+            "tolerancia_pct": tol_pct,
+            "merma_tolerable_litros": m_tol,
+            "merma_excedente_litros": m_exc,
+            "merma_descontar_bs": m_desc_bs,
+            "liquido_pagable_bs": liq_pagable,
+            "periodo_mes": periodo,
+            "is_incompleto": (flete_calculado <= 0 and vol_m3 <= 0),
+            "incompleto_reason": "Volumen e Importe en 0" if (flete_calculado <= 0 and vol_m3 <= 0) else None,
+            "status": "INCOMPLETO" if (flete_calculado <= 0 and vol_m3 <= 0) else "LISTO",
+            "included": True
+        }
+        clean_records.append(rec)
+        if nro_fac_clean:
+            k = str(nro_fac_clean).strip()
+            if k not in facturas_trips_temp:
+                facturas_trips_temp[k] = []
+            facturas_trips_temp[k].append(rec)
+
+    reconcile_sheet_fletes(clean_records, facturas_subtotales)
+
+    if sheet_grand_total > 0 and clean_records:
+        current_sum = round(sum(r.get("flete_total_bs", 0.0) for r in clean_records), 2)
+        diff_total = round(sheet_grand_total - current_sum, 2)
+        if 0 < abs(diff_total) <= 0.50:
+            clean_records[-1]["flete_total_bs"] = round(clean_records[-1]["flete_total_bs"] + diff_total, 2)
+
+    discarded_cols = max(0, (ws.max_column or 0) - len(col_map))
+    return {
+        "records": clean_records,
+        "facturas_subtotales": facturas_subtotales,
+        "estadisticas_limpieza": {
+            "filas_analizadas": total_filas,
+            "filas_validas": len(clean_records),
+            "subtotales_aislados": len(facturas_subtotales),
+            "columnas_utiles_aisladas": list(col_map.keys()),
+            "columnas_ruidosas_descartadas": discarded_cols,
+            "sheet_year": sheet_year
+        }
+    }
 
 def parse_excel_viajes_data(
     file_bytes: bytes,
@@ -278,13 +672,7 @@ def parse_excel_viajes_data(
     target_empresa_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Lee, valida y procesa una hoja Excel de viajes.
-    Soporta formato por Empresa (individual) y formato por Asociación (multi-empresa).
-    Maneja con total precisión:
-    - Clasificación inteligente de Clientes vs Empresas de Transporte.
-    - Servicios y fletes con "SIN PLACA" sin omitirlos ni distorsionar importes.
-    - Conciliación de facturas de múltiples despachos con sus filas de subtotal.
-    - Cuadre exacto de importes a facturar y volúmenes en m³ y litros.
+    Lee, valida y procesa una hoja Excel de viajes integrando el motor de limpieza de fondo.
     """
     if isinstance(file_bytes, str):
         wb = openpyxl.load_workbook(file_bytes, read_only=True, data_only=True)
@@ -294,7 +682,6 @@ def parse_excel_viajes_data(
         wb = openpyxl.load_workbook(file_bytes, read_only=True, data_only=True)
     sheets = list(wb.sheetnames)
 
-    # Determinación de hojas a procesar
     if not sheet_name or sheet_name in ("__ALL__", "ALL", "TODAS", "todas"):
         target_sheets = sheets
         selected_sheet_display = "__ALL__"
@@ -316,7 +703,6 @@ def parse_excel_viajes_data(
     placas_detectadas = set()
     hojas_procesadas_stats: List[Dict[str, Any]] = []
 
-    # Diccionario para conciliación de facturas: {nro_factura: [trip_records]} y {nro_factura: subtotal_row}
     facturas_trips: Dict[str, List[Dict[str, Any]]] = {}
     facturas_subtotales: Dict[str, Dict[str, Any]] = {}
 
@@ -326,446 +712,39 @@ def parse_excel_viajes_data(
 
     for sheet_title in target_sheets:
         ws = wb[sheet_title]
+        clean_res = limpiar_datos_para_importacion(ws, sheet_title, target_empresa_name)
+        sheet_records = clean_res.get("records", [])
+        sheet_subs = clean_res.get("facturas_subtotales", {})
+        stats = clean_res.get("estadisticas_limpieza", {})
 
-        # Extraer año si la hoja tiene el año en su nombre (ej. V-2024 DRIVER, 2025, 2026)
-        year_match = re.search(r'\b(20\d\d)\b', sheet_title)
-        sheet_year = int(year_match.group(1)) if year_match else None
+        facturas_subtotales.update(sheet_subs)
 
-        # Detectar posible nombre de empresa transportista principal en el título de la hoja (ej. "DRIVER" -> "DRIVER S.R.L.")
-        sheet_upper = sheet_title.upper()
-        detected_sheet_company = None
-        if "DRIVER" in sheet_upper:
-            detected_sheet_company = "DRIVER S.R.L."
-        elif target_empresa_name:
-            detected_sheet_company = target_empresa_name
-
-        # Tomar primeras 15 filas para detección de encabezados
-        sample_rows = []
-        for r in ws.iter_rows(values_only=True):
-            sample_rows.append(r)
-            if len(sample_rows) >= 15:
-                break
-
-        if not sample_rows:
-            continue
-
-        # Si no se detectó en el título de la hoja, revisar los textos de los encabezados para detectar la empresa transportista
-        if not detected_sheet_company:
-            for s_row in sample_rows:
-                for c_cell in s_row:
-                    c_cell_str = str(c_cell or "").upper()
-                    if "DRIVER" in c_cell_str:
-                        detected_sheet_company = "DRIVER S.R.L."
-                        break
-                if detected_sheet_company:
-                    break
-
-        header_row_idx, col_map = detect_columns_and_header_row(sample_rows)
-
-        if not header_row_idx or "placa" not in col_map:
-            # Fallback a posiciones estándar
-            if ws.max_column and ws.max_column >= 18:
-                header_row_idx = 4
-                col_map = {
-                    "fecha_carga": 1,
-                    "fecha_descarga": 2,
-                    "mic_dta": 3,
-                    "placa": 4,
-                    "tramo": 5,
-                    "cliente": 6,
-                    "nro_factura": 7,
-                    "fecha_factura": 8,
-                    "producto": 9,
-                    "vol_origen": 10,
-                    "vol_recepcion": 11,
-                    "vol_facturado": 16,
-                    "tarifa": 17
-                }
-            elif ws.max_column and ws.max_column >= 7:
-                header_row_idx = 1
-                col_map = {
-                    "empresa": 0,
-                    "producto": 1,
-                    "planta_carga": 2,
-                    "planta_descarga": 4,
-                    "placa": 5,
-                    "fecha_carga": 6,
-                    "fecha_descarga": 7,
-                    "vol_origen": 8,
-                    "vol_recepcion": 9,
-                    "vol_facturado": 15,
-                    "tarifa": 16,
-                    "importe_total": 17,
-                    "fecha_factura": 18,
-                    "nro_factura": 19,
-                    "mic_dta": 20
-                }
-            else:
-                continue
-
-        has_two_separate_entity_columns = (
-            col_map.get("empresa") is not None and 
-            col_map.get("cliente") is not None and 
-            col_map["empresa"] != col_map["cliente"]
-        )
-        carrier_company = target_empresa_name or detected_sheet_company or "DRIVER S.R.L."
-
-        sheet_valid_count = 0
-        consecutive_empty = 0
-        last_seen_cliente: Optional[str] = None
-        invoice_clients: Dict[str, str] = {}
-
-        # Iterar filas de datos
-        for r_idx, row in enumerate(ws.iter_rows(values_only=True), 1):
-            if r_idx <= header_row_idx:
-                continue
-
-            # Verificación de fin de datos
-            if not any(c is not None and str(c).strip() != "" for c in row):
-                consecutive_empty += 1
-                if consecutive_empty >= 20:
-                    break
-                continue
-            consecutive_empty = 0
-
-            # Descartar filas de resumen financiero/contable al pie de la planilla
-            row_str = " ".join(str(c or "").upper() for c in row)
-            if any(kw in row_str for kw in (
-                "TOTAL VENTAS", "VENTAS NETAS", "V.N. SIN DERECHO", "V.B. CON DERECHO",
-                "V.N. CON DERECHO", "DEBITO FISCAL", "DEBITO ", "CREDITO FISCAL", "RESUMEN GESTION"
-            )):
-                continue
-
-            def get_c(key: str) -> Any:
-                idx = col_map.get(key)
-                if idx is not None and idx < len(row):
-                    return row[idx]
-                return None
-
-            placa_raw = clean_string(get_c("placa"))
-            empresa_raw = clean_string(get_c("empresa"))
-            cliente_raw = clean_string(get_c("cliente"))
-            producto_raw = clean_string(get_c("producto"))
-            planta_c = clean_string(get_c("planta_carga"))
-            planta_d = clean_string(get_c("planta_descarga"))
-            tramo_raw = clean_string(get_c("tramo"))
-
-            vol_o_raw = clean_float(get_c("vol_origen"), 0.0)
-            vol_r_raw = clean_float(get_c("vol_recepcion"), 0.0)
-            vol_f_raw = clean_float(get_c("vol_facturado"), 0.0)
-            tarifa_raw = clean_float(get_c("tarifa"), 0.0)
-            importe_raw = clean_float(get_c("importe_total"), 0.0)
-
-            nro_fac_raw = clean_string(get_c("nro_factura"))
-            mic_raw = clean_string(get_c("mic_dta"))
-            contrato_raw = clean_string(get_c("contrato"))
-
-            f_carga_raw = get_c("fecha_carga")
-            f_descarga_raw = get_c("fecha_descarga")
-            f_fac_raw = get_c("fecha_factura")
-
-            placa_upper = placa_raw.upper().strip()
-
-            col_a_raw = cliente_raw or empresa_raw
-            col_a_upper = col_a_raw.upper().strip()
-
-            # -------------------------------------------------------------
-            # 1. IDENTIFICACIÓN DE FILAS DE SUBTOTAL DE FACTURAS
-            # -------------------------------------------------------------
-            fac_key = str(nro_fac_raw).strip() if nro_fac_raw else ""
-            prev_trips = facturas_trips.get(fac_key, []) if fac_key else []
-            sum_prev_imp = sum(t.get("flete_total_bs", 0.0) for t in prev_trips)
-            sum_prev_vol = sum(t.get("volumen_facturado_m3", 0.0) for t in prev_trips)
-
-            has_plate = bool(placa_upper and placa_upper not in ("NONE", "NULL", "-", ""))
-            is_subtotal_row = False
-
-            if placa_upper in ("TOTAL", "SUBTOTAL", "RESUMEN", "SUMA") or col_a_upper in ("TOTAL", "SUBTOTAL", "RESUMEN", "SUMA"):
-                is_subtotal_row = True
-            elif not has_plate:
-                if not col_a_upper or col_a_upper in ("NONE", "NULL", "-"):
-                    is_subtotal_row = True
-                elif prev_trips and abs(importe_raw - sum_prev_imp) < 1.0 and importe_raw > 0:
-                    is_subtotal_row = True
-                elif prev_trips and abs(vol_f_raw - sum_prev_vol) < 0.1 and vol_f_raw > 0:
-                    is_subtotal_row = True
-
-            if is_subtotal_row:
-                if fac_key and (importe_raw > 0 or vol_f_raw > 0):
-                    facturas_subtotales[fac_key] = {
-                        "fila": r_idx,
-                        "hoja": sheet_title,
-                        "subtotal_vol_m3": vol_f_raw,
-                        "subtotal_importe_bs": importe_raw
-                    }
-                    skipped_records.append({
-                        "fila": r_idx,
-                        "hoja": sheet_title,
-                        "motivo": f"Subtotal de Factura N° {fac_key} ({importe_raw:,.2f} Bs) conciliado con viajes hijos."
-                    })
-                else:
-                    skipped_records.append({
-                        "fila": r_idx,
-                        "hoja": sheet_title,
-                        "motivo": f"Fila de total o resumen ignorada ({placa_raw or col_a_raw or 'Fila vacía'})"
-                    })
-                continue
-
-            # Si no tiene placa, ni empresa/cliente, ni importe, es fila en blanco
-            if not placa_upper and not col_a_upper and importe_raw == 0 and vol_f_raw == 0:
-                continue
-
-            # -------------------------------------------------------------
-            # 2. NORMALIZACIÓN DE PLACA Y SERVICIOS "SIN PLACA"
-            # -------------------------------------------------------------
-            # En transporte de soya, granos o servicios generales facturados,
-            # la factura cubre un volumen global con "SIN PLACA". ¡NO DEBE OMITIRSE!
-            is_sin_placa = not placa_upper or placa_upper in ("SIN PLACA", "SINPLACA", "FALTA PLACA", "FALTAPLACA", "S/P", "NONE", "NULL", "-")
-
-            if is_sin_placa:
-                clean_placa = "SIN PLACA"
-            else:
-                clean_placa = placa_upper.replace(" ", "")
-
-            # -------------------------------------------------------------
-            # 3. EMPRESA TRANSPORTISTA Y CLIENTE FACTURADO (COLUMNA A)
-            # -------------------------------------------------------------
-            # En libros de ventas de empresas de transporte (ej. DRIVER S.R.L.),
-            # la Columna A (titulada 'FACTURA EMITIDA A:' o 'Empresa Transporte')
-            # contiene los CLIENTES a quienes se les brindó el servicio y se les facturó.
-            # Todas las cisternas/placas pertenecen a la empresa transportista que emitió las facturas.
-            # En esta importación NO hay flotas de apoyo.
-            if has_two_separate_entity_columns:
-                clean_empresa = normalize_company_name(empresa_raw) or carrier_company
-                clean_cliente = normalize_company_name(cliente_raw)
-            else:
-                clean_empresa = carrier_company
-                clean_cliente = normalize_company_name(col_a_raw)
-
-            # Inferencia inteligente de cliente ÚNICAMENTE si la celda de Columna A vino en blanco
-            if not clean_cliente or clean_cliente in ("NONE", "NULL", "-", ""):
-                if nro_fac_raw and str(nro_fac_raw).strip() in invoice_clients:
-                    clean_cliente = invoice_clients[str(nro_fac_raw).strip()]
-                elif last_seen_cliente:
-                    clean_cliente = last_seen_cliente
-                else:
-                    prod_u = clean_string(producto_raw).upper()
-                    if any(x in prod_u for x in ("BOBINA", "ACERO", "FIERRO", "BARRA", "PLANCHA", "PERFIL")):
-                        clean_cliente = "CORPORACION ACEROS AREQUIPA S.A."
-                    elif any(x in prod_u for x in ("SOYA", "GIRASOL", "HARINA", "COMPENSACION", "ACEITE")):
-                        clean_cliente = "INDUSTRIAS DE ACEITE S.A."
-                    elif any(x in prod_u for x in ("FERTILIZANTE", "BORATO", "UREA")):
-                        clean_cliente = "FERTILIZANTES DE LOS ANDES S.R.L."
-                    elif any(x in prod_u for x in ("MINERAL", "CONCENTRADO", "PLOMO", "ZINC", "ESTAÑO")):
-                        clean_cliente = "PRODECO S.R.L."
-                    elif any(x in prod_u for x in ("MALTA", "CEBADA")):
-                        clean_cliente = "BOCKTRANS S.R.L."
-                    elif any(x in prod_u for x in ("DIESEL", "GASOLINA", "GLP", "CRUDO", "PETROLEO", "INSUMOS", "IYA")):
-                        clean_cliente = "YPFB"
-                    else:
-                        clean_cliente = "CLIENTE GENERAL"
-            else:
-                last_seen_cliente = clean_cliente
-                if nro_fac_raw:
-                    invoice_clients[str(nro_fac_raw).strip()] = clean_cliente
-
-            tipo_entidad_asignada = "cliente"
-            es_apoyo = False
-            empresa_apoyo_nombre = None
-
-            # -------------------------------------------------------------
-            # 4. TRAMO Y PRODUCTO
-            # -------------------------------------------------------------
-            if planta_c or planta_d:
-                orig = planta_c if planta_c and planta_c.upper() != "FALTA MIC" else ""
-                dest = planta_d if planta_d and planta_d.upper() != "FALTA MIC" else ""
-                if orig and dest:
-                    clean_tramo = f"{orig} - {dest}".upper()
-                elif orig:
-                    clean_tramo = orig.upper()
-                elif dest:
-                    clean_tramo = dest.upper()
-                else:
-                    clean_tramo = tramo_raw.upper() if tramo_raw else "TRAMO NO ESPECIFICADO"
-            else:
-                clean_tramo = tramo_raw.upper() if tramo_raw else "TRAMO NO ESPECIFICADO"
-
-            clean_prod = producto_raw.upper() if producto_raw else "DIESEL"
-
-            # -------------------------------------------------------------
-            # 5. FECHAS E INFERENCIA DE PERÍODO
-            # -------------------------------------------------------------
-            date_fac = parse_date_value(f_fac_raw)
-            date_carga_parsed = parse_date_value(f_carga_raw)
-            date_descarga_parsed = parse_date_value(f_descarga_raw)
-
-            sin_fechas_operativas = (date_carga_parsed is None and date_descarga_parsed is None)
-
-            date_carga = date_carga_parsed
-            date_descarga = date_descarga_parsed
-
-            # Período oficial (en ventas y facturación prima el mes de emisión de la factura)
-            if date_fac:
-                periodo = f"{date_fac.year}-{str(date_fac.month).zfill(2)}"
-            elif date_descarga_parsed:
-                periodo = f"{date_descarga_parsed.year}-{str(date_descarga_parsed.month).zfill(2)}"
-            elif date_carga_parsed:
-                periodo = f"{date_carga_parsed.year}-{str(date_carga_parsed.month).zfill(2)}"
-            elif sheet_year:
-                periodo = f"{sheet_year}-01"
-            else:
-                periodo = determine_trip_period(date_carga, date_descarga, date_fac)
-
-            if not date_carga:
-                if date_descarga:
-                    date_carga = date_descarga
-                elif date_fac:
-                    date_carga = date_fac
-                elif sheet_year:
-                    m_int = int(periodo[5:7]) if len(periodo) >= 7 and periodo[5:7].isdigit() else 1
-                    date_carga = date(sheet_year, m_int, 1)
-                else:
-                    date_carga = date.today()
-
-            if not date_descarga:
-                date_descarga = date_carga
-
-            periodos_detectados.add(periodo)
-            if clean_placa != "SIN PLACA":
-                placas_detectadas.add(clean_placa)
-
-            # -------------------------------------------------------------
-            # 6. VOLÚMENES Y FLETES (ARITMÉTICA EXACTA)
-            # -------------------------------------------------------------
-            # En la planilla oficial, la columna es 'Volumen a facturar (m3)'
-            # Por tanto, el valor está en METROS CÚBICOS (m³)
-            vol_o = round(vol_o_raw, 1)
-            vol_r = round(vol_r_raw, 1)
-
-            if vol_f_raw > 0:
-                vol_m3 = round(vol_f_raw, 4)
-                vol_f_litros = round(vol_m3 * 1000.0, 1)
-            elif vol_r > 0:
-                vol_f_litros = vol_r
-                vol_m3 = round(vol_r / 1000.0, 4)
-            elif vol_o > 0:
-                vol_f_litros = vol_o
-                vol_m3 = round(vol_o / 1000.0, 4)
-            else:
-                vol_f_litros = 0.0
-                vol_m3 = 0.0
-
-            # Tarifa
-            tarifa = tarifa_raw
-            if tarifa <= 0:
-                if importe_raw > 0 and vol_m3 > 0:
-                    tarifa = round(importe_raw / vol_m3, 2)
-                elif importe_raw > 0:
-                    tarifa = importe_raw
-                else:
-                    tarifa = 392.00
-
-            # Importe a Facturar (Flete Total Bs)
-            # Si el Excel trae 'Importe a Facturar (Bs)', ese es el valor contractual sagrado
-            if importe_raw > 0:
-                flete_calculado = round(importe_raw, 2)
-            elif vol_m3 > 0 and tarifa > 0:
-                flete_calculado = round(vol_m3 * tarifa, 2)
-            else:
-                flete_calculado = 0.0
-
-            tipo_tarifa = "BS_TOTAL_VIAJE" if (vol_m3 == 0 and flete_calculado > 0) else "BS_POR_M3"
-
-            # -------------------------------------------------------------
-            # 7. MIC/DTA Y CONTRATO
-            # -------------------------------------------------------------
-            clean_mic = mic_raw.upper().strip() if mic_raw and mic_raw.upper().strip() not in ("FALTA MIC", "SIN MIC", "NONE", "") else None
-            clean_contrato = contrato_raw.strip() if contrato_raw and contrato_raw.strip() not in ("NONE", "NULL", "") else None
-
-            # -------------------------------------------------------------
-            # 8. VALIDACIÓN DE COMPLETITUD
-            # -------------------------------------------------------------
-            missing_fields = []
-            if flete_calculado <= 0 and vol_m3 <= 0:
-                missing_fields.append("Volumen e Importe en 0")
-
-            is_incompleto = len(missing_fields) > 0
-            incompleto_reason = ", ".join(missing_fields) if is_incompleto else None
-
-            # Estimación de mermas y líquido pagable para transparencia total en previsualizaciones
-            if vol_o > 0 and vol_r > 0:
-                m_real = round(vol_r - vol_o, 1)
-                prod_u = clean_prod.upper()
-                tol_pct = 0.25 if "GASOLINA" in prod_u else 0.15 if ("DIESEL" in prod_u or prod_u == "DO") else 0.0
-                m_tol = round(vol_o * (tol_pct / 100.0), 1)
-                m_exc = max(0.0, round(abs(m_real) - m_tol, 1)) if abs(m_real) > m_tol else 0.0
-                m_desc_bs = round(m_exc * 7.45, 2)
-            else:
-                m_real = 0.0
-                tol_pct = 0.0
-                m_tol = 0.0
-                m_exc = 0.0
-                m_desc_bs = 0.0
-            liq_pagable = round(flete_calculado - m_desc_bs, 2)
-
+        for r in sheet_records:
             global_fila_counter += 1
-            sheet_valid_count += 1
+            r["fila"] = global_fila_counter
+            valid_records.append(r)
 
-            record = {
-                "fila": global_fila_counter,
-                "hoja": sheet_title,
-                "fila_hoja": r_idx,
-                "empresa": clean_empresa,
-                "cliente": clean_cliente,
-                "entidad_origen": col_a_raw or clean_cliente,
-                "tipo_entidad": tipo_entidad_asignada,
-                "es_apoyo": es_apoyo,
-                "empresa_apoyo_nombre": empresa_apoyo_nombre,
-                "placa": clean_placa,
-                "tramo": clean_tramo,
-                "producto": clean_prod,
-                "fecha_carga": date_carga.isoformat(),
-                "fecha_descarga": date_descarga.isoformat(),
-                "fecha_factura": date_fac.isoformat() if date_fac else None,
-                "sin_fechas_operativas": sin_fechas_operativas,
-                "fecha_asignada_de_factura": bool(sin_fechas_operativas and date_fac),
-                "nro_factura": nro_fac_raw if nro_fac_raw else None,
-                "mic_dta": clean_mic,
-                "contrato": clean_contrato,
-                "volumen_origen_litros": vol_o,
-                "volumen_recepcionado_litros": vol_r,
-                "volumen_facturado": vol_f_litros,
-                "volumen_facturado_m3": round(vol_m3, 3),
-                "tarifa_flete": tarifa,
-                "tipo_tarifa": tipo_tarifa,
-                "flete_total_bs": flete_calculado,
-                "merma_real_litros": m_real,
-                "tolerancia_pct": tol_pct,
-                "merma_tolerable_litros": m_tol,
-                "merma_excedente_litros": m_exc,
-                "merma_descontar_bs": m_desc_bs,
-                "liquido_pagable_bs": liq_pagable,
-                "periodo_mes": periodo,
-                "is_incompleto": is_incompleto,
-                "incompleto_reason": incompleto_reason,
-                "status": "INCOMPLETO" if is_incompleto else "LISTO",
-                "included": True
-            }
+            total_vol_facturado_lt += r.get("volumen_facturado", 0.0)
+            total_flete_bs += r.get("flete_total_bs", 0.0)
 
-            valid_records.append(record)
-            total_vol_facturado_lt += vol_f_litros
-            total_flete_bs += flete_calculado
+            if r.get("periodo_mes"):
+                periodos_detectados.add(r["periodo_mes"])
+            if r.get("placa") and r["placa"] != "SIN PLACA":
+                placas_detectadas.add(r["placa"])
 
-            if nro_fac_raw:
-                fac_k = str(nro_fac_raw).strip()
-                if fac_k not in facturas_trips:
-                    facturas_trips[fac_k] = []
-                facturas_trips[fac_k].append(record)
+            fac = r.get("nro_factura")
+            if fac:
+                k = str(fac).strip()
+                if k not in facturas_trips:
+                    facturas_trips[k] = []
+                facturas_trips[k].append(r)
 
         hojas_procesadas_stats.append({
             "hoja": sheet_title,
-            "viajes": sheet_valid_count,
-            "anio": sheet_year
+            "viajes": len(sheet_records),
+            "anio": stats.get("sheet_year"),
+            "subtotales_aislados": len(sheet_subs),
+            "filas_analizadas": stats.get("filas_analizadas", 0)
         })
 
     wb.close()
@@ -773,9 +752,6 @@ def parse_excel_viajes_data(
     preview_items = valid_records[:max_preview_records] if max_preview_records else valid_records
     valid_placas = [p for p in placas_detectadas if p and p not in ("SIN PLACA", "SINPLACA", "FALTAPLACA", "TOTAL")]
 
-    # -------------------------------------------------------------
-    # 9. CONCILIACIÓN DE FACTURAS CON SUS SUBTOTAIS DEL EXCEL
-    # -------------------------------------------------------------
     facturas_conciliacion = []
     for fac_num, trip_list in facturas_trips.items():
         sum_vol_m3 = round(sum(t.get("volumen_facturado_m3", 0.0) for t in trip_list), 3)
@@ -812,14 +788,10 @@ def parse_excel_viajes_data(
 
     facturas_conciliacion.sort(key=lambda x: str(x["nro_factura"]))
 
-    # -------------------------------------------------------------
-    # 10. DETECCIÓN Y CLASIFICACIÓN DE EMPRESAS Y CLIENTES
-    # -------------------------------------------------------------
     from app.models.public import Empresa
     existing_empresas = db.query(Empresa).all() if db else []
     emp_lookup = {normalize_company_name(e.name): e for e in existing_empresas}
 
-    # Estadísticas de empresas transportistas detectadas
     empresas_stats: Dict[str, Dict[str, Any]] = {}
     clientes_stats: Dict[str, Dict[str, Any]] = {}
 
@@ -854,7 +826,7 @@ def parse_excel_viajes_data(
                 empresas_stats[emp_nom]["placas"].add(r["placa"])
 
     empresas_detectadas_list = []
-    for emp_name, stats in sorted(empresas_stats.items()):
+    for emp_name, stats_e in sorted(empresas_stats.items()):
         existing = emp_lookup.get(emp_name)
         if existing:
             action = "reutilizar"
@@ -874,23 +846,23 @@ def parse_excel_viajes_data(
             "empresa_id": empresa_id,
             "schema_name": schema_name,
             "already_in_asociacion": already_in_asociacion,
-            "total_viajes": stats["total_viajes"],
-            "total_volumen_m3": round(stats["total_volumen_m3"], 3),
-            "total_volumen_litros": round(stats["total_volumen_m3"] * 1000.0, 1),
-            "total_flete_bs": round(stats["total_flete_bs"], 2),
-            "cisternas_count": len(stats["placas"])
+            "total_viajes": stats_e["total_viajes"],
+            "total_volumen_m3": round(stats_e["total_volumen_m3"], 3),
+            "total_volumen_litros": round(stats_e["total_volumen_m3"] * 1000.0, 1),
+            "total_flete_bs": round(stats_e["total_flete_bs"], 2),
+            "cisternas_count": len(stats_e["placas"])
         })
 
     clientes_detectados_list = []
-    for cli_name, stats in sorted(clientes_stats.items()):
+    for cli_name, stats_c in sorted(clientes_stats.items()):
         clientes_detectados_list.append({
             "nombre": cli_name,
             "tipo_sugerido": "cliente",
             "action": "registrar_cliente",
-            "total_viajes": stats["total_viajes"],
-            "total_volumen_m3": round(stats["total_volumen_m3"], 3),
-            "total_volumen_litros": round(stats["total_volumen_m3"] * 1000.0, 1),
-            "total_flete_bs": round(stats["total_flete_bs"], 2)
+            "total_viajes": stats_c["total_viajes"],
+            "total_volumen_m3": round(stats_c["total_volumen_m3"], 3),
+            "total_volumen_litros": round(stats_c["total_volumen_m3"] * 1000.0, 1),
+            "total_flete_bs": round(stats_c["total_flete_bs"], 2)
         })
 
     is_multi_empresa = len(empresas_stats) > 1
@@ -926,20 +898,15 @@ def parse_excel_viajes_data(
         }
     }
 
-
 def execute_import_viajes(
     records: List[Dict[str, Any]],
     session: Session,
     params: Optional[ParametroLiquidacion] = None,
-    overwrite_duplicates: bool = False
+    overwrite_duplicates: bool = False,
+    target_grand_total: Optional[float] = None
 ) -> Dict[str, Any]:
     """
-    Inserta o actualiza una lista de registros de viajes en la base de datos del esquema correspondiente.
-    Garantiza:
-    - Registro de viajes con 'SIN PLACA' usando una unidad de flota genérica activa.
-    - Creación automática de Clientes en tenant.clientes si no existen previamente.
-    - Creación automática de Empresas de Apoyo en tenant.empresas_apoyo si no existen.
-    - Preservación exacta de Fletes Totales (Bs) y conciliación al centavo.
+    Inserta o actualiza una lista de registros de viajes con total fidelidad aritmética.
     """
     if not params:
         params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
@@ -948,255 +915,179 @@ def execute_import_viajes(
     viajes_actualizados = 0
     viajes_omitidos = 0
     clientes_registrados = 0
-    errores = []
-    periodos_detectados = set()
+    errores: List[str] = []
+    periodos_detectados: Set[str] = set()
+    matched_existing_ids: Set[int] = set()
 
-    # Cache de unidades
-    unidades_cache = {u.placa: u for u in session.query(UnidadTransporte).all()}
+    unidades_db = session.query(UnidadTransporte).all()
+    unidades_map = {u.placa.strip().upper(): u for u in unidades_db if u.placa}
 
-    # Cache de clientes en el esquema tenant
-    clientes_cache = {c.nombre.upper().strip(): c for c in session.query(Cliente).all()}
+    default_unit = session.query(UnidadTransporte).filter(UnidadTransporte.placa == "SIN PLACA").first()
+    if not default_unit:
+        first_active = session.query(UnidadTransporte).filter(UnidadTransporte.estado == "Activo").first()
+        if first_active:
+            default_unit = first_active
+        else:
+            default_unit = UnidadTransporte(
+                placa="SIN PLACA",
+                tipo_unidad="Camion Cisterna",
+                capacidad_litros=35000.0,
+                estado="Activo"
+            )
+            session.add(default_unit)
+            session.flush()
 
-    # Cache de empresas de apoyo
-    apoyo_cache = {a.nombre.upper().strip(): a for a in session.query(EmpresaApoyo).all()}
+    clientes_db = session.query(Cliente).all()
+    clientes_map = {normalize_company_name(c.nombre): c for c in clientes_db if c.nombre}
 
-    # Si la importación actual no contiene flota de apoyo, sanear proactivamente
-    # cualquier viaje previo que haya quedado marcado erróneamente como apoyo
-    if all(not rec.get("es_apoyo") for rec in records):
-        stale_apoyo = session.query(Viaje).filter(Viaje.es_apoyo == True).all()
-        for sv in stale_apoyo:
-            if sv.empresa_apoyo_nombre:
-                cli = session.query(Cliente).filter(Cliente.nombre.ilike(sv.empresa_apoyo_nombre.strip())).first()
-                if not cli:
-                    cli = Cliente(nombre=sv.empresa_apoyo_nombre.strip().upper(), is_active=True)
-                    session.add(cli)
-                    session.commit()
-                    session.refresh(cli)
-                sv.cliente = cli.nombre
-            sv.es_apoyo = False
-            sv.empresa_apoyo_nombre = None
-            sv.empresa_apoyo_id = None
-        if stale_apoyo:
-            session.commit()
+    apoyo_db = session.query(EmpresaApoyo).all()
+    apoyo_map = {normalize_company_name(a.nombre): a for a in apoyo_db if a.nombre}
 
-        from app.models.tenant import UnidadApoyo
-        if session.query(UnidadApoyo).count() == 0:
-            session.query(EmpresaApoyo).delete()
-            session.commit()
-            apoyo_cache = {}
+    sorted_records = sorted(records, key=lambda x: (
+        x.get("nro_factura") or "",
+        x.get("fecha_carga") or "",
+        x.get("fila", 0)
+    ))
 
-    matched_existing_ids = set()
+    # Si se especificó target_grand_total, verificar micro-deriva de centavos
+    if target_grand_total is not None and target_grand_total > 0 and sorted_records:
+        total_curr = sum(r.get("flete_total_bs", 0.0) for r in sorted_records if r.get("included") is not False)
+        diff_centavos = round(target_grand_total - total_curr, 2)
+        if 0 < abs(diff_centavos) <= 0.50:
+            last_inc = [r for r in sorted_records if r.get("included") is not False][-1]
+            last_inc["flete_total_bs"] = round(last_inc.get("flete_total_bs", 0.0) + diff_centavos, 2)
 
-    for rec in records:
+    for rec in sorted_records:
         if rec.get("included") is False:
+            viajes_omitidos += 1
             continue
+
         try:
-            placa_input = clean_string(rec.get("placa")).upper()
-            if not placa_input or placa_input in ("SINPLACA", "FALTAPLACA", "SIN PLACA", "S/P", "NONE", "NULL"):
-                placa = "SIN PLACA"
-            else:
-                placa = placa_input.replace(" ", "")
+            placa_clean = (rec.get("placa") or "SIN PLACA").strip().upper()
+            if not placa_clean or placa_clean in ("SIN PLACA", "SINPLACA", "FALTA PLACA", "FALTAPLACA", "S/P", "NONE", "NULL", "-"):
+                placa_clean = "SIN PLACA"
 
-            # Evitar filas de resumen que se hayan filtrado
-            if placa in ("TOTAL", "SUBTOTAL", "RESUMEN"):
-                continue
-
-            date_fac = parse_date_value(rec.get("fecha_factura"))
-            date_carga = parse_date_value(rec.get("fecha_carga"))
-            date_descarga = parse_date_value(rec.get("fecha_descarga"))
-            rec_periodo = rec.get("periodo_mes")
-
-            if not date_carga:
-                date_carga = date_descarga or date_fac
-                if not date_carga and rec_periodo and len(rec_periodo) >= 7 and rec_periodo[:4].isdigit():
-                    date_carga = date(int(rec_periodo[:4]), int(rec_periodo[5:7]), 1)
-                elif not date_carga:
-                    date_carga = date.today()
-
-            if not date_descarga:
-                date_descarga = date_carga
-            mic_str = clean_string(rec.get("mic_dta")).upper() or None
-            if mic_str in ("FALTA MIC", "SIN MIC", "NONE", ""):
-                mic_str = None
-
-            vol_o = clean_float(rec.get("volumen_origen_litros"), 0.0)
-            vol_r = clean_float(rec.get("volumen_recepcionado_litros"), 0.0)
-            vol_f_litros = clean_float(rec.get("volumen_facturado"), 0.0)
-            vol_f_m3 = clean_float(rec.get("volumen_facturado_m3"), 0.0)
-
-            if vol_f_litros <= 0 and vol_f_m3 > 0:
-                vol_f_litros = round(vol_f_m3 * 1000.0, 1)
-
-            tarifa = clean_float(rec.get("tarifa_flete"), 392.00)
-            tipo_t = clean_string(rec.get("tipo_tarifa")) or "BS_POR_M3"
-            tramo = clean_string(rec.get("tramo")) or "TRAMO NO ESPECIFICADO"
-            cliente = clean_string(rec.get("cliente"))
-            producto = clean_string(rec.get("producto")) or "DIESEL"
-
-            if not cliente:
-                prod_u = producto.upper()
-                if any(x in prod_u for x in ("BOBINA", "ACERO", "FIERRO", "BARRA", "PLANCHA", "PERFIL")):
-                    cliente = "CORPORACION ACEROS AREQUIPA S.A."
-                elif any(x in prod_u for x in ("SOYA", "GIRASOL", "HARINA", "COMPENSACION", "ACEITE")):
-                    cliente = "INDUSTRIAS DE ACEITE S.A."
-                elif any(x in prod_u for x in ("FERTILIZANTE", "BORATO", "UREA")):
-                    cliente = "FERTILIZANTES DE LOS ANDES S.R.L."
-                elif any(x in prod_u for x in ("MINERAL", "CONCENTRADO", "PLOMO", "ZINC", "ESTAÑO")):
-                    cliente = "PRODECO S.R.L."
-                elif any(x in prod_u for x in ("MALTA", "CEBADA")):
-                    cliente = "BOCKTRANS S.R.L."
-                elif any(x in prod_u for x in ("DIESEL", "GASOLINA", "GLP", "CRUDO", "PETROLEO", "INSUMOS", "IYA")):
-                    cliente = "YPFB"
+            unidad = unidades_map.get(placa_clean)
+            if not unidad:
+                if placa_clean == "SIN PLACA":
+                    unidad = default_unit
                 else:
-                    cliente = "CLIENTE GENERAL"
-            nro_fac = clean_string(rec.get("nro_factura")) or None
-            flete_total_rec = clean_float(rec.get("flete_total_bs"), 0.0)
-            es_apoyo = bool(rec.get("es_apoyo", False))
-            emp_apoyo_nom = clean_string(rec.get("empresa_apoyo_nombre")) if es_apoyo else None
-
-            # -------------------------------------------------------------
-            # REGISTRO AUTOMÁTICO DE CLIENTE SI NO EXISTE
-            # -------------------------------------------------------------
-            if cliente:
-                cli_key = cliente.upper().strip()
-                if cli_key not in clientes_cache:
-                    nuevo_cli = Cliente(
-                        nombre=cli_key,
-                        is_active=True
+                    unidad = UnidadTransporte(
+                        placa=placa_clean,
+                        tipo_unidad="Camion Cisterna",
+                        capacidad_litros=35000.0,
+                        estado="Activo"
                     )
-                    session.add(nuevo_cli)
-                    session.commit()
-                    session.refresh(nuevo_cli)
-                    clientes_cache[cli_key] = nuevo_cli
-                    clientes_registrados += 1
+                    session.add(unidad)
+                    session.flush()
+                    unidades_map[placa_clean] = unidad
 
-            # -------------------------------------------------------------
-            # REGISTRO AUTOMÁTICO DE EMPRESA DE APOYO SI APLICA
-            # -------------------------------------------------------------
-            if es_apoyo and emp_apoyo_nom:
-                ap_key = emp_apoyo_nom.upper().strip()
-                if ap_key not in apoyo_cache:
-                    nueva_apoyo = EmpresaApoyo(
-                        nombre=ap_key,
-                        is_active=True
-                    )
-                    session.add(nueva_apoyo)
-                    session.commit()
-                    session.refresh(nueva_apoyo)
-                    apoyo_cache[ap_key] = nueva_apoyo
-
-            # -------------------------------------------------------------
-            # CREAR O RECUPERAR UNIDAD DE TRANSPORTE (INCLUYE "SIN PLACA")
-            # -------------------------------------------------------------
-            u = unidades_cache.get(placa)
-            if not u:
-                u = session.query(UnidadTransporte).filter(UnidadTransporte.placa == placa).first()
-            if not u:
-                u = UnidadTransporte(
-                    placa=placa,
-                    marca="Carga General / Sin Asignar" if placa == "SIN PLACA" else "Tractocamión / Cisterna",
-                    capacidad_litros=vol_o if vol_o > 0 else 34000.0,
-                    capacidad_m3=(vol_o / 1000.0) if vol_o > 0 else 34.0,
-                    estado="Activo"
+            cliente_name_norm = normalize_company_name(rec.get("cliente") or rec.get("empresa") or "CLIENTE GENERAL")
+            if cliente_name_norm and cliente_name_norm not in clientes_map:
+                nuevo_cli = Cliente(
+                    nombre=cliente_name_norm,
+                    nit=None,
+                    is_active=True
                 )
-                session.add(u)
-                session.commit()
-                session.refresh(u)
-                unidades_cache[placa] = u
+                session.add(nuevo_cli)
+                session.flush()
+                clientes_map[cliente_name_norm] = nuevo_cli
+                clientes_registrados += 1
+            cliente = clientes_map.get(cliente_name_norm).nombre if cliente_name_norm in clientes_map else cliente_name_norm
+
+            es_apoyo = bool(rec.get("es_apoyo", False))
+            emp_apoyo_nom = rec.get("empresa_apoyo_nombre")
+            if es_apoyo and emp_apoyo_nom:
+                emp_apoyo_norm = normalize_company_name(emp_apoyo_nom)
+                if emp_apoyo_norm and emp_apoyo_norm not in apoyo_map:
+                    nuevo_apoyo = EmpresaApoyo(
+                        nombre=emp_apoyo_norm,
+                        ci_nit=None,
+                        is_active=True
+                    )
+                    session.add(nuevo_apoyo)
+                    session.flush()
+                    apoyo_map[emp_apoyo_norm] = nuevo_apoyo
+
+            date_carga = parse_date_value(rec.get("fecha_carga")) or date.today()
+            date_descarga = parse_date_value(rec.get("fecha_descarga")) or date_carga
+            date_fac = parse_date_value(rec.get("fecha_factura"))
+            periodo = rec.get("periodo_mes") or determine_trip_period(date_carga, date_descarga, date_fac)
+            periodos_detectados.add(periodo)
+
+            nro_fac = clean_invoice_number(rec.get("nro_factura"))
+            mic_dta = rec.get("mic_dta")
+            producto = rec.get("producto") or "DIESEL"
+            tramo = rec.get("tramo") or "TRAMO NO ESPECIFICADO"
+            origen = tramo.split("-")[0].strip() if "-" in tramo else tramo
+            destino = tramo.split("-")[1].strip() if "-" in tramo else tramo
+
+            vol_o = float(rec.get("volumen_origen_litros") or 0.0)
+            vol_r = float(rec.get("volumen_recepcionado_litros") or 0.0)
+            vol_f = float(rec.get("volumen_facturado") or (rec.get("volumen_facturado_m3", 0.0) * 1000.0) or vol_r or vol_o)
+            tarifa = float(rec.get("tarifa_flete") or 392.00)
+            flete_exacto = float(rec.get("flete_total_bs") or 0.0)
+            tipo_t = rec.get("tipo_tarifa") or "BS_POR_M3"
 
             calc = calculate_viaje_values(
                 volumen_origen_litros=vol_o,
                 volumen_recepcionado_litros=vol_r,
-                producto=producto,
+                volumen_facturado=vol_f,
                 tarifa_flete=tarifa,
                 tipo_tarifa=tipo_t,
+                producto=producto,
                 params=params,
-                volumen_facturado=vol_f_litros,
-                flete_total_override=flete_total_rec if flete_total_rec > 0 else None
+                flete_total_override=flete_exacto if flete_exacto > 0 else None
             )
 
-            periodo = rec.get("periodo_mes") or determine_trip_period(date_carga, date_descarga, date_fac)
-            periodos_detectados.add(periodo)
-
-            # Buscar viaje existente para actualizar en lugar de duplicar
-            existing_viaje = None
-            if rec.get("id"):
-                existing_viaje = session.query(Viaje).filter(Viaje.id == rec["id"]).first()
-            elif nro_fac and placa and date_carga:
-                query = session.query(Viaje).filter(
-                    Viaje.nro_factura == nro_fac,
-                    Viaje.placa == placa
+            existente = None
+            if not overwrite_duplicates:
+                q = session.query(Viaje).filter(
+                    Viaje.placa == unidad.placa,
+                    Viaje.fecha_carga == date_carga,
+                    Viaje.periodo_mes == periodo
                 )
-                if matched_existing_ids:
-                    query = query.filter(Viaje.id.not_in(matched_existing_ids))
-                if placa == "SIN PLACA":
-                    # Para servicios 'SIN PLACA', diferenciar despachos por tramo y flete
-                    existing_viaje = query.filter(
-                        Viaje.tramo == tramo,
-                        Viaje.fecha_carga == date_carga
-                    ).first()
-                    if not existing_viaje and flete_total_rec > 0:
-                        existing_viaje = query.filter(
-                            Viaje.tramo == tramo,
-                            func.abs(Viaje.flete_total_bs - flete_total_rec) < 0.05
-                        ).first()
-                else:
-                    existing_viaje = query.filter(
-                        Viaje.fecha_carga == date_carga
-                    ).first()
-                    if not existing_viaje and placa:
-                        # Búsqueda por factura y placa si es un viaje único de esa factura (ej. fecha reparada)
-                        candidates = query.all()
-                        if len(candidates) == 1:
-                            existing_viaje = candidates[0]
-            elif overwrite_duplicates and placa and date_carga:
-                query = session.query(Viaje).filter(
-                    Viaje.placa == placa,
-                    Viaje.fecha_carga == date_carga
-                )
-                if matched_existing_ids:
-                    query = query.filter(Viaje.id.not_in(matched_existing_ids))
-                existing_viaje = query.first()
-
-            if existing_viaje:
-                matched_existing_ids.add(existing_viaje.id)
-                existing_viaje.placa = placa
-                existing_viaje.unidad_id = u.id
-                existing_viaje.tramo = tramo
-                existing_viaje.cliente = cliente
-                existing_viaje.producto = producto
-                existing_viaje.fecha_carga = date_carga
-                existing_viaje.fecha_descarga = date_descarga
-                existing_viaje.periodo_mes = periodo
                 if nro_fac:
-                    existing_viaje.nro_factura = nro_fac
-                if date_fac:
-                    existing_viaje.fecha_factura = date_fac
-                if mic_str:
-                    existing_viaje.mic_dta = mic_str
-                existing_viaje.volumen_origen_litros = vol_o
-                existing_viaje.volumen_recepcionado_litros = vol_r
-                existing_viaje.volumen_facturado = calc["volumen_facturado"]
-                existing_viaje.merma_real_litros = calc["merma_real_litros"]
-                existing_viaje.tolerancia_pct = calc["tolerancia_pct"]
-                existing_viaje.merma_tolerable_litros = calc["merma_tolerable_litros"]
-                existing_viaje.merma_excedente_litros = calc["merma_excedente_litros"]
-                existing_viaje.precio_merma_litro_bs = calc["precio_merma_litro_bs"]
-                existing_viaje.merma_descontar_bs = calc["merma_descontar_bs"]
-                existing_viaje.tarifa_flete = tarifa
-                existing_viaje.tipo_tarifa = tipo_t
-                existing_viaje.flete_total_bs = calc["flete_total_bs"]
-                existing_viaje.es_apoyo = es_apoyo
-                existing_viaje.empresa_apoyo_nombre = emp_apoyo_nom if es_apoyo else None
-                existing_viaje.empresa_apoyo_id = None if not es_apoyo else existing_viaje.empresa_apoyo_id
-                viajes_actualizados += 1
+                    q = q.filter(Viaje.nro_factura == nro_fac)
+                elif mic_dta:
+                    q = q.filter(Viaje.mic_dta == mic_dta)
+                else:
+                    q = q.filter(Viaje.fecha_descarga == date_descarga)
+
+                matches = q.all()
+                for m_cand in matches:
+                    if m_cand.id not in matched_existing_ids:
+                        existente = m_cand
+                        break
+
+            if existente:
+                if overwrite_duplicates:
+                    existente.cliente = cliente
+                    existente.tramo = tramo
+                    existente.nro_factura = nro_fac
+                    existente.fecha_factura = date_fac
+                    existente.producto = producto
+                    existente.volumen_origen_litros = vol_o
+                    existente.volumen_recepcionado_litros = vol_r
+                    existente.volumen_facturado = calc["volumen_facturado"]
+                    existente.merma_real_litros = calc["merma_real_litros"]
+                    existente.tolerancia_pct = calc["tolerancia_pct"]
+                    existente.merma_tolerable_litros = calc["merma_tolerable_litros"]
+                    existente.merma_excedente_litros = calc["merma_excedente_litros"]
+                    existente.precio_merma_litro_bs = calc["precio_merma_litro_bs"]
+                    existente.merma_descontar_bs = calc["merma_descontar_bs"]
+                    existente.tarifa_flete = tarifa
+                    existente.tipo_tarifa = tipo_t
+                    existente.flete_total_bs = calc["flete_total_bs"]
+                    matched_existing_ids.add(existente.id)
+                    viajes_actualizados += 1
+                else:
+                    viajes_omitidos += 1
                 continue
 
             nuevo_viaje = Viaje(
-                mic_dta=mic_str,
-                lote_codigo="1",
-                unidad_id=u.id,
-                placa=placa,
+                placa=unidad.placa,
+                unidad_id=unidad.id,
                 tramo=tramo,
                 cliente=cliente,
                 nro_factura=nro_fac,
@@ -1242,7 +1133,6 @@ def execute_import_viajes(
         "errores": errores
     }
 
-
 def execute_import_asociacion_multi_empresa(
     records: List[Dict[str, Any]],
     db: Session,
@@ -1251,17 +1141,14 @@ def execute_import_asociacion_multi_empresa(
     nueva_asociacion_sigla: Optional[str] = None,
     overwrite_duplicates: bool = False,
     entidades_clasificacion: Optional[Dict[str, str]] = None,
-    empresa_principal_nombre: Optional[str] = None
+    empresa_principal_nombre: Optional[str] = None,
+    target_grand_total: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Importa despachos distribuyéndolos entre múltiples empresas y clientes.
-    - Entidades clasificadas como 'cliente': sus viajes se asignan a la empresa principal
-      de la asociación (ej. DRIVER S.R.L.) y el cliente se crea en tenant.clientes.
-    - Entidades clasificadas como 'empresa': se crea o reutiliza su esquema dedicado en public.empresas.
     """
     from app.models.public import Asociacion, Empresa
     from app.db.session import get_tenant_session, init_tenant_schema
-    from app.models.tenant import ParametroLiquidacion
 
     asoc = None
     if asociacion_id:
@@ -1285,21 +1172,17 @@ def execute_import_asociacion_multi_empresa(
     all_empresas = db.query(Empresa).all()
     emp_lookup = {normalize_company_name(e.name): e for e in all_empresas}
 
-    # Determinar empresa anfitriona / principal para viajes de clientes
     main_empresa = None
     if empresa_principal_nombre:
         main_emp_norm = normalize_company_name(empresa_principal_nombre)
         main_empresa = emp_lookup.get(main_emp_norm)
     if not main_empresa and asoc:
-        # Primera empresa de la asociación
         main_empresa = db.query(Empresa).filter(Empresa.asociacion_id == asoc.id).first()
     if not main_empresa and all_empresas:
         main_empresa = all_empresas[0]
 
-    # Clasificaciones
     ent_map = entidades_clasificacion or {}
 
-    # Agrupar registros válidos por empresa destino
     records_by_company: Dict[str, List[Dict[str, Any]]] = {}
     clientes_encontrados: set = set()
 
@@ -1311,14 +1194,12 @@ def execute_import_asociacion_multi_empresa(
         cli_raw = r.get("cliente")
         ent_origen = r.get("entidad_origen") or emp_raw or ""
 
-        # Determinar si la entidad es un cliente o empresa
         ent_norm = normalize_company_name(ent_origen)
         clasificacion = ent_map.get(ent_norm) or r.get("tipo_entidad") or classify_entity_name(ent_norm)
 
         if clasificacion == "cliente":
             clientes_encontrados.add(ent_norm)
             r["cliente"] = ent_norm
-            # Asignar viaje a la empresa principal
             if main_empresa:
                 target_comp_name = normalize_company_name(main_empresa.name)
             else:
@@ -1384,10 +1265,8 @@ def execute_import_asociacion_multi_empresa(
             db.refresh(emp)
             emp_lookup[comp_name] = emp
 
-            # Inicializar esquema PostgreSQL dedicado
             init_tenant_schema(emp.schema_name)
 
-        # Importar viajes al esquema de la empresa
         tenant_session = get_tenant_session(emp.schema_name)
         try:
             params = tenant_session.query(ParametroLiquidacion).first()
@@ -1400,7 +1279,8 @@ def execute_import_asociacion_multi_empresa(
                 records=comp_records,
                 session=tenant_session,
                 params=params,
-                overwrite_duplicates=overwrite_duplicates
+                overwrite_duplicates=overwrite_duplicates,
+                target_grand_total=target_grand_total
             )
 
             total_clientes_creados += res.get("clientes_registrados", 0)

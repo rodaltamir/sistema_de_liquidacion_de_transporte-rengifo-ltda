@@ -152,7 +152,7 @@ def list_viajes(
     session = get_tenant_session(schema_name)
     try:
         query = session.query(Viaje)
-        if facturas and len(facturas) > 0:
+        if isinstance(facturas, (list, tuple, set)) and len(facturas) > 0:
             clean_facs = [str(f).strip() for f in facturas if f and str(f).strip()]
             query = query.filter(Viaje.nro_factura.in_(clean_facs))
         elif factura_desde and factura_hasta:
@@ -458,6 +458,7 @@ async def importar_viajes_excel(
     overwrite_duplicates: bool = Form(False),
     edited_records_json: Optional[str] = Form(None),
     entidades_clasificacion_json: Optional[str] = Form(None),
+    target_grand_total: Optional[float] = Form(None),
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     session = get_tenant_session(schema_name)
@@ -496,7 +497,8 @@ async def importar_viajes_excel(
             records=records_to_import,
             session=session,
             params=params,
-            overwrite_duplicates=overwrite_duplicates
+            overwrite_duplicates=overwrite_duplicates,
+            target_grand_total=target_grand_total
         )
 
         viajes_creados = result["total_importados"]
@@ -550,7 +552,7 @@ def export_viajes_excel(
     session = get_tenant_session(schema_name)
     try:
         query = session.query(Viaje)
-        if facturas and len(facturas) > 0:
+        if isinstance(facturas, (list, tuple, set)) and len(facturas) > 0:
             clean_facs = [str(f).strip() for f in facturas if f and str(f).strip()]
             query = query.filter(Viaje.nro_factura.in_(clean_facs))
         elif factura_desde and factura_hasta:

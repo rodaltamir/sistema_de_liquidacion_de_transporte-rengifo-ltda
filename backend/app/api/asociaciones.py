@@ -209,7 +209,8 @@ def get_asociacion_resumen(
         "total_volumen_litros": round(total_volumen_litros, 2),
         "total_volumen_m3": round(total_volumen_litros / 1000.0, 3),
         "total_fletes_bs": round(total_fletes_bs, 2),
-        "total_mermas_bs": round(total_mermas_bs, 2)
+        "total_mermas_bs": round(total_mermas_bs, 2),
+        "flete_neto_bs": round(max(0.0, total_fletes_bs - total_mermas_bs), 2)
     }
 
 def _get_asociacion_liquidacion_data(

@@ -901,6 +901,9 @@ export default function ImportExcelModal({
       const formPayload = new FormData();
       formPayload.append("edited_records_json", JSON.stringify(includedRecords));
       formPayload.append("entidades_clasificacion_json", JSON.stringify(entidadesClasificacion));
+      if (dynamicSummary?.totalFleteBs) {
+        formPayload.append("target_grand_total", String(dynamicSummary.totalFleteBs));
+      }
 
       let res: any;
 

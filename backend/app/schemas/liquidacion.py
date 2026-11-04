@@ -104,7 +104,9 @@ class ResumenFlotaPeriodoResponse(BaseModel):
     total_viajes: int
     total_volumen_litros: float
     total_flete_bruto_bs: float
+    total_mermas_bs: float = 0.0
     total_descuentos_bs: float
+    total_deducciones_bs: float = 0.0
     total_liquido_pagable_bs: float
     placas_liquidadas: int
     placas_pendientes: int

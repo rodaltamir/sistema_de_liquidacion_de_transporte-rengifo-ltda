@@ -14,7 +14,8 @@ from app.services.excel_importer import (
     get_excel_sheets,
     parse_excel_viajes_data,
     execute_import_viajes,
-    execute_import_asociacion_multi_empresa
+    execute_import_asociacion_multi_empresa,
+    limpiar_datos_para_importacion
 )
 
 router = APIRouter(prefix="/empresas", tags=["Empresas de Transporte"])
@@ -229,6 +230,90 @@ async def preview_global_excel(
         if session:
             session.close()
 
+@router.post("/limpiar-excel")
+
+async def limpiar_excel_endpoint(
+
+    file: UploadFile = File(...),
+
+    sheet_name: Optional[str] = Form(None),
+
+    target_empresa: Optional[str] = Form(None)
+
+):
+
+    """
+
+    Función de segundo plano para limpieza y saneamiento de datos previo a la importación.
+
+    - Aísla exclusivamente las columnas útiles requeridas para fletes y despachos.
+
+    - Elimina columnas auxiliares irrelevantes de manera parcial solo para la importación.
+
+    - Desacopla filas de subtotales de facturas para que no se confundan con viajes.
+
+    - Previene errores por miles (escalamiento de volumen) y milésimas (deriva decimal).
+
+    """
+
+    if not file.filename.endswith(('.xlsx', '.xlsm', '.xltx')):
+
+        raise HTTPException(status_code=400, detail="El archivo debe tener formato Excel (.xlsx)")
+
+    contents = await file.read()
+
+    try:
+
+        import openpyxl
+
+        import io
+
+        wb = openpyxl.load_workbook(io.BytesIO(contents), read_only=True, data_only=True)
+
+        sheets = list(wb.sheetnames)
+
+        target_sheet = sheet_name if sheet_name and sheet_name in sheets else sheets[0]
+
+        ws = wb[target_sheet]
+
+        result = limpiar_datos_para_importacion(
+
+            ws=ws,
+
+            sheet_title=target_sheet,
+
+            target_empresa_name=target_empresa
+
+        )
+
+        wb.close()
+
+        return {
+
+            "success": True,
+
+            "sheet": target_sheet,
+
+            "estadisticas_limpieza": result.get("estadisticas_limpieza", {}),
+
+            "total_registros_limpios": len(result.get("records", [])),
+
+            "total_subtotales_aislados": len(result.get("facturas_subtotales", {})),
+
+            "records": result.get("records", [])[:100],
+
+            "facturas_subtotales": result.get("facturas_subtotales", {})
+
+        }
+
+    except Exception as e:
+
+        raise HTTPException(status_code=400, detail=f"Error en la limpieza de datos del Excel: {str(e)}")
+
+
+
+
+
 @router.post("/importar-con-empresa")
 async def importar_con_empresa(
     mode: str = Form("create_new"),
@@ -244,6 +329,7 @@ async def importar_con_empresa(
     sheet_name: Optional[str] = Form(None),
     edited_records_json: Optional[str] = Form(None),
     entidades_clasificacion_json: Optional[str] = Form(None),
+    target_grand_total: Optional[float] = Form(None),
     db: Session = Depends(get_db)
 ):
     ent_map = {}
@@ -287,7 +373,8 @@ async def importar_con_empresa(
             nueva_asociacion_sigla=nueva_asociacion_sigla,
             overwrite_duplicates=overwrite_duplicates,
             entidades_clasificacion=ent_map,
-            empresa_principal_nombre=empresa_name
+            empresa_principal_nombre=empresa_name,
+            target_grand_total=target_grand_total
         )
 
     if mode == "create_new":
@@ -377,7 +464,8 @@ async def importar_con_empresa(
             records=records_to_import,
             session=tenant_session,
             params=params,
-            overwrite_duplicates=overwrite_duplicates
+            overwrite_duplicates=overwrite_duplicates,
+            target_grand_total=target_grand_total
         )
 
         return {

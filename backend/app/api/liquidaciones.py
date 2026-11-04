@@ -61,13 +61,13 @@ def resolve_period_and_trips(
         tipo_periodo == "factura" or
         bool(nro_factura) or
         bool(factura_desde) or
-        bool(facturas) or
+        (isinstance(facturas, (list, tuple, set)) and len(facturas) > 0) or
         (periodo_mes and (periodo_mes.startswith("FAC-") or periodo_mes.startswith("FACS-")))
     )
 
     if is_factura_mode:
         # Si se pasó codificado en periodo_mes, decodificarlo
-        if not nro_factura and not factura_desde and not facturas and periodo_mes:
+        if not nro_factura and not factura_desde and not (isinstance(facturas, (list, tuple, set)) and len(facturas) > 0) and periodo_mes:
             if periodo_mes.startswith("FAC-"):
                 val = periodo_mes.replace("FAC-", "")
                 if "_" in val:
@@ -85,7 +85,7 @@ def resolve_period_and_trips(
                 else:
                     facturas = [val]
 
-        if facturas and len(facturas) > 0:
+        if isinstance(facturas, (list, tuple, set)) and len(facturas) > 0:
             clean_facs = [str(f).strip() for f in facturas if f and str(f).strip()]
             query_viajes = query_viajes.filter(Viaje.nro_factura.in_(clean_facs))
             if len(clean_facs) == 1:
@@ -141,7 +141,8 @@ def resolve_period_and_trips(
         query_viajes = query_viajes.filter(
             or_(
                 Viaje.periodo_mes.startswith(f"{target_year}-"),
-                func.extract('year', Viaje.fecha_carga) == target_year
+                (Viaje.periodo_mes.is_(None)) & (func.extract('year', Viaje.fecha_carga) == target_year),
+                (Viaje.periodo_mes == "") & (func.extract('year', Viaje.fecha_carga) == target_year)
             )
         )
         periodo_label = f"ANUAL-{target_year}"
@@ -158,7 +159,8 @@ def resolve_period_and_trips(
         query_viajes = query_viajes.filter(
             or_(
                 Viaje.periodo_mes.in_(meses_sem),
-                Viaje.fecha_carga.between(sem_start, sem_end)
+                (Viaje.periodo_mes.is_(None)) & (Viaje.fecha_carga.between(sem_start, sem_end)),
+                (Viaje.periodo_mes == "") & (Viaje.fecha_carga.between(sem_start, sem_end))
             )
         )
         periodo_label = f"{target_year}-S{sem_num}"
@@ -237,7 +239,7 @@ def list_liquidaciones(
                     Liquidacion.codigo.contains(f"FAC-{factura_desde}_{factura_hasta}")
                 )
             )
-        elif facturas and len(facturas) > 0:
+        elif isinstance(facturas, (list, tuple, set)) and len(facturas) > 0:
             query = query.filter(
                 or_(*[
                     or_(
@@ -520,6 +522,7 @@ def get_resumen_placas(
         items: List[ResumenPlacaItem] = []
         tot_vol = 0.0
         tot_flete = 0.0
+        tot_merma = 0.0
         tot_desc = 0.0
         tot_liquido = 0.0
         placas_liq = 0
@@ -567,6 +570,7 @@ def get_resumen_placas(
                 fecha_em = None
 
             tot_flete += f_bruto
+            tot_merma += d_merma
             tot_desc += t_desc
             tot_liquido += l_pagable
 
@@ -606,7 +610,9 @@ def get_resumen_placas(
             total_viajes=len(viajes_todos),
             total_volumen_litros=round(tot_vol, 2),
             total_flete_bruto_bs=round(tot_flete, 2),
+            total_mermas_bs=round(tot_merma, 2),
             total_descuentos_bs=round(tot_desc, 2),
+            total_deducciones_bs=round(tot_desc, 2),
             total_liquido_pagable_bs=round(tot_liquido, 2),
             placas_liquidadas=placas_liq,
             placas_pendientes=placas_pend,

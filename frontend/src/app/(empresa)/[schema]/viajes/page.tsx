@@ -187,6 +187,9 @@ function ViajesContent() {
   const [tablaModo, setTablaModo] = useState<"compacta" | "extendida">("compacta");
   const [isHydrated, setIsHydrated] = useState(false);
 
+  // Facturas Con Derecho a Crédito Fiscal (IVA 13%)
+  const [facturasConDerecho, setFacturasConDerecho] = useState<string[]>([]);
+
   // Catálogos dinámicos por empresa
   const [catalogProductos, setCatalogProductos] = useState<string[]>([
     "GASOLINA",
@@ -527,10 +530,34 @@ function ViajesContent() {
           setPeriodo(pData[0].periodo_mes);
         }
       }
+
+      // Restaurar selección de facturas con derecho a crédito fiscal
+      const savedConDerecho = getSavedState<string[]>(`transporte_${schema}_viajes_facturas_con_derecho`, []);
+      if (Array.isArray(savedConDerecho)) {
+        setFacturasConDerecho(savedConDerecho);
+      }
+
       setIsHydrated(true);
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const toggleFacturaConDerecho = (facturaNum: string, checked: boolean) => {
+    if (!facturaNum || facturaNum === "S/F") return;
+    const cleanNum = facturaNum.trim().toUpperCase();
+    setFacturasConDerecho((prev) => {
+      let next: string[];
+      if (checked) {
+        next = prev.includes(cleanNum) ? prev : [...prev, cleanNum];
+      } else {
+        next = prev.filter((f) => f !== cleanNum);
+      }
+      if (schema) {
+        saveState(`transporte_${schema}_viajes_facturas_con_derecho`, next);
+      }
+      return next;
+    });
   };
 
   const handleCreateNuevoTramo = async () => {
@@ -1759,6 +1786,73 @@ function ViajesContent() {
     };
   }, [filtered]);
 
+  // Detalle y conciliación de Facturas Con Derecho a Crédito Fiscal (IVA 13%)
+  const facturasConDerechoDetalle = useMemo(() => {
+    const map: { [fac: string]: { factura: string; fechas: string[]; flete: number; debito: number; neto: number; itemsCount: number; producto: string } } = {};
+    for (const group of planillaGroups) {
+      const f = (group.factura || "").trim().toUpperCase();
+      if (f && f !== "S/F" && facturasConDerecho.includes(f)) {
+        const fechas = Array.from(new Set(group.items.map(x => x.fecha_factura).filter(Boolean))) as string[];
+        const fleteGrp = group.items.reduce((acc, x) => acc + (Number(x.flete_total_bs) || 0), 0);
+        if (!map[f]) {
+          map[f] = {
+            factura: f,
+            fechas: [...fechas],
+            flete: 0,
+            debito: 0,
+            neto: 0,
+            itemsCount: 0,
+            producto: group.producto
+          };
+        }
+        map[f].flete += fleteGrp;
+        map[f].itemsCount += group.items.length;
+        for (const fe of fechas) {
+          if (!map[f].fechas.includes(fe)) map[f].fechas.push(fe);
+        }
+      }
+    }
+
+    return Object.values(map).map((item) => {
+      const debito = Math.round(item.flete * 0.13 * 100) / 100;
+      const neto = item.flete - debito;
+      return {
+        ...item,
+        debito,
+        neto
+      };
+    });
+  }, [planillaGroups, facturasConDerecho]);
+
+  const fiscalStats = useMemo(() => {
+    const totVentasBrutas = totalFleteBs;
+    const totVbConDerecho = facturasConDerechoDetalle.reduce((acc, x) => acc + x.flete, 0);
+    const totDebito13 = Math.round(totVbConDerecho * 0.13 * 100) / 100;
+    const totVnConDerecho = totVbConDerecho - totDebito13;
+    const totVnSinDerecho = Math.max(0, totVentasBrutas - totVbConDerecho);
+    const totVentasNetasGestion = totVentasBrutas - totDebito13;
+
+    return {
+      totVentasBrutas,
+      totVnSinDerecho,
+      totVbConDerecho,
+      totDebito13,
+      totVnConDerecho,
+      totVentasNetasGestion,
+      countConDerecho: facturasConDerechoDetalle.length,
+    };
+  }, [totalFleteBs, facturasConDerechoDetalle]);
+
+  const gestionYearLabel = useMemo(() => {
+    const match = (activeFilterLabel || "").match(/\b(202\d)\b/) || (periodo || "").match(/\b(202\d)\b/);
+    if (match) return match[1];
+    if (filtered.length > 0 && filtered[0].fecha_carga) {
+      const y = filtered[0].fecha_carga.slice(0, 4);
+      if (y) return y;
+    }
+    return new Date().getFullYear().toString();
+  }, [activeFilterLabel, periodo, filtered]);
+
   // Métricas de Historial
   const histTotalViajes = viajes.length;
   const histFacturados = useMemo(() => viajes.filter(v => v.nro_factura && v.nro_factura.trim()), [viajes]);
@@ -2542,35 +2636,57 @@ function ViajesContent() {
           </div>
         </div>
 
-        {/* Selector de Modo de Vista (Ajustada sin scroll vs Extendida) */}
+        {/* Selector de Modo de Vista & Indicador Fiscal */}
         {activeMainTab === "planilla" && (
-          <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => setTablaModo("compacta")}
-              className={`px-2.5 py-1 rounded-md transition text-[11px] flex items-center gap-1.5 ${
-                tablaModo === "compacta"
-                  ? "bg-amber-500 text-slate-950 font-bold shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              }`}
-              title="Vista adaptada a pantalla completa sin desplazamiento horizontal"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Ajustada (Sin Scroll)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTablaModo("extendida")}
-              className={`px-2.5 py-1 rounded-md transition text-[11px] flex items-center gap-1.5 ${
-                tablaModo === "extendida"
-                  ? "bg-amber-500 text-slate-950 font-bold shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              }`}
-              title="Vista extendida tradicional con todas las 20 columnas separadas"
-            >
-              <Table className="w-3.5 h-3.5" />
-              <span>Extendida (20 Cols)</span>
-            </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {facturasConDerechoDetalle.length > 0 && (
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-yellow-100 dark:bg-yellow-950/70 border border-yellow-300 dark:border-yellow-700/60 text-yellow-950 dark:text-yellow-200 text-xs font-bold shadow-2xs">
+                <span>Con Derecho (13% IVA):</span>
+                <span className="font-mono font-black">{facturasConDerechoDetalle.length} fact.</span>
+                <span className="text-rose-700 dark:text-rose-400 font-mono font-black">
+                  (-Bs. {formatNumber(fiscalStats.totDebito13, 2)})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFacturasConDerecho([]);
+                    if (schema) saveState(`transporte_${schema}_viajes_facturas_con_derecho`, []);
+                  }}
+                  className="ml-1 text-[10px] text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 font-bold underline cursor-pointer"
+                  title="Quitar derecho a crédito fiscal a todas las facturas"
+                >
+                  Limpiar
+                </button>
+              </div>
+            )}
+            <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setTablaModo("compacta")}
+                className={`px-2.5 py-1 rounded-md transition text-[11px] flex items-center gap-1.5 ${
+                  tablaModo === "compacta"
+                    ? "bg-amber-500 text-slate-950 font-bold shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                }`}
+                title="Vista adaptada a pantalla completa sin desplazamiento horizontal"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Ajustada (Sin Scroll)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTablaModo("extendida")}
+                className={`px-2.5 py-1 rounded-md transition text-[11px] flex items-center gap-1.5 ${
+                  tablaModo === "extendida"
+                    ? "bg-amber-500 text-slate-950 font-bold shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                }`}
+                title="Vista extendida tradicional con todas las 20 columnas separadas"
+              >
+                <Table className="w-3.5 h-3.5" />
+                <span>Extendida (20 Cols)</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -2860,37 +2976,81 @@ function ViajesContent() {
                             })}
 
                             {/* FILA ESPECIAL COMPACTA: Subtotal del Grupo con Facturación */}
-                            <tr className="bg-amber-100/70 dark:bg-amber-950/40 font-bold border-y-2 border-amber-300 dark:border-amber-700 text-[10.5px]">
-                              <td colSpan={6} className="py-2 px-2.5 text-left border-x border-amber-300 dark:border-amber-700">
-                                <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-1.5">TOTAL {group.producto}</span>
-                                <span className="text-slate-700 dark:text-slate-300 font-medium">| FAC: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
-                                {fechaLabel !== "-" && (
-                                  <span className="text-slate-700 dark:text-slate-300 font-medium ml-1.5">| FECHA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
-                                )}
-                              </td>
-                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700">
-                                <div className="font-black text-sky-800 dark:text-sky-300 text-[11px]">{formatNumber(grpVolFact, 0)} L</div>
-                                <div className="text-[9px] text-slate-500 dark:text-slate-400">Orig: {formatNumber(grpVolOrig, 0)} · Rec: {formatNumber(grpVolRec, 0)}</div>
-                              </td>
-                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700">
-                                {grpMDesc > 0 ? (
-                                  <div>
-                                    <div className="font-bold text-rose-700 dark:text-rose-400 text-[11px]">-{formatCurrency(grpMDesc)}</div>
-                                    <div className="text-[9px] text-amber-800 dark:text-amber-400">Exc: {formatNumber(grpMermaExc, 1)} L</div>
-                                  </div>
-                                ) : (
-                                  <div className="text-slate-600 dark:text-slate-400 text-[10px]">-{formatNumber(Math.abs(grpMermaReal), 1)} L</div>
-                                )}
-                              </td>
-                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700">
-                                <div className="font-black text-amber-900 dark:text-amber-400 text-[11px]">{formatCurrency(grpFlete)}</div>
-                                <div className="text-[9px] text-slate-600 dark:text-slate-400">Tar: Bs. {formatNumber(grpTarifa, 2)}</div>
-                                {grpTotDesc > 0 && (
-                                  <div className="text-[9px] text-emerald-800 dark:text-emerald-300 font-bold">Líq: {formatCurrency(grpLiquido)}</div>
-                                )}
-                              </td>
-                              <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
-                            </tr>
+                            {(() => {
+                              const facClean = (group.factura || "").trim().toUpperCase();
+                              const isConDerecho = Boolean(facClean && facClean !== "S/F" && facturasConDerecho.includes(facClean));
+                              const debito13 = isConDerecho ? Math.round(grpFlete * 0.13 * 100) / 100 : 0;
+                              const vnNeto87 = isConDerecho ? grpFlete - debito13 : grpFlete;
+
+                              return (
+                                <tr className={`border-y-2 text-[10.5px] transition ${
+                                  isConDerecho
+                                    ? "bg-amber-200/60 dark:bg-amber-950/70 border-amber-400 dark:border-amber-600 font-bold"
+                                    : "bg-amber-100/70 dark:bg-amber-950/40 font-bold border-amber-300 dark:border-amber-700"
+                                }`}>
+                                  <td colSpan={6} className="py-2 px-2.5 text-left border-x border-amber-300 dark:border-amber-700">
+                                    <div className="flex items-center justify-between flex-wrap gap-1.5">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-1">TOTAL {group.producto}</span>
+                                        <span className="text-slate-700 dark:text-slate-300 font-medium">| FAC: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
+                                        {fechaLabel !== "-" && (
+                                          <span className="text-slate-700 dark:text-slate-300 font-medium ml-1">| FECHA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
+                                        )}
+                                      </div>
+
+                                      {/* Checkbox Con Factura Con Derecho */}
+                                      {facClean && facClean !== "S/F" && (
+                                        <label className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border transition cursor-pointer select-none text-[10px] ${
+                                          isConDerecho
+                                            ? "bg-amber-500 text-slate-950 border-amber-600 font-black shadow-xs ring-1 ring-amber-400"
+                                            : "bg-white/95 dark:bg-slate-900/90 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-amber-400 font-bold"
+                                        }`}>
+                                          <input
+                                            type="checkbox"
+                                            checked={isConDerecho}
+                                            onChange={(e) => toggleFacturaConDerecho(facClean, e.target.checked)}
+                                            className="w-3.5 h-3.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600"
+                                          />
+                                          <span>Con Factura Con Derecho</span>
+                                          {isConDerecho && (
+                                            <span className="px-1.5 py-0.2 rounded bg-slate-950/20 text-slate-950 font-mono font-black ml-0.5">
+                                              (13% Débito: -{formatCurrency(debito13)})
+                                            </span>
+                                          )}
+                                        </label>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700">
+                                    <div className="font-black text-sky-800 dark:text-sky-300 text-[11px]">{formatNumber(grpVolFact, 0)} L</div>
+                                    <div className="text-[9px] text-slate-500 dark:text-slate-400">Orig: {formatNumber(grpVolOrig, 0)} · Rec: {formatNumber(grpVolRec, 0)}</div>
+                                  </td>
+                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700">
+                                    {grpMDesc > 0 ? (
+                                      <div>
+                                        <div className="font-bold text-rose-700 dark:text-rose-400 text-[11px]">-{formatCurrency(grpMDesc)}</div>
+                                        <div className="text-[9px] text-amber-800 dark:text-amber-400">Exc: {formatNumber(grpMermaExc, 1)} L</div>
+                                      </div>
+                                    ) : (
+                                      <div className="text-slate-600 dark:text-slate-400 text-[10px]">-{formatNumber(Math.abs(grpMermaReal), 1)} L</div>
+                                    )}
+                                  </td>
+                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700">
+                                    <div className="font-black text-amber-900 dark:text-amber-400 text-[11px]">{formatCurrency(grpFlete)}</div>
+                                    {isConDerecho && (
+                                      <div className="text-[9.5px] text-rose-700 dark:text-rose-400 font-bold">
+                                        Neto 87%: {formatCurrency(vnNeto87)}
+                                      </div>
+                                    )}
+                                    <div className="text-[9px] text-slate-600 dark:text-slate-400">Tar: Bs. {formatNumber(grpTarifa, 2)}</div>
+                                    {grpTotDesc > 0 && (
+                                      <div className="text-[9px] text-emerald-800 dark:text-emerald-300 font-bold">Líq: {formatCurrency(grpLiquido)}</div>
+                                    )}
+                                  </td>
+                                  <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
+                                </tr>
+                              );
+                            })()}
                           </Fragment>
                         );
                       });
@@ -2917,6 +3077,92 @@ function ViajesContent() {
                         )}
                       </td>
                       <td className="py-2.5 px-1 border-x border-slate-300 dark:border-slate-700"></td>
+                    </tr>
+
+                    {/* ============================================================== */}
+                    {/* BLOQUE DE CONCILIACIÓN FISCAL (IVA 13%) EN MODO COMPACTO         */}
+                    {/* ============================================================== */}
+                    
+                    {/* TOTAL VENTAS BRUTAS */}
+                    <tr className="bg-emerald-100/90 dark:bg-emerald-950/70 font-black text-slate-900 dark:text-white border-t-2 border-emerald-400 dark:border-emerald-600 text-xs">
+                      <td colSpan={8} className="py-2 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 font-black italic">
+                        TOTAL VENTAS BRUTAS:
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono text-sm font-black border-x border-slate-300 dark:border-slate-700 text-emerald-900 dark:text-emerald-300 bg-emerald-200/70 dark:bg-emerald-900/50">
+                        {formatCurrency(fiscalStats.totVentasBrutas)}
+                      </td>
+                      <td className="py-2 px-1 border-x border-slate-300 dark:border-slate-700"></td>
+                    </tr>
+
+                    {/* V.N. SIN DERECHO */}
+                    <tr className="bg-slate-50 dark:bg-slate-900/80 font-bold text-slate-700 dark:text-slate-300 text-xs border-b border-slate-200 dark:border-slate-800">
+                      <td colSpan={8} className="py-1.5 px-3 text-right italic uppercase">
+                        V.N. SIN DERECHO:
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200">
+                        {formatCurrency(fiscalStats.totVnSinDerecho)}
+                      </td>
+                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                    </tr>
+
+                    {/* V.B. CON DERECHO */}
+                    <tr className="bg-amber-50/70 dark:bg-amber-950/40 font-bold text-amber-900 dark:text-amber-300 text-xs border-b border-slate-200 dark:border-slate-800">
+                      <td colSpan={8} className="py-1.5 px-3 text-right italic uppercase">
+                        V.B. CON DERECHO {fiscalStats.countConDerecho > 0 ? `(${fiscalStats.countConDerecho} facturas)` : "(0 facturas seleccionadas)"}:
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-amber-800 dark:text-amber-400">
+                        {formatCurrency(fiscalStats.totVbConDerecho)}
+                      </td>
+                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                    </tr>
+
+                    {/* Sub-filas por cada Factura con Derecho seleccionada */}
+                    {facturasConDerechoDetalle.map((fac) => (
+                      <tr key={`compact-${fac.factura}`} className="bg-amber-100/40 dark:bg-amber-950/30 text-[11px] text-slate-700 dark:text-slate-300 border-b border-amber-200/50 dark:border-amber-900/30">
+                        <td colSpan={8} className="py-1 px-4 text-right">
+                          <span className="font-bold text-amber-900 dark:text-amber-300 mr-2">• Factura {fac.factura}</span>
+                          <span className="text-slate-500 mr-2">({fac.fechas.length > 0 ? fac.fechas.map(f => formatDate(f)).join(", ") : "-"})</span>
+                          <span className="text-slate-600 dark:text-slate-400 font-mono">Flete Bruto: {formatCurrency(fac.flete)}</span>
+                          <span className="font-bold text-rose-600 dark:text-rose-400 ml-2">→ Débito Fiscal IVA 13%:</span>
+                        </td>
+                        <td className="py-1 px-2 text-right font-mono font-bold text-rose-700 dark:text-rose-400 border-x border-slate-200 dark:border-slate-800">
+                          -{formatCurrency(fac.debito)}
+                        </td>
+                        <td className="py-1 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                      </tr>
+                    ))}
+
+                    {/* DEBITO (13%) */}
+                    <tr className="bg-rose-50/70 dark:bg-rose-950/40 font-bold text-rose-900 dark:text-rose-300 text-xs border-b border-slate-200 dark:border-slate-800">
+                      <td colSpan={8} className="py-1.5 px-3 text-right italic uppercase font-black">
+                        DEBITO:
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono font-black border-x border-slate-200 dark:border-slate-800 text-rose-600 dark:text-rose-400">
+                        {fiscalStats.totDebito13 > 0 ? `-${formatCurrency(fiscalStats.totDebito13)}` : "Bs. 0,00"}
+                      </td>
+                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                    </tr>
+
+                    {/* V.N. CON DERECHO (87%) */}
+                    <tr className="bg-slate-50 dark:bg-slate-900/80 font-bold text-slate-700 dark:text-slate-300 text-xs border-b border-slate-200 dark:border-slate-800">
+                      <td colSpan={8} className="py-1.5 px-3 text-right italic uppercase">
+                        V.N. CON DERECHO:
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200">
+                        {formatCurrency(fiscalStats.totVnConDerecho)}
+                      </td>
+                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                    </tr>
+
+                    {/* VENTAS NETAS GESTION (Fondo Amarillo Brillante según Captura) */}
+                    <tr className="bg-yellow-300 dark:bg-yellow-400 font-black text-slate-950 border-t-2 border-b-2 border-yellow-500 text-sm">
+                      <td colSpan={8} className="py-2.5 px-3 text-right uppercase font-black tracking-wide text-slate-950">
+                        VENTAS NETAS GESTION {gestionYearLabel}:
+                      </td>
+                      <td className="py-2.5 px-2 text-right font-mono text-base font-black border-x border-yellow-500 text-slate-950 bg-yellow-400 dark:bg-yellow-300">
+                        {formatCurrency(fiscalStats.totVentasNetasGestion)}
+                      </td>
+                      <td className="py-2.5 px-1 border-x border-yellow-500 bg-yellow-400 dark:bg-yellow-300"></td>
                     </tr>
                   </tbody>
                 </table>
@@ -3094,31 +3340,75 @@ function ViajesContent() {
                             })}
 
                             {/* FILA ESPECIAL: Subtotal del Grupo con Facturación y Fechas */}
-                            <tr className="bg-amber-100/70 dark:bg-amber-950/40 font-bold border-y-2 border-amber-300 dark:border-amber-700 text-[10.5px]">
-                              <td colSpan={10} className="py-2.5 px-3 text-left border-x border-amber-300 dark:border-amber-700">
-                                <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-2">TOTAL {group.producto}</span>
-                                <span className="text-slate-700 dark:text-slate-300 font-medium">| FACTURA: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
-                                <span className="text-slate-700 dark:text-slate-300 font-medium ml-2">| FECHA FACTURA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
-                              </td>
-                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-900 dark:text-white">{formatNumber(grpVolOrig, 0)} L</td>
-                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-emerald-800 dark:text-emerald-300">{formatNumber(grpVolRec, 0)} L</td>
-                              <td className="py-2 px-1 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-700 dark:text-slate-300">-{formatNumber(Math.abs(grpMermaReal), 1)} L</td>
-                              <td className="py-2 px-1 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-400">{formatNumber(grpMermaExc, 1)} L</td>
-                              <td className="py-2 px-1 text-center font-mono border-x border-amber-300 dark:border-amber-700 text-slate-500">{formatNumber(grpMermaTol, 1)} L</td>
-                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-rose-700 dark:text-rose-400">{formatCurrency(grpMDesc)}</td>
-                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 0)} L</td>
-                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-slate-700 dark:text-slate-300">Bs. {formatNumber(grpTarifa, 2)}</td>
-                              <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-amber-900 dark:text-amber-400">
-                                <div>{formatCurrency(grpFlete)}</div>
-                                {grpTotDesc > 0 && (
-                                  <div className="text-[9px] font-normal leading-tight mt-0.5">
-                                    <div className="text-rose-700 dark:text-rose-400">Desc: -{formatCurrency(grpTotDesc)}</div>
-                                    <div className="text-emerald-800 dark:text-emerald-300 font-bold">Líq: {formatCurrency(grpLiquido)}</div>
-                                  </div>
-                                )}
-                              </td>
-                              <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
-                            </tr>
+                            {(() => {
+                              const facClean = (group.factura || "").trim().toUpperCase();
+                              const isConDerecho = Boolean(facClean && facClean !== "S/F" && facturasConDerecho.includes(facClean));
+                              const debito13 = isConDerecho ? Math.round(grpFlete * 0.13 * 100) / 100 : 0;
+                              const vnNeto87 = isConDerecho ? grpFlete - debito13 : grpFlete;
+
+                              return (
+                                <tr className={`border-y-2 text-[10.5px] transition ${
+                                  isConDerecho
+                                    ? "bg-amber-200/60 dark:bg-amber-950/70 border-amber-400 dark:border-amber-600 font-bold"
+                                    : "bg-amber-100/70 dark:bg-amber-950/40 font-bold border-amber-300 dark:border-amber-700"
+                                }`}>
+                                  <td colSpan={10} className="py-2.5 px-3 text-left border-x border-amber-300 dark:border-amber-700">
+                                    <div className="flex items-center justify-between flex-wrap gap-2">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-2">TOTAL {group.producto}</span>
+                                        <span className="text-slate-700 dark:text-slate-300 font-medium">| FACTURA: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
+                                        <span className="text-slate-700 dark:text-slate-300 font-medium ml-2">| FECHA FACTURA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
+                                      </div>
+
+                                      {/* Checkbox Con Factura Con Derecho */}
+                                      {facClean && facClean !== "S/F" && (
+                                        <label className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition cursor-pointer select-none text-[10.5px] ${
+                                          isConDerecho
+                                            ? "bg-amber-500 text-slate-950 border-amber-600 font-black shadow-xs ring-1 ring-amber-400"
+                                            : "bg-white/95 dark:bg-slate-900/90 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-amber-400 font-bold"
+                                        }`}>
+                                          <input
+                                            type="checkbox"
+                                            checked={isConDerecho}
+                                            onChange={(e) => toggleFacturaConDerecho(facClean, e.target.checked)}
+                                            className="w-3.5 h-3.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600"
+                                          />
+                                          <span>Con Factura Con Derecho</span>
+                                          {isConDerecho && (
+                                            <span className="px-1.5 py-0.2 rounded bg-slate-950/20 text-slate-950 font-mono font-black ml-1">
+                                              (13% Débito: -{formatCurrency(debito13)})
+                                            </span>
+                                          )}
+                                        </label>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-900 dark:text-white">{formatNumber(grpVolOrig, 0)} L</td>
+                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-emerald-800 dark:text-emerald-300">{formatNumber(grpVolRec, 0)} L</td>
+                                  <td className="py-2 px-1 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-700 dark:text-slate-300">-{formatNumber(Math.abs(grpMermaReal), 1)} L</td>
+                                  <td className="py-2 px-1 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-400">{formatNumber(grpMermaExc, 1)} L</td>
+                                  <td className="py-2 px-1 text-center font-mono border-x border-amber-300 dark:border-amber-700 text-slate-500">{formatNumber(grpMermaTol, 1)} L</td>
+                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-rose-700 dark:text-rose-400">{formatCurrency(grpMDesc)}</td>
+                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 0)} L</td>
+                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-slate-700 dark:text-slate-300">Bs. {formatNumber(grpTarifa, 2)}</td>
+                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-amber-900 dark:text-amber-400">
+                                    <div>{formatCurrency(grpFlete)}</div>
+                                    {isConDerecho && (
+                                      <div className="text-[9.5px] text-rose-700 dark:text-rose-400 font-bold">
+                                        Neto 87%: {formatCurrency(vnNeto87)}
+                                      </div>
+                                    )}
+                                    {grpTotDesc > 0 && (
+                                      <div className="text-[9px] font-normal leading-tight mt-0.5">
+                                        <div className="text-rose-700 dark:text-rose-400">Desc: -{formatCurrency(grpTotDesc)}</div>
+                                        <div className="text-emerald-800 dark:text-emerald-300 font-bold">Líq: {formatCurrency(grpLiquido)}</div>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
+                                </tr>
+                              );
+                            })()}
                           </Fragment>
                         );
                       });
@@ -3148,6 +3438,92 @@ function ViajesContent() {
                         )}
                       </td>
                       <td className="py-3 px-2 border-x border-slate-300 dark:border-slate-700"></td>
+                    </tr>
+
+                    {/* ============================================================== */}
+                    {/* BLOQUE DE CONCILIACIÓN FISCAL (IVA 13%) EN MODO EXTENDIDO       */}
+                    {/* ============================================================== */}
+                    
+                    {/* TOTAL VENTAS BRUTAS */}
+                    <tr className="bg-emerald-100/90 dark:bg-emerald-950/70 font-black text-slate-900 dark:text-white border-t-2 border-emerald-400 dark:border-emerald-600 text-xs">
+                      <td colSpan={18} className="py-2 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 font-black italic">
+                        TOTAL VENTAS BRUTAS:
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono text-sm font-black border-x border-slate-300 dark:border-slate-700 text-emerald-900 dark:text-emerald-300 bg-emerald-200/70 dark:bg-emerald-900/50">
+                        {formatCurrency(fiscalStats.totVentasBrutas)}
+                      </td>
+                      <td className="py-2 px-1 border-x border-slate-300 dark:border-slate-700"></td>
+                    </tr>
+
+                    {/* V.N. SIN DERECHO */}
+                    <tr className="bg-slate-50 dark:bg-slate-900/80 font-bold text-slate-700 dark:text-slate-300 text-xs border-b border-slate-200 dark:border-slate-800">
+                      <td colSpan={18} className="py-1.5 px-3 text-right italic uppercase">
+                        V.N. SIN DERECHO:
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200">
+                        {formatCurrency(fiscalStats.totVnSinDerecho)}
+                      </td>
+                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                    </tr>
+
+                    {/* V.B. CON DERECHO */}
+                    <tr className="bg-amber-50/70 dark:bg-amber-950/40 font-bold text-amber-900 dark:text-amber-300 text-xs border-b border-slate-200 dark:border-slate-800">
+                      <td colSpan={18} className="py-1.5 px-3 text-right italic uppercase">
+                        V.B. CON DERECHO {fiscalStats.countConDerecho > 0 ? `(${fiscalStats.countConDerecho} facturas)` : "(0 facturas seleccionadas)"}:
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-amber-800 dark:text-amber-400">
+                        {formatCurrency(fiscalStats.totVbConDerecho)}
+                      </td>
+                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                    </tr>
+
+                    {/* Sub-filas por cada Factura con Derecho seleccionada */}
+                    {facturasConDerechoDetalle.map((fac) => (
+                      <tr key={`ext-${fac.factura}`} className="bg-amber-100/40 dark:bg-amber-950/30 text-[11px] text-slate-700 dark:text-slate-300 border-b border-amber-200/50 dark:border-amber-900/30">
+                        <td colSpan={18} className="py-1 px-4 text-right">
+                          <span className="font-bold text-amber-900 dark:text-amber-300 mr-2">• Factura {fac.factura}</span>
+                          <span className="text-slate-500 mr-2">({fac.fechas.length > 0 ? fac.fechas.map(f => formatDate(f)).join(", ") : "-"})</span>
+                          <span className="text-slate-600 dark:text-slate-400 font-mono">Flete Bruto: {formatCurrency(fac.flete)}</span>
+                          <span className="font-bold text-rose-600 dark:text-rose-400 ml-2">→ Débito Fiscal IVA 13%:</span>
+                        </td>
+                        <td className="py-1 px-2 text-right font-mono font-bold text-rose-700 dark:text-rose-400 border-x border-slate-200 dark:border-slate-800">
+                          -{formatCurrency(fac.debito)}
+                        </td>
+                        <td className="py-1 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                      </tr>
+                    ))}
+
+                    {/* DEBITO (13%) */}
+                    <tr className="bg-rose-50/70 dark:bg-rose-950/40 font-bold text-rose-900 dark:text-rose-300 text-xs border-b border-slate-200 dark:border-slate-800">
+                      <td colSpan={18} className="py-1.5 px-3 text-right italic uppercase font-black">
+                        DEBITO:
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono font-black border-x border-slate-200 dark:border-slate-800 text-rose-600 dark:text-rose-400">
+                        {fiscalStats.totDebito13 > 0 ? `-${formatCurrency(fiscalStats.totDebito13)}` : "Bs. 0,00"}
+                      </td>
+                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                    </tr>
+
+                    {/* V.N. CON DERECHO (87%) */}
+                    <tr className="bg-slate-50 dark:bg-slate-900/80 font-bold text-slate-700 dark:text-slate-300 text-xs border-b border-slate-200 dark:border-slate-800">
+                      <td colSpan={18} className="py-1.5 px-3 text-right italic uppercase">
+                        V.N. CON DERECHO:
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200">
+                        {formatCurrency(fiscalStats.totVnConDerecho)}
+                      </td>
+                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                    </tr>
+
+                    {/* VENTAS NETAS GESTION (Fondo Amarillo Brillante según Captura) */}
+                    <tr className="bg-yellow-300 dark:bg-yellow-400 font-black text-slate-950 border-t-2 border-b-2 border-yellow-500 text-sm">
+                      <td colSpan={18} className="py-2.5 px-3 text-right uppercase font-black tracking-wide text-slate-950">
+                        VENTAS NETAS GESTION {gestionYearLabel}:
+                      </td>
+                      <td className="py-2.5 px-2 text-right font-mono text-base font-black border-x border-yellow-500 text-slate-950 bg-yellow-400 dark:bg-yellow-300">
+                        {formatCurrency(fiscalStats.totVentasNetasGestion)}
+                      </td>
+                      <td className="py-2.5 px-1 border-x border-yellow-500 bg-yellow-400 dark:bg-yellow-300"></td>
                     </tr>
                   </tbody>
                 </table>
