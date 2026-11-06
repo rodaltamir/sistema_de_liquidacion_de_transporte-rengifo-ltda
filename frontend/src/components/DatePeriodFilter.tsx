@@ -145,6 +145,13 @@ export default function DatePeriodFilter({
     }
   }, [currentPeriodoMes]);
 
+  // Si initialMode cambia externamente (sincronización entre módulos)
+  useEffect(() => {
+    if (initialMode && initialMode !== mode) {
+      setMode(initialMode);
+    }
+  }, [initialMode]);
+
   // Manejar selección de mes
   const handleSelectMonth = (monthNum: string) => {
     setSelectedMonth(monthNum);

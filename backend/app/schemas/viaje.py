@@ -41,6 +41,17 @@ class ViajeBase(BaseModel):
     empresa_apoyo_id: Optional[int] = None
     empresa_apoyo_nombre: Optional[str] = None
 
+    # Parámetros y Deducciones YPFB por viaje
+    comision_usd_m3: Optional[float] = 1.0
+    tipo_cambio_bs: Optional[float] = 6.96
+    comision_pct_1: Optional[float] = 7.0
+    comision_ypfb_bolgart_pct: Optional[float] = 7.0
+    comision_pct_2: Optional[float] = 3.0
+    costo_hojas_de_ruta_bs: Optional[float] = 0.0
+    costo_gps_bs: Optional[float] = 0.0
+    anticipos_otros_pct: Optional[float] = 0.0
+    parametros_ypfb_json: Optional[str] = "{}"
+
 class ViajeCreate(ViajeBase):
     pass
 
@@ -71,11 +82,24 @@ class ViajeUpdate(BaseModel):
     tarifa_flete: Optional[float] = None
     tipo_tarifa: Optional[str] = None
     precio_merma_litro_bs: Optional[float] = None
+    merma_descontar_bs: Optional[float] = None
+    merma_tolerable_litros: Optional[float] = None
+    merma_excedente_litros: Optional[float] = None
     observaciones: Optional[str] = None
     estado: Optional[str] = None
     es_apoyo: Optional[bool] = None
     empresa_apoyo_id: Optional[int] = None
     empresa_apoyo_nombre: Optional[str] = None
+
+    comision_usd_m3: Optional[float] = None
+    tipo_cambio_bs: Optional[float] = None
+    comision_pct_1: Optional[float] = None
+    comision_ypfb_bolgart_pct: Optional[float] = None
+    comision_pct_2: Optional[float] = None
+    costo_hojas_de_ruta_bs: Optional[float] = None
+    costo_gps_bs: Optional[float] = None
+    anticipos_otros_pct: Optional[float] = None
+    parametros_ypfb_json: Optional[str] = None
 
 class ViajeResponse(ViajeBase):
     id: int

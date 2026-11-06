@@ -135,7 +135,15 @@ export interface PreviewRecord {
   tolerancia_pct?: number;
   merma_tolerable_litros?: number;
   merma_excedente_litros?: number;
+  precio_merma_litro_bs?: number;
   merma_descontar_bs?: number;
+  comision_usd_m3?: number;
+  comision_pct_1?: number;
+  comision_ypfb_bolgart_pct?: number;
+  comision_pct_2?: number;
+  costo_hojas_de_ruta_bs?: number;
+  costo_gps_bs?: number;
+  anticipos_otros_pct?: number;
   liquido_pagable_bs?: number;
   periodo_mes: string;
   is_incompleto?: boolean;
@@ -236,6 +244,10 @@ export default function ImportExcelModal({
   const [tableSearch, setTableSearch] = useState("");
   const [sortColumn, setSortColumn] = useState<"fila" | "fecha" | "factura" | "placa" | "cliente" | "flete">("fila");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  // Expansión de parámetros contractuales YPFB
+  const [expandedYpfbRows, setExpandedYpfbRows] = useState<Record<number, boolean>>({});
+  const [expandAllYpfb, setExpandAllYpfb] = useState(false);
 
   // Opciones de Destino para Modo Global / Empresa Individual
   const [importMode, setImportMode] = useState<"create_new" | "use_existing">("create_new");
@@ -536,6 +548,40 @@ export default function ImportExcelModal({
         const numTarifa = parseFloat(val) || 0;
         r.tarifa_flete = numTarifa;
         r.flete_total_bs = Math.round(((r.volumen_facturado / 1000.0) * numTarifa) * 100) / 100;
+      } else if (field === "precio_merma_litro_bs") {
+        const pM = parseFloat(val) || 0;
+        r.precio_merma_litro_bs = pM;
+        if ((r.merma_excedente_litros || 0) > 0) {
+          r.merma_descontar_bs = Math.round(((r.merma_excedente_litros || 0) * pM) * 100) / 100;
+        }
+      } else if (field === "merma_descontar_bs") {
+        r.merma_descontar_bs = parseFloat(val) || 0;
+      } else if (field === "merma_tolerable_litros") {
+        const mTol = parseFloat(val) || 0;
+        r.merma_tolerable_litros = mTol;
+        const mReal = r.merma_real_litros || 0;
+        if (mReal > mTol) {
+          r.merma_excedente_litros = Math.round((mReal - mTol) * 10) / 10;
+        } else {
+          r.merma_excedente_litros = 0;
+        }
+        if ((r.precio_merma_litro_bs || 0) > 0) {
+          r.merma_descontar_bs = Math.round(((r.merma_excedente_litros || 0) * (r.precio_merma_litro_bs || 0)) * 100) / 100;
+        }
+      } else if (field === "comision_usd_m3") {
+        r.comision_usd_m3 = parseFloat(val) || 0;
+      } else if (field === "comision_pct_1") {
+        r.comision_pct_1 = parseFloat(val) || 0;
+      } else if (field === "comision_ypfb_bolgart_pct") {
+        r.comision_ypfb_bolgart_pct = parseFloat(val) || 0;
+      } else if (field === "comision_pct_2") {
+        r.comision_pct_2 = parseFloat(val) || 0;
+      } else if (field === "costo_hojas_de_ruta_bs") {
+        r.costo_hojas_de_ruta_bs = parseFloat(val) || 0;
+      } else if (field === "costo_gps_bs") {
+        r.costo_gps_bs = parseFloat(val) || 0;
+      } else if (field === "anticipos_otros_pct") {
+        r.anticipos_otros_pct = parseFloat(val) || 0;
       } else if (field === "included") {
         r.included = Boolean(val);
       }
@@ -588,6 +634,28 @@ export default function ImportExcelModal({
         included: !isIncomplete
       };
     }));
+  };
+
+  const toggleExpandYpfbRow = (fila: number) => {
+    setExpandedYpfbRows(prev => ({
+      ...prev,
+      [fila]: !prev[fila]
+    }));
+  };
+
+  const toggleExpandAllYpfb = () => {
+    const nextVal = !expandAllYpfb;
+    setExpandAllYpfb(nextVal);
+    const newMap: Record<number, boolean> = {};
+    if (nextVal) {
+      editableRecords.forEach(r => {
+        const cli = (r.cliente || "").toUpperCase();
+        if (cli.includes("YPFB") || cli.includes("Y.P.F.B")) {
+          newMap[r.fila] = true;
+        }
+      });
+    }
+    setExpandedYpfbRows(newMap);
   };
 
   // Cálculos dinámicos de métricas sobre despachos incluidos
@@ -1769,6 +1837,25 @@ export default function ImportExcelModal({
                             Solo Listos
                           </button>
                         )}
+                        {editableRecords.some(r => {
+                          const c = (r.cliente || "").toUpperCase();
+                          return c.includes("YPFB") || c.includes("Y.P.F.B");
+                        }) && (
+                          <button
+                            type="button"
+                            onClick={toggleExpandAllYpfb}
+                            className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition shadow-xs flex items-center gap-1.5 ${
+                              expandAllYpfb
+                                ? "bg-amber-500 text-slate-950 border-amber-500 shadow-2xs"
+                                : "border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                            }`}
+                            title="Expandir o colapsar parámetros contractuales de YPFB para todos los viajes correspondientes"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                            <span>{expandAllYpfb ? "Colapsar Parámetros YPFB" : "Expandir Parámetros YPFB"}</span>
+                            {expandAllYpfb ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1932,213 +2019,433 @@ export default function ImportExcelModal({
                               const isMissingVolAndFlete = (r.volumen_facturado || 0) <= 0 && (r.flete_total_bs || 0) <= 0;
                               const isMissingTramo = !r.tramo || r.tramo.trim() === "";
                               const isIncomplete = r.is_incompleto || r.status === "INCOMPLETO" || isMissingPlaca || isMissingVolAndFlete || isMissingTramo;
+                              const isYpfb = (r.cliente || "").toUpperCase().includes("YPFB") || (r.cliente || "").toUpperCase().includes("Y.P.F.B");
+                              const isExpanded = isYpfb && Boolean(expandedYpfbRows[r.fila]);
+                              const totalColSpan = (importType === "asociacion" || editableRecords.some(x => x.empresa)) ? 13 : 12;
 
                               return (
-                                <tr
-                                  key={r.fila}
-                                  className={`transition ${
-                                    !r.included
-                                      ? "opacity-40 bg-slate-100/50 dark:bg-slate-950/40"
-                                      : isIncomplete
-                                      ? "bg-amber-500/[0.06] hover:bg-amber-500/[0.12] dark:bg-amber-500/[0.04] dark:hover:bg-amber-500/[0.08]"
-                                      : "hover:bg-slate-50 dark:hover:bg-slate-800/30"
-                                  }`}
-                                >
-                                  {/* Checkbox de Inclusión */}
-                                  <td className="py-2 px-3 text-center">
-                                    <input
-                                      type="checkbox"
-                                      checked={r.included !== false}
-                                      onChange={(e) => handleRecordFieldChange(originalIdx, "included", e.target.checked)}
-                                      className="rounded bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-emerald-600 dark:text-emerald-500 cursor-pointer"
-                                    />
-                                  </td>
-
-                                  {/* Fila */}
-                                  <td className="py-2 px-2 text-center text-slate-400 dark:text-slate-500 font-mono">
-                                    <div className="font-bold">{r.fila}</div>
-                                    {r.hoja && (
-                                      <span className="inline-block text-[8px] px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-sky-700 dark:text-sky-300 border border-slate-200 dark:border-slate-700 font-mono mt-0.5 whitespace-nowrap max-w-[80px] truncate" title={`Hoja original: ${r.hoja}`}>
-                                        {r.hoja}
-                                      </span>
-                                    )}
-                                  </td>
-
-                                  {/* Empresa Editable */}
-                                  {(importType === "asociacion" || editableRecords.some(x => x.empresa)) && (
-                                    <td className="py-1.5 px-2 min-w-[150px]">
+                                <React.Fragment key={r.fila}>
+                                  <tr
+                                    className={`transition ${
+                                      !r.included
+                                        ? "opacity-40 bg-slate-100/50 dark:bg-slate-950/40"
+                                        : isIncomplete
+                                        ? "bg-amber-500/[0.06] hover:bg-amber-500/[0.12] dark:bg-amber-500/[0.04] dark:hover:bg-amber-500/[0.08]"
+                                        : isExpanded
+                                        ? "bg-amber-50/80 dark:bg-amber-950/30"
+                                        : "hover:bg-slate-50 dark:hover:bg-slate-800/30"
+                                    }`}
+                                  >
+                                    {/* Checkbox de Inclusión */}
+                                    <td className="py-2 px-3 text-center">
                                       <input
-                                        type="text"
-                                        value={r.empresa || ""}
-                                        onChange={(e) => handleRecordFieldChange(originalIdx, "empresa", e.target.value)}
-                                        placeholder="Empresa..."
-                                        className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-emerald-700 dark:text-emerald-300 font-semibold text-[11px] uppercase focus:outline-none focus:border-emerald-500 truncate"
-                                        title={r.empresa}
+                                        type="checkbox"
+                                        checked={r.included !== false}
+                                        onChange={(e) => handleRecordFieldChange(originalIdx, "included", e.target.checked)}
+                                        className="rounded bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-emerald-600 dark:text-emerald-500 cursor-pointer"
                                       />
                                     </td>
-                                  )}
 
-                                  {/* Placa Editable */}
-                                  <td className="py-1.5 px-2 min-w-[120px]">
-                                    <div className="relative">
+                                    {/* Fila */}
+                                    <td className="py-2 px-2 text-center text-slate-400 dark:text-slate-500 font-mono">
+                                      <div className="font-bold">{r.fila}</div>
+                                      {r.hoja && (
+                                        <span className="inline-block text-[8px] px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-sky-700 dark:text-sky-300 border border-slate-200 dark:border-slate-700 font-mono mt-0.5 whitespace-nowrap max-w-[80px] truncate" title={`Hoja original: ${r.hoja}`}>
+                                          {r.hoja}
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    {/* Empresa Editable */}
+                                    {(importType === "asociacion" || editableRecords.some(x => x.empresa)) && (
+                                      <td className="py-1.5 px-2 min-w-[150px]">
+                                        <input
+                                          type="text"
+                                          value={r.empresa || ""}
+                                          onChange={(e) => handleRecordFieldChange(originalIdx, "empresa", e.target.value)}
+                                          placeholder="Empresa..."
+                                          className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-emerald-700 dark:text-emerald-300 font-semibold text-[11px] uppercase focus:outline-none focus:border-emerald-500 truncate"
+                                          title={r.empresa}
+                                        />
+                                      </td>
+                                    )}
+
+                                    {/* Placa Editable */}
+                                    <td className="py-1.5 px-2 min-w-[120px]">
+                                      <div className="relative">
+                                        <input
+                                          type="text"
+                                          value={r.placa || ""}
+                                          onChange={(e) => handleRecordFieldChange(originalIdx, "placa", e.target.value)}
+                                          placeholder="Placa..."
+                                          className={`w-full px-2 py-1 bg-white dark:bg-slate-900 border rounded-lg font-mono font-bold text-xs uppercase focus:outline-none transition ${
+                                            isMissingPlaca
+                                              ? "border-rose-400 dark:border-rose-500 text-rose-600 dark:text-rose-300 placeholder-rose-400/50 bg-rose-50 dark:bg-rose-500/10 focus:border-rose-500"
+                                              : isSinPlaca
+                                              ? "border-sky-300 dark:border-sky-500/40 text-sky-700 dark:text-sky-300 bg-sky-50/50 dark:bg-sky-500/10 focus:border-sky-500"
+                                              : r.isEdited
+                                              ? "border-emerald-400 dark:border-emerald-500 text-emerald-700 dark:text-emerald-300 focus:border-emerald-500"
+                                              : "border-slate-200 dark:border-slate-700 text-amber-600 dark:text-amber-300 focus:border-amber-500"
+                                          }`}
+                                        />
+                                        {isSinPlaca && (
+                                          <span className="block text-[9px] text-sky-600 dark:text-sky-400 font-bold mt-0.5">
+                                            📦 Carga Gral / Sin Placa
+                                          </span>
+                                        )}
+                                        {isMissingPlaca && (
+                                          <span className="block text-[9px] text-rose-600 dark:text-rose-400 font-bold mt-0.5">
+                                            Falta Placa
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+
+                                    {/* Cliente Editable */}
+                                    <td className="py-1.5 px-2 min-w-[140px]">
                                       <input
                                         type="text"
-                                        value={r.placa || ""}
-                                        onChange={(e) => handleRecordFieldChange(originalIdx, "placa", e.target.value)}
-                                        placeholder="Placa..."
-                                        className={`w-full px-2 py-1 bg-white dark:bg-slate-900 border rounded-lg font-mono font-bold text-xs uppercase focus:outline-none transition ${
-                                          isMissingPlaca
-                                            ? "border-rose-400 dark:border-rose-500 text-rose-600 dark:text-rose-300 placeholder-rose-400/50 bg-rose-50 dark:bg-rose-500/10 focus:border-rose-500"
-                                            : isSinPlaca
-                                            ? "border-sky-300 dark:border-sky-500/40 text-sky-700 dark:text-sky-300 bg-sky-50/50 dark:bg-sky-500/10 focus:border-sky-500"
-                                            : r.isEdited
-                                            ? "border-emerald-400 dark:border-emerald-500 text-emerald-700 dark:text-emerald-300 focus:border-emerald-500"
-                                            : "border-slate-200 dark:border-slate-700 text-amber-600 dark:text-amber-300 focus:border-amber-500"
-                                        }`}
+                                        value={r.cliente || ""}
+                                        onChange={(e) => handleRecordFieldChange(originalIdx, "cliente", e.target.value)}
+                                        placeholder="Cliente (ej: YPFB)..."
+                                        className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-sky-700 dark:text-sky-300 font-semibold text-[11px] uppercase focus:outline-none focus:border-sky-500 truncate"
+                                        title={r.cliente}
                                       />
-                                      {isSinPlaca && (
-                                        <span className="block text-[9px] text-sky-600 dark:text-sky-400 font-bold mt-0.5">
-                                          📦 Carga Gral / Sin Placa
-                                        </span>
-                                      )}
-                                      {isMissingPlaca && (
-                                        <span className="block text-[9px] text-rose-600 dark:text-rose-400 font-bold mt-0.5">
-                                          Falta Placa
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-
-                                  {/* Cliente Editable */}
-                                  <td className="py-1.5 px-2 min-w-[140px]">
-                                    <input
-                                      type="text"
-                                      value={r.cliente || ""}
-                                      onChange={(e) => handleRecordFieldChange(originalIdx, "cliente", e.target.value)}
-                                      placeholder="Cliente (ej: YPFB)..."
-                                      className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-sky-700 dark:text-sky-300 font-semibold text-[11px] uppercase focus:outline-none focus:border-sky-500 truncate"
-                                      title={r.cliente}
-                                    />
-                                  </td>
-
-                                  {/* Tramo Editable */}
-                                  <td className="py-1.5 px-2">
-                                    <input
-                                      type="text"
-                                      value={r.tramo || ""}
-                                      onChange={(e) => handleRecordFieldChange(originalIdx, "tramo", e.target.value)}
-                                      className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-slate-800 dark:text-slate-200 text-[11px] focus:outline-none focus:border-amber-500 truncate"
-                                      title={r.tramo}
-                                    />
-                                  </td>
-
-                                  {/* Producto Editable */}
-                                  <td className="py-1.5 px-2 min-w-[120px]">
-                                    <input
-                                      type="text"
-                                      value={r.producto || ""}
-                                      onChange={(e) => handleRecordFieldChange(originalIdx, "producto", e.target.value)}
-                                      placeholder="Producto..."
-                                      className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-slate-800 dark:text-slate-200 text-[11px] font-bold uppercase focus:outline-none focus:border-amber-500 truncate"
-                                      title={r.producto}
-                                    />
-                                  </td>
-
-                                  {/* Fechas */}
-                                  <td className="py-2 px-3 whitespace-nowrap font-mono text-[10px] text-slate-500 dark:text-slate-400">
-                                    <div className="flex items-center gap-1.5">
-                                      <span>{r.fecha_carga} → {r.fecha_descarga}</span>
-                                      {r.sin_fechas_operativas && (
-                                        <span 
-                                          className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
-                                          title="Sin fechas de carga/descarga en la planilla. Se asignó automáticamente la fecha de la factura para control contable."
+                                      {isYpfb && (
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleExpandYpfbRow(r.fila)}
+                                          className={`mt-1 flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold border transition ${
+                                            isExpanded
+                                              ? "bg-amber-500 text-slate-950 border-amber-500 shadow-2xs"
+                                              : "bg-amber-100 hover:bg-amber-200 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-500/40"
+                                          }`}
+                                          title="Ver y editar parámetros contractuales de YPFB para este viaje"
                                         >
-                                          Factura
+                                          <span>⚙️ Parámetros YPFB</span>
+                                          {isExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
+                                        </button>
+                                      )}
+                                    </td>
+
+                                    {/* Tramo Editable */}
+                                    <td className="py-1.5 px-2">
+                                      <input
+                                        type="text"
+                                        value={r.tramo || ""}
+                                        onChange={(e) => handleRecordFieldChange(originalIdx, "tramo", e.target.value)}
+                                        className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-slate-800 dark:text-slate-200 text-[11px] focus:outline-none focus:border-amber-500 truncate"
+                                        title={r.tramo}
+                                      />
+                                    </td>
+
+                                    {/* Producto Editable */}
+                                    <td className="py-1.5 px-2 min-w-[120px]">
+                                      <input
+                                        type="text"
+                                        value={r.producto || ""}
+                                        onChange={(e) => handleRecordFieldChange(originalIdx, "producto", e.target.value)}
+                                        placeholder="Producto..."
+                                        className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-slate-800 dark:text-slate-200 text-[11px] font-bold uppercase focus:outline-none focus:border-amber-500 truncate"
+                                        title={r.producto}
+                                      />
+                                    </td>
+
+                                    {/* Fechas */}
+                                    <td className="py-2 px-3 whitespace-nowrap font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                                      <div className="flex items-center gap-1.5">
+                                        <span>{r.fecha_carga} → {r.fecha_descarga}</span>
+                                        {r.sin_fechas_operativas && (
+                                          <span 
+                                            className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                                            title="Sin fechas de carga/descarga en la planilla. Se asignó automáticamente la fecha de la factura para control contable."
+                                          >
+                                            Factura
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+
+                                    {/* Volumen Facturado Editable (Litros) */}
+                                    <td className="py-1.5 px-2 text-right">
+                                      <input
+                                        type="number"
+                                        step="0.1"
+                                        value={r.volumen_facturado || ""}
+                                        onChange={(e) => handleRecordFieldChange(originalIdx, "volumen_facturado", e.target.value)}
+                                        className="w-24 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-right font-mono font-bold text-sky-600 dark:text-sky-400 text-xs focus:outline-none focus:border-sky-500"
+                                      />
+                                      <span className="block text-[9px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">
+                                        {formatNumber(r.volumen_facturado_m3, 3)} m³
+                                      </span>
+                                    </td>
+
+                                    {/* Tarifa Editable */}
+                                    <td className="py-1.5 px-2 text-right">
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={r.tarifa_flete || ""}
+                                        onChange={(e) => handleRecordFieldChange(originalIdx, "tarifa_flete", e.target.value)}
+                                        className="w-20 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-right font-mono text-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:border-amber-500"
+                                      />
+                                    </td>
+
+                                    {/* Flete Total Calculado */}
+                                    <td className="py-2 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                                      <div>{formatCurrency(r.flete_total_bs)}</div>
+                                      {(Number(r.merma_descontar_bs) > 0) && (
+                                        <div className="text-[9px] font-normal leading-tight mt-0.5">
+                                          <div className="text-rose-500 dark:text-rose-400">Merma: -{formatCurrency(Number(r.merma_descontar_bs))}</div>
+                                          <div className="text-emerald-700 dark:text-emerald-300 font-bold">Líq: {formatCurrency(r.liquido_pagable_bs ?? (r.flete_total_bs - Number(r.merma_descontar_bs)))}</div>
+                                        </div>
+                                      )}
+                                    </td>
+
+                                    {/* Factura / MIC Editable */}
+                                    <td className="py-1.5 px-2 whitespace-nowrap">
+                                      <input
+                                        type="text"
+                                        value={r.nro_factura || ""}
+                                        onChange={(e) => handleRecordFieldChange(originalIdx, "nro_factura", e.target.value)}
+                                        placeholder="FAC Nro..."
+                                        className="w-24 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-amber-600 dark:text-amber-300 font-mono text-[10px] focus:outline-none focus:border-amber-500"
+                                      />
+                                      {r.fecha_factura && (
+                                        <span className="block font-mono text-[9px] text-emerald-600 dark:text-emerald-400 mt-0.5" title="Fecha de Factura">
+                                          📅 {formatDate(r.fecha_factura)}
                                         </span>
                                       )}
-                                    </div>
-                                  </td>
-
-                                  {/* Volumen Facturado Editable (Litros) */}
-                                  <td className="py-1.5 px-2 text-right">
-                                    <input
-                                      type="number"
-                                      step="0.1"
-                                      value={r.volumen_facturado || ""}
-                                      onChange={(e) => handleRecordFieldChange(originalIdx, "volumen_facturado", e.target.value)}
-                                      className="w-24 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-right font-mono font-bold text-sky-600 dark:text-sky-400 text-xs focus:outline-none focus:border-sky-500"
-                                    />
-                                    <span className="block text-[9px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">
-                                      {formatNumber(r.volumen_facturado_m3, 3)} m³
-                                    </span>
-                                  </td>
-
-                                  {/* Tarifa Editable */}
-                                  <td className="py-1.5 px-2 text-right">
-                                    <input
-                                      type="number"
-                                      step="0.01"
-                                      value={r.tarifa_flete || ""}
-                                      onChange={(e) => handleRecordFieldChange(originalIdx, "tarifa_flete", e.target.value)}
-                                      className="w-20 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-right font-mono text-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:border-amber-500"
-                                    />
-                                  </td>
-
-                                  {/* Flete Total Calculado */}
-                                  <td className="py-2 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                                    <div>{formatCurrency(r.flete_total_bs)}</div>
-                                    {(Number(r.merma_descontar_bs) > 0) && (
-                                      <div className="text-[9px] font-normal leading-tight mt-0.5">
-                                        <div className="text-rose-500 dark:text-rose-400">Merma: -{formatCurrency(Number(r.merma_descontar_bs))}</div>
-                                        <div className="text-emerald-700 dark:text-emerald-300 font-bold">Líq: {formatCurrency(r.liquido_pagable_bs ?? (r.flete_total_bs - Number(r.merma_descontar_bs)))}</div>
-                                      </div>
-                                    )}
-                                  </td>
-
-                                  {/* Factura / MIC Editable */}
-                                  <td className="py-1.5 px-2 whitespace-nowrap">
-                                    <input
-                                      type="text"
-                                      value={r.nro_factura || ""}
-                                      onChange={(e) => handleRecordFieldChange(originalIdx, "nro_factura", e.target.value)}
-                                      placeholder="FAC Nro..."
-                                      className="w-24 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-lg text-amber-600 dark:text-amber-300 font-mono text-[10px] focus:outline-none focus:border-amber-500"
-                                    />
-                                    {r.fecha_factura && (
-                                      <span className="block font-mono text-[9px] text-emerald-600 dark:text-emerald-400 mt-0.5" title="Fecha de Factura">
-                                        📅 {formatDate(r.fecha_factura)}
-                                      </span>
-                                    )}
-                                    {r.mic_dta && (
-                                      <span className="block font-mono text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                                        MIC: {r.mic_dta}
-                                      </span>
-                                    )}
-                                  </td>
-
-                                  {/* Estado */}
-                                  <td className="py-2 px-3 text-center whitespace-nowrap">
-                                    {isIncomplete ? (
-                                      <div className="flex flex-col items-center">
-                                        <span
-                                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30"
-                                          title={r.incompleto_reason || (isMissingPlaca ? "Falta placa del camión" : isMissingVolAndFlete ? "Volumen e importe en 0" : "Datos incompletos")}
-                                        >
-                                          <AlertTriangle className="w-3 h-3 text-amber-500 dark:text-amber-400" />
-                                          Incompleto
+                                      {r.mic_dta && (
+                                        <span className="block font-mono text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                                          MIC: {r.mic_dta}
                                         </span>
-                                        <span className="text-[9px] text-amber-600/90 dark:text-amber-400/80 mt-0.5 font-medium">
-                                          {r.incompleto_reason || (isMissingPlaca ? "Falta Placa" : isMissingVolAndFlete ? "Volumen 0" : "Dato faltante")}
+                                      )}
+                                    </td>
+
+                                    {/* Estado */}
+                                    <td className="py-2 px-3 text-center whitespace-nowrap">
+                                      {isIncomplete ? (
+                                        <div className="flex flex-col items-center">
+                                          <span
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30"
+                                            title={r.incompleto_reason || (isMissingPlaca ? "Falta placa del camión" : isMissingVolAndFlete ? "Volumen e importe en 0" : "Datos incompletos")}
+                                          >
+                                            <AlertTriangle className="w-3 h-3 text-amber-500 dark:text-amber-400" />
+                                            Incompleto
+                                          </span>
+                                          <span className="text-[9px] text-amber-600/90 dark:text-amber-400/80 mt-0.5 font-medium">
+                                            {r.incompleto_reason || (isMissingPlaca ? "Falta Placa" : isMissingVolAndFlete ? "Volumen 0" : "Dato faltante")}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
+                                          <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                          Listo
                                         </span>
-                                      </div>
-                                    ) : (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
-                                        <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                                        Listo
-                                      </span>
-                                    )}
-                                  </td>
-                                </tr>
+                                      )}
+                                    </td>
+                                  </tr>
+
+                                  {/* Subfila de expansión de Parámetros Contractuales YPFB */}
+                                  {isExpanded && (
+                                    <tr className="bg-amber-50/60 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900/50">
+                                      <td colSpan={totalColSpan} className="p-3">
+                                        <div className="bg-white dark:bg-slate-900 rounded-xl p-3 border border-amber-300 dark:border-amber-600/40 shadow-xs space-y-3">
+                                          {/* Header del módulo de expansión */}
+                                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-100 dark:border-amber-900/30 pb-2">
+                                            <div className="flex items-center gap-2">
+                                              <span className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-black text-xs shadow-xs">
+                                                Y
+                                              </span>
+                                              <div>
+                                                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                                  <span>Parámetros y Comisiones Contractuales YPFB</span>
+                                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                                                    Fila #{r.fila} - Cisterna: {r.placa || "S/P"}
+                                                  </span>
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                                                  Deducciones contractuales, comisiones, precio merma e IVA para este viaje específico.
+                                                </p>
+                                              </div>
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
+                                              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                                Merma Real: <b className="text-slate-900 dark:text-white">{r.merma_real_litros ?? 0} L</b>
+                                              </span>
+                                              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                                Permisible: <b className="text-emerald-600 dark:text-emerald-400">{r.merma_tolerable_litros ?? 0} L</b>
+                                              </span>
+                                              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                                Excedente: <b className="text-rose-600 dark:text-rose-400">{r.merma_excedente_litros ?? 0} L</b>
+                                              </span>
+                                              <span className="px-2 py-0.5 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50">
+                                                Desc. Merma: <b>{formatCurrency(r.merma_descontar_bs || 0)}</b>
+                                              </span>
+                                            </div>
+                                          </div>
+
+                                          {/* Grid de campos editables */}
+                                          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2.5 text-[10px]">
+                                            {/* Comisión 1 */}
+                                            <div className="bg-slate-50 dark:bg-slate-950/50 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                              <label className="block text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
+                                                Comisión 1 ($us/m³)
+                                              </label>
+                                              <input
+                                                type="number"
+                                                step="0.01"
+                                                value={r.comision_usd_m3 ?? 1.0}
+                                                onChange={(e) => handleRecordFieldChange(originalIdx, "comision_usd_m3", e.target.value)}
+                                                className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                                              />
+                                              <span className="text-[8px] text-slate-400 mt-0.5 block">1 $us/m³</span>
+                                            </div>
+
+                                            {/* Comisión 7% */}
+                                            <div className="bg-slate-50 dark:bg-slate-950/50 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                              <label className="block text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
+                                                Comisión 7% (%)
+                                              </label>
+                                              <input
+                                                type="number"
+                                                step="0.01"
+                                                value={r.comision_pct_1 ?? 7.0}
+                                                onChange={(e) => handleRecordFieldChange(originalIdx, "comision_pct_1", e.target.value)}
+                                                className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                                              />
+                                              <span className="text-[8px] text-slate-400 mt-0.5 block">Retención 7%</span>
+                                            </div>
+
+                                            {/* Bol-Gart 7% */}
+                                            <div className="bg-slate-50 dark:bg-slate-950/50 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                              <label className="block text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
+                                                BOL-GART 7% (%)
+                                              </label>
+                                              <input
+                                                type="number"
+                                                step="0.01"
+                                                value={r.comision_ypfb_bolgart_pct ?? 7.0}
+                                                onChange={(e) => handleRecordFieldChange(originalIdx, "comision_ypfb_bolgart_pct", e.target.value)}
+                                                className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                                              />
+                                              <span className="text-[8px] text-slate-400 mt-0.5 block">Boleta Garantía 7%</span>
+                                            </div>
+
+                                            {/* Comisión 3% */}
+                                            <div className="bg-slate-50 dark:bg-slate-950/50 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                              <label className="block text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
+                                                Comisión 3% (%)
+                                              </label>
+                                              <input
+                                                type="number"
+                                                step="0.01"
+                                                value={r.comision_pct_2 ?? 3.0}
+                                                onChange={(e) => handleRecordFieldChange(originalIdx, "comision_pct_2", e.target.value)}
+                                                className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                                              />
+                                              <span className="text-[8px] text-slate-400 mt-0.5 block">Gestión 3%</span>
+                                            </div>
+
+                                            {/* Hojas de Ruta */}
+                                            <div className="bg-slate-50 dark:bg-slate-950/50 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                              <label className="block text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
+                                                Hojas de Ruta (Bs.)
+                                              </label>
+                                              <input
+                                                type="number"
+                                                step="0.01"
+                                                value={r.costo_hojas_de_ruta_bs ?? 0.0}
+                                                onChange={(e) => handleRecordFieldChange(originalIdx, "costo_hojas_de_ruta_bs", e.target.value)}
+                                                className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                                              />
+                                              <span className="text-[8px] text-slate-400 mt-0.5 block">Default 0 Bs</span>
+                                            </div>
+
+                                            {/* GPS / Precintos */}
+                                            <div className="bg-slate-50 dark:bg-slate-950/50 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                              <label className="block text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
+                                                GPS / Precintos (Bs.)
+                                              </label>
+                                              <input
+                                                type="number"
+                                                step="0.01"
+                                                value={r.costo_gps_bs ?? 0.0}
+                                                onChange={(e) => handleRecordFieldChange(originalIdx, "costo_gps_bs", e.target.value)}
+                                                className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                                              />
+                                              <span className="text-[8px] text-slate-400 mt-0.5 block">Default 0 Bs</span>
+                                            </div>
+
+                                            {/* Precio Merma + IVA (Bs/L) con 6 decimales */}
+                                            <div className="bg-amber-50/80 dark:bg-amber-950/40 p-2 rounded-lg border border-amber-300 dark:border-amber-700/60 col-span-1 sm:col-span-2">
+                                              <label className="block text-[9px] font-black text-amber-800 dark:text-amber-300 uppercase tracking-wider mb-1">
+                                                Precio Merma + IVA (Bs/L - 6 Decimales)
+                                              </label>
+                                              <input
+                                                type="number"
+                                                step="0.000001"
+                                                placeholder="7.450000"
+                                                value={r.precio_merma_litro_bs !== undefined ? r.precio_merma_litro_bs : ""}
+                                                onChange={(e) => handleRecordFieldChange(originalIdx, "precio_merma_litro_bs", e.target.value)}
+                                                className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-amber-400 dark:border-amber-600 rounded text-amber-700 dark:text-amber-300 font-mono font-black focus:outline-none focus:border-amber-500"
+                                              />
+                                              <span className="text-[8px] text-amber-700 dark:text-amber-400 mt-0.5 block">
+                                                Exactitud legal 6 dec. (Actual: {Number(r.precio_merma_litro_bs || 7.45).toFixed(6)} Bs/L)
+                                              </span>
+                                            </div>
+
+                                            {/* Merma Tolerable Litros */}
+                                            <div className="bg-slate-50 dark:bg-slate-950/50 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                              <label className="block text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
+                                                Merma Permisible (L)
+                                              </label>
+                                              <input
+                                                type="number"
+                                                step="0.1"
+                                                value={r.merma_tolerable_litros ?? 0.0}
+                                                onChange={(e) => handleRecordFieldChange(originalIdx, "merma_tolerable_litros", e.target.value)}
+                                                className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                                              />
+                                              <span className="text-[8px] text-slate-400 mt-0.5 block">Tolerancia en litros</span>
+                                            </div>
+
+                                            {/* Descuento por Merma Bs */}
+                                            <div className="bg-rose-50/50 dark:bg-rose-950/30 p-2 rounded-lg border border-rose-200 dark:border-rose-900/50">
+                                              <label className="block text-[9px] font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider mb-1">
+                                                Desc. Merma (Bs.)
+                                              </label>
+                                              <input
+                                                type="number"
+                                                step="0.01"
+                                                value={r.merma_descontar_bs ?? 0.0}
+                                                onChange={(e) => handleRecordFieldChange(originalIdx, "merma_descontar_bs", e.target.value)}
+                                                className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-700 rounded text-rose-600 dark:text-rose-400 font-mono font-bold focus:outline-none focus:border-rose-500"
+                                              />
+                                              <span className="text-[8px] text-rose-500 mt-0.5 block">Monto a descontar</span>
+                                            </div>
+
+                                            {/* Anticipos y Otros */}
+                                            <div className="bg-slate-50 dark:bg-slate-950/50 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                              <label className="block text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
+                                                Anticipos / Otros (%)
+                                              </label>
+                                              <input
+                                                type="number"
+                                                step="0.01"
+                                                value={r.anticipos_otros_pct ?? 0.0}
+                                                onChange={(e) => handleRecordFieldChange(originalIdx, "anticipos_otros_pct", e.target.value)}
+                                                className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                                              />
+                                              <span className="text-[8px] text-slate-400 mt-0.5 block">0% opcional</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
                               );
                             })
                           )}

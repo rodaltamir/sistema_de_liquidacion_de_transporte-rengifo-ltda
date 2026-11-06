@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useMemo, Fragment } from "react";
+import { Suspense, useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { useSearchParams, useParams } from "next/navigation";
 import { 
   Navigation, 
@@ -40,7 +40,11 @@ import {
   Hash,
   Layers,
   ArrowRight,
-  Calculator
+  Calculator,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  SlidersHorizontal
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch, getApiUrl } from "@/lib/api";
@@ -98,6 +102,21 @@ interface Viaje {
   descuentos_mermas?: ItemDescuento[];
   total_descuentos_adicionales_bs?: number;
   total_descuentos_mermas_bs?: number;
+  comision_usd_m3?: number | null;
+  tipo_cambio_bs?: number | null;
+  comision_pct_1?: number | null;
+  comision_ypfb_bolgart_pct?: number | null;
+  comision_pct_2?: number | null;
+  costo_hojas_de_ruta_bs?: number | null;
+  costo_gps_bs?: number | null;
+  anticipos_otros_pct?: number | null;
+  parametros_ypfb_json?: any;
+}
+
+export function isYpfbClient(clientName?: string | null): boolean {
+  if (!clientName) return false;
+  const clean = clientName.toUpperCase().replace(/[\.\s\-_]/g, "");
+  return clean.includes("YPFB");
 }
 
 export default function ViajesPage() {
@@ -150,6 +169,7 @@ function ViajesContent() {
   const [periodo, setPeriodo] = useState("");
   const [activeFilterLabel, setActiveFilterLabel] = useState("");
   const [dateFilterQuery, setDateFilterQuery] = useState("");
+  const [filterMode, setFilterMode] = useState<"mes" | "semestral" | "anual" | "personalizado" | "historico">("mes");
   const [periodosDisponibles, setPeriodosDisponibles] = useState<any[]>([]);
 
   // Filtro por Factura(s) correlativas o rango
@@ -168,6 +188,53 @@ function ViajesContent() {
   const [sortBy, setSortBy] = useState<"fecha" | "factura" | "placa" | "cliente" | "flete">("fecha");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+
+  // Estados para dropdowns interactivos de Tramo y Cliente
+  const [showTramoDropdown, setShowTramoDropdown] = useState(false);
+  const [showClienteDropdown, setShowClienteDropdown] = useState(false);
+  const tramoDropdownRef = useRef<HTMLDivElement>(null);
+  const clienteDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar dropdowns interactivos al hacer clic fuera
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (tramoDropdownRef.current && !tramoDropdownRef.current.contains(event.target as Node)) {
+        setShowTramoDropdown(false);
+      }
+      if (clienteDropdownRef.current && !clienteDropdownRef.current.contains(event.target as Node)) {
+        setShowClienteDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Sincronización en tiempo real vía StorageEvent para filtros compartidos (Liquidaciones <-> Viajes)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === `transporte_${schema}_filtro_compartido` && e.newValue) {
+        try {
+          const shared = JSON.parse(e.newValue);
+          if (shared.source !== "viajes") {
+            if (shared.periodo !== undefined) setPeriodo(shared.periodo);
+            if (shared.activeFilterLabel !== undefined) setActiveFilterLabel(shared.activeFilterLabel);
+            if (shared.dateFilterQuery !== undefined) setDateFilterQuery(shared.dateFilterQuery);
+            if (shared.filterMode !== undefined) setFilterMode(shared.filterMode);
+            if (shared.metodoFiltro !== undefined) setMetodoFiltro(shared.metodoFiltro);
+            if (shared.modoFactura !== undefined) setModoFactura(shared.modoFactura);
+            if (shared.facturaInput !== undefined) setFacturaInput(shared.facturaInput);
+            if (shared.facturaDesdeInput !== undefined) setFacturaDesdeInput(shared.facturaDesdeInput);
+            if (shared.facturaHastaInput !== undefined) setFacturaHastaInput(shared.facturaHastaInput);
+            if (shared.placa !== undefined) setPlacaFiltro(shared.placa);
+          }
+        } catch (err) {}
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, [schema]);
 
   // Paginación de alto rendimiento
   const [pageSize, setPageSize] = useState<number>(50);
@@ -208,6 +275,22 @@ function ViajesContent() {
     "YACUIBA - SANTA CRUZ",
     "PISIGA - ORURO"
   ]);
+
+  // Lista combinada y única de tramos (Catálogo + Viajes registrados)
+  const availableTramos = useMemo(() => {
+    const set = new Set<string>();
+    catalogTramos.forEach(t => { if (t && t.trim()) set.add(t.trim().toUpperCase()); });
+    viajes.forEach(v => { if (v.tramo && v.tramo.trim()) set.add(v.tramo.trim().toUpperCase()); });
+    return Array.from(set).sort();
+  }, [catalogTramos, viajes]);
+
+  // Lista combinada y única de clientes (Clientes registrados + Viajes)
+  const availableClientes = useMemo(() => {
+    const set = new Set<string>();
+    clientes.forEach(c => { if (c.nombre && c.nombre.trim()) set.add(c.nombre.trim().toUpperCase()); });
+    viajes.forEach(v => { if (v.cliente && v.cliente.trim()) set.add(v.cliente.trim().toUpperCase()); });
+    return Array.from(set).sort();
+  }, [clientes, viajes]);
 
   // Filtros especiales para el Módulo de Historial
   const [historialFacturadoFilter, setHistorialFacturadoFilter] = useState<"TODOS" | "FACTURADOS" | "SIN_FACTURAR">("TODOS");
@@ -252,11 +335,125 @@ function ViajesContent() {
     volumen_facturado: 33900 as number | string,
     tarifa_flete: 392.00 as number | string,
     tipo_tarifa: "BS_POR_M3",
-    precio_merma_litro_bs: 7.45 as number | string,
+    precio_merma_litro_bs: 7.450000 as number | string,
     observaciones: "",
     descuentos_adicionales: [] as ItemDescuento[],
-    descuentos_mermas: [] as ItemDescuento[]
+    descuentos_mermas: [] as ItemDescuento[],
+    comision_usd_m3: 1.00 as number | string,
+    tipo_cambio_bs: 6.96 as number | string,
+    comision_pct_1: 7.00 as number | string,
+    comision_ypfb_bolgart_pct: 7.00 as number | string,
+    comision_pct_2: 3.00 as number | string,
+    costo_hojas_de_ruta_bs: 0.00 as number | string,
+    costo_gps_bs: 0.00 as number | string,
+    anticipos_otros_pct: 0.00 as number | string
   });
+
+  // Estados para el Resumen de Deducciones y Pagos (Hoja 2) en Viajes
+  const [showAdjustDeductionsModal, setShowAdjustDeductionsModal] = useState(false);
+  const [showYpfbBreakdown, setShowYpfbBreakdown] = useState(false);
+  const [deductionsOverride, setDeductionsOverride] = useState<Record<string, number | null>>({});
+  const [adjustDeductionForm, setAdjustDeductionForm] = useState<Record<string, number | string>>({
+    desc_merma_bs: "",
+    desc_comision_usd_m3_bs: "",
+    desc_comision_7pct_bs: "",
+    desc_comision_ypfb_bolgart_7pct_bs: "",
+    desc_comision_3pct_bs: "",
+    desc_hojas_ruta_bs: "",
+    desc_gps_bs: "",
+    desc_anticipos_otros_bs: "",
+    desc_otros_ajustes_bs: ""
+  });
+
+  // Expansión de filas YPFB para visualización de parámetros y mermas en viajes
+  const [expandedYpfbRows, setExpandedYpfbRows] = useState<Set<number>>(new Set());
+
+  const toggleExpandYpfbRow = (viajeId: number) => {
+    setExpandedYpfbRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(viajeId)) {
+        next.delete(viajeId);
+      } else {
+        next.add(viajeId);
+      }
+      return next;
+    });
+  };
+
+  // Edición rápida e intuitiva de deducciones contractuales YPFB en la tabla inferior
+  const [inlineEditingId, setInlineEditingId] = useState<number | null>(null);
+  const [savingInlineContractual, setSavingInlineContractual] = useState(false);
+  const [inlineEditForm, setInlineEditForm] = useState({
+    merma_descontar_bs: "" as number | string,
+    precio_merma_litro_bs: "" as number | string,
+    comision_usd_m3: "" as number | string,
+    tipo_cambio_bs: "" as number | string,
+    comision_pct_1: "" as number | string,
+    comision_ypfb_bolgart_pct: "" as number | string,
+    comision_pct_2: "" as number | string,
+    costo_hojas_de_ruta_bs: "" as number | string,
+    costo_gps_bs: "" as number | string
+  });
+
+  const startInlineEdit = (v: Viaje) => {
+    setInlineEditingId(v.id);
+    setInlineEditForm({
+      merma_descontar_bs: v.merma_descontar_bs !== undefined && v.merma_descontar_bs !== null ? v.merma_descontar_bs : 0.0,
+      precio_merma_litro_bs: v.precio_merma_litro_bs !== undefined && v.precio_merma_litro_bs !== null ? v.precio_merma_litro_bs : 7.450000,
+      comision_usd_m3: v.comision_usd_m3 !== undefined && v.comision_usd_m3 !== null ? v.comision_usd_m3 : 1.0,
+      tipo_cambio_bs: v.tipo_cambio_bs !== undefined && v.tipo_cambio_bs !== null ? v.tipo_cambio_bs : 6.96,
+      comision_pct_1: v.comision_pct_1 !== undefined && v.comision_pct_1 !== null ? v.comision_pct_1 : 7.0,
+      comision_ypfb_bolgart_pct: v.comision_ypfb_bolgart_pct !== undefined && v.comision_ypfb_bolgart_pct !== null ? v.comision_ypfb_bolgart_pct : 7.0,
+      comision_pct_2: v.comision_pct_2 !== undefined && v.comision_pct_2 !== null ? v.comision_pct_2 : 3.0,
+      costo_hojas_de_ruta_bs: v.costo_hojas_de_ruta_bs !== undefined && v.costo_hojas_de_ruta_bs !== null ? v.costo_hojas_de_ruta_bs : 0.0,
+      costo_gps_bs: v.costo_gps_bs !== undefined && v.costo_gps_bs !== null ? v.costo_gps_bs : 0.0
+    });
+  };
+
+  const handleSaveInlineContractual = async (v: Viaje) => {
+    setSavingInlineContractual(true);
+    try {
+      const payload = {
+        ...v,
+        merma_descontar_bs: Number(inlineEditForm.merma_descontar_bs) || 0.0,
+        precio_merma_litro_bs: Number(inlineEditForm.precio_merma_litro_bs) || 7.450000,
+        comision_usd_m3: Number(inlineEditForm.comision_usd_m3) || 0.0,
+        tipo_cambio_bs: Number(inlineEditForm.tipo_cambio_bs) || 6.96,
+        comision_pct_1: Number(inlineEditForm.comision_pct_1) || 0.0,
+        comision_ypfb_bolgart_pct: Number(inlineEditForm.comision_ypfb_bolgart_pct) || 0.0,
+        comision_pct_2: Number(inlineEditForm.comision_pct_2) || 0.0,
+        costo_hojas_de_ruta_bs: Number(inlineEditForm.costo_hojas_de_ruta_bs) || 0.0,
+        costo_gps_bs: Number(inlineEditForm.costo_gps_bs) || 0.0
+      };
+
+      await apiFetch(`/tenants/${schema}/viajes/${v.id}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+
+      setInlineEditingId(null);
+      await loadViajes();
+      Swal.fire({
+        icon: "success",
+        title: "Deducciones Guardadas",
+        text: `Parámetros actualizados permanentemente para el viaje ${v.placa}`,
+        timer: 1500,
+        showConfirmButton: false,
+        background: "#0f172a",
+        color: "#f8fafc"
+      });
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Error al guardar",
+        text: err?.message || "No se pudo actualizar el viaje.",
+        background: "#0f172a",
+        color: "#f8fafc"
+      });
+    } finally {
+      setSavingInlineContractual(false);
+    }
+  };
 
   // Cálculo en vivo dentro del modal
   const [liveCalc, setLiveCalc] = useState({
@@ -344,6 +541,7 @@ function ViajesContent() {
       periodo,
       activeFilterLabel,
       dateFilterQuery,
+      filterMode,
       metodoFiltro,
       modoFactura,
       facturaInput,
@@ -358,12 +556,29 @@ function ViajesContent() {
       tablaModo,
       historialFacturadoFilter
     });
+
+    // Guardar en canal compartido bidireccional para sincronizar con Liquidaciones
+    saveState(`transporte_${schema}_filtro_compartido`, {
+      periodo,
+      activeFilterLabel,
+      dateFilterQuery,
+      filterMode,
+      metodoFiltro,
+      modoFactura,
+      facturaInput,
+      facturaDesdeInput,
+      facturaHastaInput,
+      placa: placaFiltro,
+      updatedAt: Date.now(),
+      source: "viajes"
+    });
   }, [
     isHydrated,
     schema,
     periodo,
     activeFilterLabel,
     dateFilterQuery,
+    filterMode,
     metodoFiltro,
     modoFactura,
     facturaInput,
@@ -417,15 +632,16 @@ function ViajesContent() {
       tol = 0.0;
     }
 
-    // Merma Tolerable en Litros = Volumen Origen * Tolerancia %
-    const mTol = Math.round((vOri * (tol / 100.0)) * 10) / 10;
+    const isYpfb = isYpfbClient(formData.cliente);
+    // Merma Tolerable en Litros = Volumen Origen * Tolerancia % (solo para cliente YPFB)
+    const mTol = isYpfb ? Math.round((vOri * (tol / 100.0)) * 10) / 10 : 0;
     
     // Total Merma Excedente = si la pérdida absoluta excede la tolerable
-    const mExc = Math.max(0, Math.round((Math.abs(mReal) - mTol) * 10) / 10);
+    const mExc = isYpfb ? Math.max(0, Math.round((Math.abs(mReal) - mTol) * 10) / 10) : 0;
     
-    // Descuento por Merma en Bs = Merma Excedente * precio_merma
-    const precioMerma = Number(formData.precio_merma_litro_bs) || 7.45;
-    const mDescBs = Math.round(mExc * precioMerma * 100) / 100;
+    // Descuento por Merma en Bs = Merma Excedente * precio_merma (6 decimales)
+    const precioMerma = Number(formData.precio_merma_litro_bs) || 7.450000;
+    const mDescBs = isYpfb ? Math.round(mExc * precioMerma * 100) / 100 : 0;
 
     // Volumen Facturado (Lt) y Operación Principal: (Vol. Facturado en Lt / 1000) × Tarifa (Bs.) = Total a Pagar
     let vFactLt = vRec;
@@ -468,6 +684,7 @@ function ViajesContent() {
     formData.producto,
     formData.tarifa_flete,
     formData.tipo_tarifa,
+    formData.cliente,
     formData.precio_merma_litro_bs,
     formData.descuentos_adicionales,
     formData.descuentos_mermas,
@@ -506,25 +723,33 @@ function ViajesContent() {
           setCatalogTramos(catData.tramos);
         }
       }
-      // Memoria Inteligente: restaurar filtros previos si existen
+      // Memoria Inteligente y Sincronización Compartida:
+      // Primero verificar si existe filtro compartido entre módulos (Liquidaciones <-> Viajes)
+      const shared = getSavedState<any>(`transporte_${schema}_filtro_compartido`, null);
       const saved = getSavedState<any>(`transporte_${schema}_viajes_memoria`, null);
-      if (saved) {
-        if (saved.periodo !== undefined) setPeriodo(saved.periodo);
-        if (saved.activeFilterLabel !== undefined) setActiveFilterLabel(saved.activeFilterLabel);
-        if (saved.dateFilterQuery !== undefined) setDateFilterQuery(saved.dateFilterQuery);
-        if (saved.metodoFiltro !== undefined) setMetodoFiltro(saved.metodoFiltro);
-        if (saved.modoFactura !== undefined) setModoFactura(saved.modoFactura);
-        if (saved.facturaInput !== undefined) setFacturaInput(saved.facturaInput);
-        if (saved.facturaDesdeInput !== undefined) setFacturaDesdeInput(saved.facturaDesdeInput);
-        if (saved.facturaHastaInput !== undefined) setFacturaHastaInput(saved.facturaHastaInput);
-        if (saved.placaFiltro !== undefined) setPlacaFiltro(saved.placaFiltro);
-        if (saved.productoFiltro !== undefined) setProductoFiltro(saved.productoFiltro);
-        if (saved.sortBy !== undefined) setSortBy(saved.sortBy);
-        if (saved.sortDir !== undefined) setSortDir(saved.sortDir);
-        if (saved.pageSize !== undefined) setPageSize(saved.pageSize);
-        if (saved.activeMainTab !== undefined) setActiveMainTab(saved.activeMainTab);
-        if (saved.tablaModo !== undefined) setTablaModo(saved.tablaModo);
-        if (saved.historialFacturadoFilter !== undefined) setHistorialFacturadoFilter(saved.historialFacturadoFilter);
+      const effectiveFilter = shared || saved;
+
+      if (effectiveFilter) {
+        if (effectiveFilter.periodo !== undefined) setPeriodo(effectiveFilter.periodo);
+        if (effectiveFilter.activeFilterLabel !== undefined) setActiveFilterLabel(effectiveFilter.activeFilterLabel);
+        if (effectiveFilter.dateFilterQuery !== undefined) setDateFilterQuery(effectiveFilter.dateFilterQuery);
+        if (effectiveFilter.filterMode !== undefined) setFilterMode(effectiveFilter.filterMode);
+        if (effectiveFilter.metodoFiltro !== undefined) setMetodoFiltro(effectiveFilter.metodoFiltro);
+        if (effectiveFilter.modoFactura !== undefined) setModoFactura(effectiveFilter.modoFactura);
+        if (effectiveFilter.facturaInput !== undefined) setFacturaInput(effectiveFilter.facturaInput);
+        if (effectiveFilter.facturaDesdeInput !== undefined) setFacturaDesdeInput(effectiveFilter.facturaDesdeInput);
+        if (effectiveFilter.facturaHastaInput !== undefined) setFacturaHastaInput(effectiveFilter.facturaHastaInput);
+        if (effectiveFilter.placa !== undefined) setPlacaFiltro(effectiveFilter.placa);
+        else if (effectiveFilter.placaFiltro !== undefined) setPlacaFiltro(effectiveFilter.placaFiltro);
+        if (saved) {
+          if (saved.productoFiltro !== undefined) setProductoFiltro(saved.productoFiltro);
+          if (saved.sortBy !== undefined) setSortBy(saved.sortBy);
+          if (saved.sortDir !== undefined) setSortDir(saved.sortDir);
+          if (saved.pageSize !== undefined) setPageSize(saved.pageSize);
+          if (saved.activeMainTab !== undefined) setActiveMainTab(saved.activeMainTab);
+          if (saved.tablaModo !== undefined) setTablaModo(saved.tablaModo);
+          if (saved.historialFacturadoFilter !== undefined) setHistorialFacturadoFilter(saved.historialFacturadoFilter);
+        }
       } else {
         if (Array.isArray(pData) && pData.length > 0 && !periodo) {
           setPeriodo(pData[0].periodo_mes);
@@ -534,7 +759,8 @@ function ViajesContent() {
       // Restaurar selección de facturas con derecho a crédito fiscal
       const savedConDerecho = getSavedState<string[]>(`transporte_${schema}_viajes_facturas_con_derecho`, []);
       if (Array.isArray(savedConDerecho)) {
-        setFacturasConDerecho(savedConDerecho);
+        // Asegurar independencia: cargar solo identificadores de fila/grupo
+        setFacturasConDerecho(savedConDerecho.filter((k) => typeof k === "string" && k.includes("___")));
       }
 
       setIsHydrated(true);
@@ -543,15 +769,14 @@ function ViajesContent() {
     }
   };
 
-  const toggleFacturaConDerecho = (facturaNum: string, checked: boolean) => {
-    if (!facturaNum || facturaNum === "S/F") return;
-    const cleanNum = facturaNum.trim().toUpperCase();
+  const toggleFacturaConDerecho = (groupKey: string, checked: boolean) => {
+    if (!groupKey) return;
     setFacturasConDerecho((prev) => {
       let next: string[];
       if (checked) {
-        next = prev.includes(cleanNum) ? prev : [...prev, cleanNum];
+        next = prev.includes(groupKey) ? prev : [...prev, groupKey];
       } else {
-        next = prev.filter((f) => f !== cleanNum);
+        next = prev.filter((k) => k !== groupKey);
       }
       if (schema) {
         saveState(`transporte_${schema}_viajes_facturas_con_derecho`, next);
@@ -889,6 +1114,7 @@ function ViajesContent() {
   };
 
   const handleDateFilterChange = (filter: DateFilterChangeEvent) => {
+    setFilterMode(filter.mode);
     setActiveFilterLabel(filter.label);
     let q = "";
     if (filter.mode === "mes" && filter.periodo_mes) {
@@ -986,10 +1212,18 @@ function ViajesContent() {
       volumen_facturado: vRec,
       tarifa_flete: 392.00,
       tipo_tarifa: "BS_POR_M3",
-      precio_merma_litro_bs: 7.45,
+      precio_merma_litro_bs: 7.450000,
       observaciones: "",
       descuentos_adicionales: [],
-      descuentos_mermas: []
+      descuentos_mermas: [],
+      comision_usd_m3: 1.00,
+      tipo_cambio_bs: 6.96,
+      comision_pct_1: 7.00,
+      comision_ypfb_bolgart_pct: 7.00,
+      comision_pct_2: 3.00,
+      costo_hojas_de_ruta_bs: 0.00,
+      costo_gps_bs: 0.00,
+      anticipos_otros_pct: 0.00
     });
     setShowModal(true);
   };
@@ -1038,10 +1272,18 @@ function ViajesContent() {
       volumen_facturado: volFact,
       tarifa_flete: v.tarifa_flete,
       tipo_tarifa: v.tipo_tarifa,
-      precio_merma_litro_bs: v.precio_merma_litro_bs || 7.45,
+      precio_merma_litro_bs: v.precio_merma_litro_bs !== undefined && v.precio_merma_litro_bs !== null ? v.precio_merma_litro_bs : 7.450000,
       observaciones: v.observaciones || "",
       descuentos_adicionales: parsedAdic,
-      descuentos_mermas: parsedMerm
+      descuentos_mermas: parsedMerm,
+      comision_usd_m3: v.comision_usd_m3 !== undefined && v.comision_usd_m3 !== null ? v.comision_usd_m3 : 1.00,
+      tipo_cambio_bs: v.tipo_cambio_bs !== undefined && v.tipo_cambio_bs !== null ? v.tipo_cambio_bs : 6.96,
+      comision_pct_1: v.comision_pct_1 !== undefined && v.comision_pct_1 !== null ? v.comision_pct_1 : 7.00,
+      comision_ypfb_bolgart_pct: v.comision_ypfb_bolgart_pct !== undefined && v.comision_ypfb_bolgart_pct !== null ? v.comision_ypfb_bolgart_pct : 7.00,
+      comision_pct_2: v.comision_pct_2 !== undefined && v.comision_pct_2 !== null ? v.comision_pct_2 : 3.00,
+      costo_hojas_de_ruta_bs: v.costo_hojas_de_ruta_bs !== undefined && v.costo_hojas_de_ruta_bs !== null ? v.costo_hojas_de_ruta_bs : 0.00,
+      costo_gps_bs: v.costo_gps_bs !== undefined && v.costo_gps_bs !== null ? v.costo_gps_bs : 0.00,
+      anticipos_otros_pct: v.anticipos_otros_pct !== undefined && v.anticipos_otros_pct !== null ? v.anticipos_otros_pct : 0.00
     });
     setShowModal(true);
   };
@@ -1091,10 +1333,18 @@ function ViajesContent() {
       volumen_facturado: volFact,
       tarifa_flete: v.tarifa_flete,
       tipo_tarifa: v.tipo_tarifa,
-      precio_merma_litro_bs: v.precio_merma_litro_bs || 7.45,
+      precio_merma_litro_bs: v.precio_merma_litro_bs !== undefined && v.precio_merma_litro_bs !== null ? v.precio_merma_litro_bs : 7.450000,
       observaciones: v.observaciones || "",
       descuentos_adicionales: parsedAdic,
-      descuentos_mermas: parsedMerm
+      descuentos_mermas: parsedMerm,
+      comision_usd_m3: v.comision_usd_m3 !== undefined && v.comision_usd_m3 !== null ? v.comision_usd_m3 : 1.00,
+      tipo_cambio_bs: v.tipo_cambio_bs !== undefined && v.tipo_cambio_bs !== null ? v.tipo_cambio_bs : 6.96,
+      comision_pct_1: v.comision_pct_1 !== undefined && v.comision_pct_1 !== null ? v.comision_pct_1 : 7.00,
+      comision_ypfb_bolgart_pct: v.comision_ypfb_bolgart_pct !== undefined && v.comision_ypfb_bolgart_pct !== null ? v.comision_ypfb_bolgart_pct : 7.00,
+      comision_pct_2: v.comision_pct_2 !== undefined && v.comision_pct_2 !== null ? v.comision_pct_2 : 3.00,
+      costo_hojas_de_ruta_bs: v.costo_hojas_de_ruta_bs !== undefined && v.costo_hojas_de_ruta_bs !== null ? v.costo_hojas_de_ruta_bs : 0.00,
+      costo_gps_bs: v.costo_gps_bs !== undefined && v.costo_gps_bs !== null ? v.costo_gps_bs : 0.00,
+      anticipos_otros_pct: v.anticipos_otros_pct !== undefined && v.anticipos_otros_pct !== null ? v.anticipos_otros_pct : 0.00
     });
     setShowModal(true);
   };
@@ -1232,10 +1482,18 @@ function ViajesContent() {
         volumen_facturado: vFactNum,
         tarifa_flete: Number(formData.tarifa_flete) || 0,
         tipo_tarifa: formData.tipo_tarifa,
-        precio_merma_litro_bs: Number(formData.precio_merma_litro_bs) || 7.45,
+        precio_merma_litro_bs: Number(formData.precio_merma_litro_bs) || 7.450000,
         descuentos_adicionales: formData.descuentos_adicionales,
         descuentos_mermas: formData.descuentos_mermas,
-        observaciones: formData.observaciones.trim() || null
+        observaciones: formData.observaciones.trim() || null,
+        comision_usd_m3: isYpfbClient(formData.cliente) ? (formData.comision_usd_m3 !== "" ? Number(formData.comision_usd_m3) : 1.0) : 0.0,
+        tipo_cambio_bs: isYpfbClient(formData.cliente) ? (formData.tipo_cambio_bs !== "" ? Number(formData.tipo_cambio_bs) : 6.96) : 6.96,
+        comision_pct_1: isYpfbClient(formData.cliente) ? (formData.comision_pct_1 !== "" ? Number(formData.comision_pct_1) : 7.0) : 0.0,
+        comision_ypfb_bolgart_pct: isYpfbClient(formData.cliente) ? (formData.comision_ypfb_bolgart_pct !== "" ? Number(formData.comision_ypfb_bolgart_pct) : 7.0) : 0.0,
+        comision_pct_2: isYpfbClient(formData.cliente) ? (formData.comision_pct_2 !== "" ? Number(formData.comision_pct_2) : 3.0) : 0.0,
+        costo_hojas_de_ruta_bs: isYpfbClient(formData.cliente) ? (formData.costo_hojas_de_ruta_bs !== "" ? Number(formData.costo_hojas_de_ruta_bs) : 0.0) : 0.0,
+        costo_gps_bs: isYpfbClient(formData.cliente) ? (formData.costo_gps_bs !== "" ? Number(formData.costo_gps_bs) : 0.0) : 0.0,
+        anticipos_otros_pct: isYpfbClient(formData.cliente) ? (formData.anticipos_otros_pct !== "" ? Number(formData.anticipos_otros_pct) : 0.0) : 0.0
       };
 
       if (editingViaje) {
@@ -1673,14 +1931,14 @@ function ViajesContent() {
 
   // Agrupación y Ordenamiento de Planilla optimizada con useMemo
   const planillaGroups = useMemo(() => {
-    const groupsMap: { [k: string]: { tramo: string; producto: string; factura: string; items: Viaje[] } } = {};
+    const groupsMap: { [k: string]: { key: string; tramo: string; producto: string; factura: string; items: Viaje[] } } = {};
     for (const v of filtered) {
-      const t = (v.tramo || "SIN TRAMO").trim().toUpperCase();
       const p = (v.producto || "SIN PRODUCTO").trim().toUpperCase();
       const f = (v.nro_factura || "").trim().toUpperCase() || "S/F";
-      const key = `${t}___${p}___${f}`;
+      const t = (v.tramo || "VARIOS TRAMOS").trim().toUpperCase();
+      const key = `${f}___${p}`;
       if (!groupsMap[key]) {
-        groupsMap[key] = { tramo: t, producto: p, factura: f, items: [] };
+        groupsMap[key] = { key, tramo: t, producto: p, factura: f, items: [] };
       }
       groupsMap[key].items.push(v);
     }
@@ -1688,8 +1946,8 @@ function ViajesContent() {
     const groupsList = Object.values(groupsMap).map((g) => {
       g.items.sort((a, b) => {
         if (sortBy === "fecha") {
-          const dA = a.fecha_carga || "";
-          const dB = b.fecha_carga || "";
+          const dA = a.fecha_factura || a.fecha_carga || "";
+          const dB = b.fecha_factura || b.fecha_carga || "";
           const cmp = dA.localeCompare(dB);
           return sortDir === "asc" ? cmp : -cmp;
         } else if (sortBy === "placa") {
@@ -1699,7 +1957,9 @@ function ViajesContent() {
           const cmp = (a.cliente || "").localeCompare(b.cliente || "");
           return sortDir === "asc" ? cmp : -cmp;
         }
-        return (a.fecha_carga || "").localeCompare(b.fecha_carga || "");
+        const dA = a.fecha_factura || a.fecha_carga || "";
+        const dB = b.fecha_factura || b.fecha_carga || "";
+        return dA.localeCompare(dB);
       });
       return g;
     });
@@ -1709,10 +1969,18 @@ function ViajesContent() {
         const cmp = a.factura.localeCompare(b.factura, undefined, { numeric: true, sensitivity: "base" });
         return sortDir === "asc" ? cmp : -cmp;
       }
-      const dateA = a.items[0]?.fecha_carga || "";
-      const dateB = b.items[0]?.fecha_carga || "";
-      const cmp = dateA.localeCompare(dateB);
-      return sortDir === "asc" ? cmp : -cmp;
+      // Priorizar cronológicamente por FECHA DE FACTURA ascendente (ej. enero, febrero, etc.)
+      const dateA = a.items.find((x) => x.fecha_factura)?.fecha_factura || a.items[0]?.fecha_carga || "";
+      const dateB = b.items.find((x) => x.fecha_factura)?.fecha_factura || b.items[0]?.fecha_carga || "";
+      if (dateA && dateB && dateA !== dateB) {
+        const cmp = dateA.localeCompare(dateB);
+        return sortDir === "asc" ? cmp : -cmp;
+      }
+      if (dateA && !dateB) return sortDir === "asc" ? -1 : 1;
+      if (!dateA && dateB) return sortDir === "asc" ? 1 : -1;
+      const fA = a.factura === "S/F" ? "ZZZZZ" : a.factura;
+      const fB = b.factura === "S/F" ? "ZZZZZ" : b.factura;
+      return fA.localeCompare(fB, undefined, { numeric: true, sensitivity: "base" });
     });
 
     return groupsList;
@@ -1788,40 +2056,41 @@ function ViajesContent() {
 
   // Detalle y conciliación de Facturas Con Derecho a Crédito Fiscal (IVA 13%)
   const facturasConDerechoDetalle = useMemo(() => {
-    const map: { [fac: string]: { factura: string; fechas: string[]; flete: number; debito: number; neto: number; itemsCount: number; producto: string } } = {};
+    const list: Array<{
+      key: string;
+      factura: string;
+      tramo: string;
+      fechas: string[];
+      flete: number;
+      debito: number;
+      neto: number;
+      itemsCount: number;
+      producto: string;
+    }> = [];
+
     for (const group of planillaGroups) {
+      const groupKey = group.key || `${group.tramo}___${group.producto}___${group.factura}`;
       const f = (group.factura || "").trim().toUpperCase();
-      if (f && f !== "S/F" && facturasConDerecho.includes(f)) {
+      if (f && f !== "S/F" && facturasConDerecho.includes(groupKey)) {
         const fechas = Array.from(new Set(group.items.map(x => x.fecha_factura).filter(Boolean))) as string[];
         const fleteGrp = group.items.reduce((acc, x) => acc + (Number(x.flete_total_bs) || 0), 0);
-        if (!map[f]) {
-          map[f] = {
-            factura: f,
-            fechas: [...fechas],
-            flete: 0,
-            debito: 0,
-            neto: 0,
-            itemsCount: 0,
-            producto: group.producto
-          };
-        }
-        map[f].flete += fleteGrp;
-        map[f].itemsCount += group.items.length;
-        for (const fe of fechas) {
-          if (!map[f].fechas.includes(fe)) map[f].fechas.push(fe);
-        }
+        const debito = Math.round(fleteGrp * 0.13 * 100) / 100;
+        const neto = fleteGrp - debito;
+        list.push({
+          key: groupKey,
+          factura: f,
+          tramo: group.tramo,
+          fechas,
+          flete: fleteGrp,
+          debito,
+          neto,
+          itemsCount: group.items.length,
+          producto: group.producto
+        });
       }
     }
 
-    return Object.values(map).map((item) => {
-      const debito = Math.round(item.flete * 0.13 * 100) / 100;
-      const neto = item.flete - debito;
-      return {
-        ...item,
-        debito,
-        neto
-      };
-    });
+    return list;
   }, [planillaGroups, facturasConDerecho]);
 
   const fiscalStats = useMemo(() => {
@@ -1852,6 +2121,195 @@ function ViajesContent() {
     }
     return new Date().getFullYear().toString();
   }, [activeFilterLabel, periodo, filtered]);
+
+  // Deducciones YPFB calculadas para los viajes filtrados (Hoja 2)
+  const deduccionesResumen = useMemo(() => {
+    const ypfbViajes = filtered.filter(v => isYpfbClient(v.cliente));
+    
+    // Flete total: flete de todos los viajes filtrados
+    const fleteTotalBruto = filtered.reduce((acc, v) => acc + (Number(v.flete_total_bs) || 0), 0);
+    
+    // Cálculos individuales sobre viajes YPFB
+    let calcMerma = 0;
+    let calcComisionUsd = 0;
+    let calcComision7 = 0;
+    let calcBolGart7 = 0;
+    let calcComision3 = 0;
+    let calcAnticipos = 0;
+    let maxHojasRuta = 0;
+    let maxGps = 0;
+
+    for (const v of ypfbViajes) {
+      const flete = Number(v.flete_total_bs) || 0;
+      const volLitros = v.volumen_facturado !== null && v.volumen_facturado !== undefined && Number(v.volumen_facturado) > 0
+        ? Number(v.volumen_facturado)
+        : (Number(v.volumen_recepcionado_litros) || 0);
+      const volM3 = volLitros / 1000.0;
+
+      calcMerma += Number(v.merma_descontar_bs) || 0;
+      
+      const comUsd = v.comision_usd_m3 !== undefined && v.comision_usd_m3 !== null ? Number(v.comision_usd_m3) : 1.0;
+      calcComisionUsd += volM3 * comUsd * 6.96;
+
+      const p1 = v.comision_pct_1 !== undefined && v.comision_pct_1 !== null ? Number(v.comision_pct_1) : 7.0;
+      calcComision7 += flete * (p1 / 100.0);
+
+      const pBg = v.comision_ypfb_bolgart_pct !== undefined && v.comision_ypfb_bolgart_pct !== null ? Number(v.comision_ypfb_bolgart_pct) : 7.0;
+      calcBolGart7 += flete * (pBg / 100.0);
+
+      const p2 = v.comision_pct_2 !== undefined && v.comision_pct_2 !== null ? Number(v.comision_pct_2) : 3.0;
+      calcComision3 += flete * (p2 / 100.0);
+
+      const pAnt = v.anticipos_otros_pct !== undefined && v.anticipos_otros_pct !== null ? Number(v.anticipos_otros_pct) : 0.0;
+      calcAnticipos += flete * (pAnt / 100.0);
+
+      const hr = v.costo_hojas_de_ruta_bs !== undefined && v.costo_hojas_de_ruta_bs !== null ? Number(v.costo_hojas_de_ruta_bs) : 0.0;
+      if (hr > maxHojasRuta) maxHojasRuta = hr;
+
+      const gps = v.costo_gps_bs !== undefined && v.costo_gps_bs !== null ? Number(v.costo_gps_bs) : 0.0;
+      if (gps > maxGps) maxGps = gps;
+    }
+
+    if (ypfbViajes.length === 0) {
+      maxHojasRuta = 0;
+      maxGps = 0;
+    }
+
+    // Aplicar overrides si existen
+    const descMerma = deductionsOverride.desc_merma_bs !== undefined && deductionsOverride.desc_merma_bs !== null
+      ? Number(deductionsOverride.desc_merma_bs)
+      : Math.round(calcMerma * 100) / 100;
+
+    const descComisionUsd = deductionsOverride.desc_comision_usd_m3_bs !== undefined && deductionsOverride.desc_comision_usd_m3_bs !== null
+      ? Number(deductionsOverride.desc_comision_usd_m3_bs)
+      : Math.round(calcComisionUsd * 100) / 100;
+
+    const descComision7 = deductionsOverride.desc_comision_7pct_bs !== undefined && deductionsOverride.desc_comision_7pct_bs !== null
+      ? Number(deductionsOverride.desc_comision_7pct_bs)
+      : Math.round(calcComision7 * 100) / 100;
+
+    const descBolGart7 = deductionsOverride.desc_comision_ypfb_bolgart_7pct_bs !== undefined && deductionsOverride.desc_comision_ypfb_bolgart_7pct_bs !== null
+      ? Number(deductionsOverride.desc_comision_ypfb_bolgart_7pct_bs)
+      : Math.round(calcBolGart7 * 100) / 100;
+
+    const descComision3 = deductionsOverride.desc_comision_3pct_bs !== undefined && deductionsOverride.desc_comision_3pct_bs !== null
+      ? Number(deductionsOverride.desc_comision_3pct_bs)
+      : Math.round(calcComision3 * 100) / 100;
+
+    const descHojasRuta = deductionsOverride.desc_hojas_ruta_bs !== undefined && deductionsOverride.desc_hojas_ruta_bs !== null
+      ? Number(deductionsOverride.desc_hojas_ruta_bs)
+      : Math.round(maxHojasRuta * 100) / 100;
+
+    const descGps = deductionsOverride.desc_gps_bs !== undefined && deductionsOverride.desc_gps_bs !== null
+      ? Number(deductionsOverride.desc_gps_bs)
+      : Math.round(maxGps * 100) / 100;
+
+    const descAnticipos = deductionsOverride.desc_anticipos_otros_bs !== undefined && deductionsOverride.desc_anticipos_otros_bs !== null
+      ? Number(deductionsOverride.desc_anticipos_otros_bs)
+      : Math.round(calcAnticipos * 100) / 100;
+
+    const descOtros = deductionsOverride.desc_otros_ajustes_bs !== undefined && deductionsOverride.desc_otros_ajustes_bs !== null
+      ? Number(deductionsOverride.desc_otros_ajustes_bs)
+      : 0;
+
+    const totalDescuento = Math.round((descMerma + descComisionUsd + descComision7 + descBolGart7 + descComision3 + descHojasRuta + descGps + descAnticipos + descOtros) * 100) / 100;
+    const liquidoPagable = Math.max(0, Math.round((fleteTotalBruto - totalDescuento) * 100) / 100);
+
+    const hasOverrides = Object.values(deductionsOverride).some(v => v !== undefined && v !== null);
+
+    return {
+      ypfbCount: ypfbViajes.length,
+      ypfbViajes,
+      fleteTotalBruto,
+      descMerma,
+      descComisionUsd,
+      descComision7,
+      descBolGart7,
+      descComision3,
+      descHojasRuta,
+      descGps,
+      descAnticipos,
+      descOtros,
+      totalDescuento,
+      liquidoPagable,
+      hasOverrides
+    };
+  }, [filtered, deductionsOverride]);
+
+  const openAdjustDeductionsModal = () => {
+    setAdjustDeductionForm({
+      desc_merma_bs: deductionsResumen.descMerma,
+      desc_comision_usd_m3_bs: deductionsResumen.descComisionUsd,
+      desc_comision_7pct_bs: deductionsResumen.descComision7,
+      desc_comision_ypfb_bolgart_7pct_bs: deductionsResumen.descBolGart7,
+      desc_comision_3pct_bs: deductionsResumen.descComision3,
+      desc_hojas_ruta_bs: deductionsResumen.descHojasRuta,
+      desc_gps_bs: deductionsResumen.descGps,
+      desc_anticipos_otros_bs: deductionsResumen.descAnticipos,
+      desc_otros_ajustes_bs: deductionsResumen.descOtros
+    });
+    setShowAdjustDeductionsModal(true);
+  };
+
+  const handleSaveDeductionsAdjustments = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const newOverrides: Record<string, number | null> = {
+      desc_merma_bs: adjustDeductionForm.desc_merma_bs !== "" ? Number(adjustDeductionForm.desc_merma_bs) : null,
+      desc_comision_usd_m3_bs: adjustDeductionForm.desc_comision_usd_m3_bs !== "" ? Number(adjustDeductionForm.desc_comision_usd_m3_bs) : null,
+      desc_comision_7pct_bs: adjustDeductionForm.desc_comision_7pct_bs !== "" ? Number(adjustDeductionForm.desc_comision_7pct_bs) : null,
+      desc_comision_ypfb_bolgart_7pct_bs: adjustDeductionForm.desc_comision_ypfb_bolgart_7pct_bs !== "" ? Number(adjustDeductionForm.desc_comision_ypfb_bolgart_7pct_bs) : null,
+      desc_comision_3pct_bs: adjustDeductionForm.desc_comision_3pct_bs !== "" ? Number(adjustDeductionForm.desc_comision_3pct_bs) : null,
+      desc_hojas_ruta_bs: adjustDeductionForm.desc_hojas_ruta_bs !== "" ? Number(adjustDeductionForm.desc_hojas_ruta_bs) : null,
+      desc_gps_bs: adjustDeductionForm.desc_gps_bs !== "" ? Number(adjustDeductionForm.desc_gps_bs) : null,
+      desc_anticipos_otros_bs: adjustDeductionForm.desc_anticipos_otros_bs !== "" ? Number(adjustDeductionForm.desc_anticipos_otros_bs) : null,
+      desc_otros_ajustes_bs: adjustDeductionForm.desc_otros_ajustes_bs !== "" ? Number(adjustDeductionForm.desc_otros_ajustes_bs) : null
+    };
+    setDeductionsOverride(newOverrides);
+    setShowAdjustDeductionsModal(false);
+
+    // Persistir en backend para los viajes YPFB si se actualizaron deducciones
+    try {
+      if (deduccionesResumen.ypfbViajes.length > 0) {
+        const updatePromises = deduccionesResumen.ypfbViajes.map(v => {
+          const patch: any = { ...v };
+          if (newOverrides.desc_hojas_ruta_bs !== null) patch.costo_hojas_de_ruta_bs = newOverrides.desc_hojas_ruta_bs;
+          if (newOverrides.desc_gps_bs !== null) patch.costo_gps_bs = newOverrides.desc_gps_bs;
+          return apiFetch(`/tenants/${schema}/viajes/${v.id}`, {
+            method: "PUT",
+            body: JSON.stringify(patch)
+          });
+        });
+        await Promise.all(updatePromises);
+        await loadViajes();
+      }
+    } catch (err) {
+      console.warn("No se pudieron persistir todas las deducciones en viajes:", err);
+    }
+
+    Swal.fire({
+      icon: "success",
+      title: "Deducciones Guardadas y Actualizadas",
+      text: "Los descuentos y el líquido pagable han sido guardados y recalculados correctamente.",
+      timer: 1600,
+      showConfirmButton: false,
+      background: "#0f172a",
+      color: "#f8fafc"
+    });
+  };
+
+  const handleResetDeductionsAdjustments = () => {
+    setDeductionsOverride({});
+    setShowAdjustDeductionsModal(false);
+    Swal.fire({
+      icon: "info",
+      title: "Valores Restablecidos",
+      text: "Se restauraron los cálculos matemáticos originales basados en los viajes YPFB.",
+      timer: 1500,
+      showConfirmButton: false,
+      background: "#0f172a",
+      color: "#f8fafc"
+    });
+  };
 
   // Métricas de Historial
   const histTotalViajes = viajes.length;
@@ -2082,6 +2540,7 @@ function ViajesContent() {
       {metodoFiltro === "periodo" ? (
         <DatePeriodFilter
           currentPeriodoMes={periodo}
+          initialMode={filterMode}
           periodosDisponibles={periodosDisponibles}
           onChange={handleDateFilterChange}
         />
@@ -2511,13 +2970,32 @@ function ViajesContent() {
             </div>
           )}
 
-          {/* Filtro Dinámico de Productos de la Empresa */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold overflow-x-auto max-w-full">
-            {["TODOS", ...catalogProductos].map((p) => (
+          {/* Filtro Dinámico de Productos de la Empresa (Responsivo, sin scroll horizontal) */}
+          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs">
+            <Fuel className="w-3.5 h-3.5 text-amber-500" />
+            <select
+              value={productoFiltro}
+              onChange={(e) => setProductoFiltro(e.target.value)}
+              className="bg-transparent text-slate-900 dark:text-white font-bold focus:outline-none cursor-pointer text-xs max-w-[180px] sm:max-w-[220px] truncate"
+              title="Filtrar por Producto Transportado"
+            >
+              <option value="TODOS" className="bg-white dark:bg-slate-900">Todos los Productos</option>
+              {catalogProductos.map((p) => (
+                <option key={p} value={p} className="bg-white dark:bg-slate-900">
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Chips rápidos responsivos con envoltura (wrap) para evitar desborde */}
+          <div className="hidden lg:flex flex-wrap items-center bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold gap-0.5 max-w-md">
+            {["TODOS", ...catalogProductos.slice(0, 4)].map((p) => (
               <button
                 key={p}
+                type="button"
                 onClick={() => setProductoFiltro(p)}
-                className={`px-2.5 py-1 rounded-md transition text-[11px] whitespace-nowrap ${
+                className={`px-2 py-0.5 rounded-md transition text-[11px] whitespace-nowrap ${
                   productoFiltro === p
                     ? "bg-amber-500 text-slate-950 font-bold shadow-xs"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
@@ -2659,33 +3137,9 @@ function ViajesContent() {
                 </button>
               </div>
             )}
-            <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setTablaModo("compacta")}
-                className={`px-2.5 py-1 rounded-md transition text-[11px] flex items-center gap-1.5 ${
-                  tablaModo === "compacta"
-                    ? "bg-amber-500 text-slate-950 font-bold shadow-xs"
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                }`}
-                title="Vista adaptada a pantalla completa sin desplazamiento horizontal"
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span>Ajustada (Sin Scroll)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setTablaModo("extendida")}
-                className={`px-2.5 py-1 rounded-md transition text-[11px] flex items-center gap-1.5 ${
-                  tablaModo === "extendida"
-                    ? "bg-amber-500 text-slate-950 font-bold shadow-xs"
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                }`}
-                title="Vista extendida tradicional con todas las 20 columnas separadas"
-              >
-                <Table className="w-3.5 h-3.5" />
-                <span>Extendida (20 Cols)</span>
-              </button>
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs font-bold">
+              <Table className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>Planilla Oficial Unificada (14 Cols)</span>
             </div>
           </div>
         )}
@@ -2763,773 +3217,828 @@ function ViajesContent() {
           )
         ) : (
           <div className="bg-white dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm dark:shadow-xl overflow-hidden">
-            {tablaModo === "compacta" ? (
-              /* ============================================================== */
-              /* TABLA MODO COMPACTO: 100% AJUSTADA A PANTALLA SIN SCROLL HORIZONTAL */
-              /* ============================================================== */
-              <div className="w-full">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-black uppercase text-[10px]">
-                      <th className="py-3 px-2 text-center w-9">Nº</th>
-                      <th className="py-3 px-2 text-left">UNIDAD / MIC</th>
-                      <th className="py-3 px-2 text-center">FECHAS</th>
-                      <th className="py-3 px-2.5 text-left">RUTA & CLIENTE</th>
-                      <th className="py-3 px-2 text-center">PRODUCTO</th>
-                      <th className="py-3 px-2 text-center">FACTURA</th>
-                      <th className="py-3 px-2 text-right">VOLUMEN FACT.</th>
-                      <th className="py-3 px-2 text-right">MERMAS YPFB</th>
-                      <th className="py-3 px-2 text-right">TOTAL FLETE</th>
-                      <th className="py-3 px-1.5 text-center w-20">ACC.</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                    {(() => {
-                      let globalIdx = startGlobalIdx;
+            {/* TABLA OFICIAL UNIFICADA: 14 COLUMNAS ESTANDARIZADAS CON LIQUIDACIONES */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-black uppercase text-[10px]">
+                    <th className="py-2.5 px-1 text-center w-9">Nº</th>
+                    <th className="py-2.5 px-1.5 text-center whitespace-nowrap">FECHA DE CARGA</th>
+                    <th className="py-2.5 px-1.5 text-center whitespace-nowrap">FECHA DE DESCARGA</th>
+                    <th className="py-2.5 px-1.5 text-center whitespace-nowrap">MCI/DTA (MIC)</th>
+                    <th className="py-2.5 px-1.5 text-center">PLACA</th>
+                    <th className="py-2.5 px-2 text-left">TRAMO</th>
+                    <th className="py-2.5 px-1.5 text-center">CLIENTE</th>
+                    <th className="py-2.5 px-1.5 text-center">PRODUCTO</th>
+                    <th className="py-2.5 px-1.5 text-center whitespace-nowrap">N° FACTURA</th>
+                    <th className="py-2.5 px-1.5 text-center whitespace-nowrap">FECHA FACTURA</th>
+                    <th className="py-2.5 px-2 text-right whitespace-nowrap">VOLUMEN FACTURADO</th>
+                    <th className="py-2.5 px-1.5 text-right whitespace-nowrap">TARIFA BS.</th>
+                    <th className="py-2.5 px-2 text-right whitespace-nowrap">TOTAL FLETE BS.</th>
+                    <th className="py-2.5 px-1.5 text-center w-20">ACCIONES</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                  {(() => {
+                    let globalIdx = startGlobalIdx;
 
-                      return paginatedGroups.map((group, gIdx) => {
-                        const grpVolOrig = group.items.reduce((acc, x) => acc + (Number(x.volumen_origen_litros) || 0), 0);
-                        const grpVolRec = group.items.reduce((acc, x) => acc + (Number(x.volumen_recepcionado_litros) || 0), 0);
-                        const grpMermaReal = group.items.reduce((acc, x) => acc + (Number(x.merma_real_litros) || 0), 0);
-                        const grpMermaExc = group.items.reduce((acc, x) => acc + (Number(x.merma_excedente_litros) || 0), 0);
-                        const grpMDesc = group.items.reduce((acc, x) => acc + (Number(x.merma_descontar_bs) || 0), 0);
-                        const grpDescAdic = group.items.reduce((acc, x) => acc + (Number(x.total_descuentos_adicionales_bs) || 0) + (Number(x.total_descuentos_mermas_bs) || 0), 0);
-                        const grpTotDesc = grpMDesc + grpDescAdic;
-                        const grpVolFact = group.items.reduce((acc, x) => acc + getVolFactLitros(x), 0);
-                        const grpFlete = group.items.reduce((acc, x) => acc + (Number(x.flete_total_bs) || 0), 0);
-                        const grpLiquido = grpFlete - grpTotDesc;
-                        const grpTarifa = group.items[0]?.tarifa_flete || 0;
+                    return paginatedGroups.map((group, gIdx) => {
+                      const grpVolOrig = group.items.reduce((acc, x) => acc + (Number(x.volumen_origen_litros) || 0), 0);
+                      const grpVolRec = group.items.reduce((acc, x) => acc + (Number(x.volumen_recepcionado_litros) || 0), 0);
+                      const grpMermaReal = group.items.reduce((acc, x) => acc + (Number(x.merma_real_litros) || 0), 0);
+                      const grpMermaExc = group.items.reduce((acc, x) => acc + (Number(x.merma_excedente_litros) || 0), 0);
+                      const grpMDesc = group.items.reduce((acc, x) => acc + (Number(x.merma_descontar_bs) || 0), 0);
+                      const grpDescAdic = group.items.reduce((acc, x) => acc + (Number(x.total_descuentos_adicionales_bs) || 0) + (Number(x.total_descuentos_mermas_bs) || 0), 0);
+                      const grpTotDesc = grpMDesc + grpDescAdic;
+                      const grpVolFact = group.items.reduce((acc, x) => acc + getVolFactLitros(x), 0);
+                      const grpFlete = group.items.reduce((acc, x) => acc + (Number(x.flete_total_bs) || 0), 0);
+                      const grpLiquido = grpFlete - grpTotDesc;
+                      const grpTarifa = group.items[0]?.tarifa_flete || 0;
 
-                        const facLabel = group.factura === "S/F" ? "S/F" : group.factura;
-                        const fechasFac = Array.from(new Set(group.items.map(x => x.fecha_factura).filter(Boolean)));
-                        const fechaLabel = fechasFac.length > 0 ? fechasFac.map(f => formatDate(f)).join(", ") : "-";
+                      const facLabel = group.factura === "S/F" ? "S/F" : group.factura;
+                      const fechasFac = Array.from(new Set(group.items.map(x => x.fecha_factura).filter(Boolean)));
+                      const fechaLabel = fechasFac.length > 0 ? fechasFac.map(f => formatDate(f)).join(", ") : "-";
 
-                        return (
-                          <Fragment key={`grp-${gIdx}`}>
-                            {group.items.map((v) => {
-                              globalIdx++;
-                              const totDesc = (v.merma_descontar_bs || 0) + (v.total_descuentos_adicionales_bs || 0) + (v.total_descuentos_mermas_bs || 0);
+                      return (
+                        <Fragment key={`grp-${gIdx}`}>
+                          {group.items.map((v) => {
+                            globalIdx++;
+                            const totDesc = (v.merma_descontar_bs || 0) + (v.total_descuentos_adicionales_bs || 0) + (v.total_descuentos_mermas_bs || 0);
+                            const isYpfb = isYpfbClient(v.cliente);
+                            const isExpanded = expandedYpfbRows.has(v.id);
 
-                              return (
-                                <tr key={v.id} className="hover:bg-amber-50/40 dark:hover:bg-slate-800/50 transition">
-                                  {/* Nº */}
-                                  <td className="py-2.5 px-2 text-center font-bold text-slate-700 dark:text-slate-300 text-[11px]">
-                                    {globalIdx}
-                                  </td>
+                            return (
+                              <Fragment key={v.id}>
+                              <tr className={`hover:bg-amber-50/40 dark:hover:bg-slate-800/50 transition ${isExpanded ? "bg-amber-500/5 dark:bg-amber-950/20" : ""}`}>
+                                {/* Nº */}
+                                <td className="py-2.5 px-1 text-center font-bold text-slate-700 dark:text-slate-300 text-[11px] whitespace-nowrap">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <span>{globalIdx}</span>
+                                    {isYpfb && (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleExpandYpfbRow(v.id)}
+                                        className={`p-0.5 rounded text-[9px] font-bold transition cursor-pointer ${
+                                          isExpanded
+                                            ? "bg-amber-500 text-slate-950 font-black shadow-xs"
+                                            : "bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-500/30"
+                                        }`}
+                                        title={isExpanded ? "Ocultar desglose YPFB" : "Ver parámetros y desglose YPFB"}
+                                      >
+                                        {isExpanded ? <ChevronUp className="w-3 h-3 stroke-[3]" /> : <ChevronDown className="w-3 h-3 stroke-[3]" />}
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
 
-                                  {/* Unidad / MIC */}
-                                  <td className="py-2.5 px-2">
-                                    <div className="font-mono font-bold text-slate-900 dark:text-white text-xs">
-                                      {v.placa}
+                                {/* FECHA DE CARGA */}
+                                <td className="py-2.5 px-1.5 text-center text-slate-500 dark:text-slate-400 font-mono text-[10.5px] whitespace-nowrap">
+                                  {formatDate(v.fecha_carga)}
+                                </td>
+
+                                {/* FECHA DE DESCARGA */}
+                                <td className="py-2.5 px-1.5 text-center text-slate-500 dark:text-slate-400 font-mono text-[10.5px] whitespace-nowrap">
+                                  {formatDate(v.fecha_descarga)}
+                                </td>
+
+                                {/* MCI/DTA (MIC) */}
+                                <td className="py-2.5 px-1.5 text-center font-mono font-bold text-slate-800 dark:text-slate-200 text-xs whitespace-nowrap">
+                                  {v.mic_dta || "-"}
+                                </td>
+
+                                {/* PLACA */}
+                                <td className="py-2.5 px-1.5 text-center whitespace-nowrap">
+                                  <div className="font-mono font-bold text-amber-700 dark:text-amber-400 text-xs">
+                                    {v.placa}
+                                  </div>
+                                  {v.es_apoyo && (
+                                    <div className="text-[9px] text-amber-600 dark:text-amber-400 font-semibold flex items-center justify-center gap-0.5 mt-0.5" title={v.empresa_apoyo_nombre || "Empresa de Apoyo"}>
+                                      <Handshake className="w-2.5 h-2.5 text-amber-500" />
+                                      <span className="truncate max-w-[80px]">{v.empresa_apoyo_nombre || "Apoyo"}</span>
                                     </div>
-                                    <div className="text-[10px] font-mono text-amber-700 dark:text-amber-400 font-semibold truncate max-w-[120px]" title={v.mic_dta || "Sin MIC"}>
-                                      {v.mic_dta ? `MIC: ${v.mic_dta}` : "-"}
-                                    </div>
-                                    {v.es_apoyo ? (
-                                      <div className="text-[9px] text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-0.5 mt-0.5" title={v.empresa_apoyo_nombre || "Empresa de Apoyo"}>
-                                        <Handshake className="w-2.5 h-2.5 text-amber-600 dark:text-amber-500" />
-                                        <span className="truncate max-w-[95px]">{v.empresa_apoyo_nombre || "Apoyo"}</span>
-                                      </div>
-                                    ) : null}
-                                  </td>
+                                  )}
+                                </td>
 
-                                  {/* Fechas */}
-                                  <td className="py-2.5 px-2 text-[10.5px] font-mono text-slate-600 dark:text-slate-400 leading-tight">
-                                    <div className="flex items-center gap-1 justify-center whitespace-nowrap">
-                                      <span className="text-[9px] text-slate-400 font-bold uppercase">C:</span>
-                                      <span>{formatDate(v.fecha_carga)}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1 justify-center whitespace-nowrap mt-0.5">
-                                      <span className="text-[9px] text-slate-400 font-bold uppercase">D:</span>
-                                      <span>{formatDate(v.fecha_descarga)}</span>
-                                    </div>
-                                  </td>
+                                {/* TRAMO */}
+                                <td className="py-2.5 px-2 text-slate-700 dark:text-slate-300 text-[11px] uppercase truncate max-w-[180px]" title={v.tramo}>
+                                  {v.tramo}
+                                </td>
 
-                                  {/* Ruta & Cliente */}
-                                  <td className="py-2.5 px-2.5">
-                                    <div className="text-slate-800 dark:text-slate-200 font-medium text-[11px] truncate max-w-[190px]" title={v.tramo}>
-                                      {v.tramo}
-                                    </div>
-                                    <div className="mt-0.5">
-                                      <span className="inline-block px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20 uppercase truncate max-w-[160px]" title={v.cliente || "Y.P.F.B."}>
-                                        {v.cliente || "Y.P.F.B."}
-                                      </span>
-                                    </div>
-                                  </td>
+                                {/* CLIENTE */}
+                                <td className="py-2.5 px-1.5 text-center whitespace-nowrap">
+                                  <span className="inline-block px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20 uppercase truncate max-w-[120px]" title={v.cliente || "YPFB"}>
+                                    {v.cliente || "YPFB"}
+                                  </span>
+                                </td>
 
-                                  {/* Producto */}
-                                  <td className="py-2.5 px-2 text-center">
-                                    <span className={`inline-block px-2 py-0.5 rounded text-[9.5px] font-bold border truncate max-w-[110px] ${
-                                      v.producto === "GASOLINA" 
-                                        ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" 
-                                        : v.producto === "DIESEL"
-                                        ? "bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30"
-                                        : v.producto.includes("PLANCHA")
-                                        ? "bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30"
-                                        : v.producto.includes("SOYA")
-                                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
-                                        : v.producto.includes("GIRASOL")
-                                        ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30"
-                                        : "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30"
-                                    }`} title={v.producto}>
-                                      {v.producto}
+                                {/* PRODUCTO */}
+                                <td className="py-2.5 px-1.5 text-center whitespace-nowrap">
+                                  <span className={`inline-block px-2 py-0.5 rounded text-[9.5px] font-bold border truncate max-w-[110px] ${
+                                    v.producto === "GASOLINA" 
+                                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" 
+                                      : v.producto === "DIESEL"
+                                      ? "bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30"
+                                      : v.producto.includes("PLANCHA")
+                                      ? "bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30"
+                                      : v.producto.includes("SOYA")
+                                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                                      : v.producto.includes("GIRASOL")
+                                      ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30"
+                                      : "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30"
+                                  }`} title={v.producto}>
+                                    {v.producto}
+                                  </span>
+                                </td>
+
+                                {/* N° FACTURA */}
+                                <td className="py-2.5 px-1.5 text-center whitespace-nowrap">
+                                  {v.nro_factura && v.nro_factura.trim() ? (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-mono font-bold">
+                                      {v.nro_factura}
                                     </span>
-                                  </td>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 font-mono">S/F</span>
+                                  )}
+                                </td>
 
-                                  {/* Factura */}
-                                  <td className="py-2.5 px-2 text-center">
-                                    {v.nro_factura && v.nro_factura.trim() ? (
-                                      <div>
-                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 inline-block">
-                                          FAC #{v.nro_factura}
+                                {/* FECHA FACTURA */}
+                                <td className="py-2.5 px-1.5 text-center text-slate-500 dark:text-slate-400 font-mono text-[10px] whitespace-nowrap">
+                                  {v.fecha_factura ? formatDate(v.fecha_factura) : "-"}
+                                </td>
+
+                                {/* VOLUMEN FACTURADO */}
+                                <td className="py-2.5 px-2 text-right font-mono font-bold text-sky-700 dark:text-sky-400 text-xs whitespace-nowrap">
+                                  {formatNumber(getVolFactLitros(v), 0)} L
+                                </td>
+
+                                {/* TARIFA BS. */}
+                                <td className="py-2.5 px-1.5 text-right font-mono text-slate-700 dark:text-slate-300 text-xs whitespace-nowrap">
+                                  {formatNumber(v.tarifa_flete, 2)}
+                                </td>
+
+                                {/* TOTAL FLETE BS. */}
+                                <td className="py-2.5 px-2 text-right font-mono whitespace-nowrap">
+                                  <div className="font-black text-amber-700 dark:text-amber-400 text-xs">
+                                    {formatCurrency(v.flete_total_bs)}
+                                  </div>
+                                  {totDesc > 0 && (
+                                    <div className="text-[9px] text-emerald-700 dark:text-emerald-400 font-bold">
+                                      Líq: {formatCurrency(v.flete_total_bs - totDesc)}
+                                    </div>
+                                  )}
+                                </td>
+
+                                {/* ACCIONES */}
+                                <td className="py-2.5 px-1.5 text-center whitespace-nowrap">
+                                  <div className="flex items-center justify-center gap-0.5">
+                                    <button
+                                      onClick={() => handleDuplicate(v)}
+                                      className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition"
+                                      title="Duplicar Despacho"
+                                    >
+                                      <Copy className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => openEditModal(v)}
+                                      className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-900 dark:hover:text-white transition"
+                                      title="Editar Despacho"
+                                    >
+                                      <Edit className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDelete(v)}
+                                      className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
+                                      title="Eliminar Despacho"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+
+                              {/* Sub-fila Desplegable Exclusiva para Viajes YPFB */}
+                              {isExpanded && isYpfb && (
+                                <tr className="bg-amber-500/10 dark:bg-amber-950/30 border-b-2 border-amber-500/40 no-print animate-in fade-in text-xs">
+                                  <td colSpan={14} className="p-3">
+                                    <div className="bg-white dark:bg-slate-900 border border-amber-500/30 rounded-xl p-3 shadow-md space-y-2">
+                                      <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
+                                        <div className="flex items-center gap-2">
+                                          <span className="w-5 h-5 rounded-md bg-amber-500 text-slate-950 font-black flex items-center justify-center text-[10px]">
+                                            Y
+                                          </span>
+                                          <span className="font-black text-amber-800 dark:text-amber-300 text-xs uppercase tracking-wide">
+                                            Desglose Operativo y Parámetros Contractuales YPFB (Despacho #{globalIdx} - Placa: {v.placa})
+                                          </span>
+                                        </div>
+                                        <span className="text-[10px] font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/25">
+                                          Cliente Oficial YPFB
                                         </span>
-                                        <div className="text-[9.5px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
-                                          {v.fecha_factura ? formatDate(v.fecha_factura) : "-"}
+                                      </div>
+
+                                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 text-center">
+                                        <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                                          <span className="text-[9px] text-slate-500 uppercase font-bold block">Vol. Despachado 15.56°:</span>
+                                          <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">{formatNumber(v.volumen_origen_litros, 0)} L</span>
+                                        </div>
+                                        <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                                          <span className="text-[9px] text-slate-500 uppercase font-bold block">Vol. Recepcionado 15.56°:</span>
+                                          <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 text-xs">{formatNumber(v.volumen_recepcionado_litros, 0)} L</span>
+                                        </div>
+                                        <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                                          <span className="text-[9px] text-slate-500 uppercase font-bold block">Diferencia Desp - Recep:</span>
+                                          <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                                            {formatNumber(Number(v.volumen_recepcionado_litros || 0) - Number(v.volumen_origen_litros || 0), 1)} L
+                                          </span>
+                                        </div>
+                                        <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                                          <span className="text-[9px] text-slate-500 uppercase font-bold block">Merma Tolerable:</span>
+                                          <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                                            {formatNumber(v.merma_tolerable_litros, 1)} L ({v.tolerancia_pct}%)
+                                          </span>
+                                        </div>
+                                        <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                                          <span className="text-[9px] text-slate-500 uppercase font-bold block">Merma Excedente:</span>
+                                          <span className="font-mono font-bold text-rose-600 dark:text-rose-400 text-xs">
+                                            {formatNumber(v.merma_excedente_litros, 1)} L
+                                          </span>
+                                        </div>
+                                        <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                                          <span className="text-[9px] text-slate-500 uppercase font-bold block">Precio Merma + IVA:</span>
+                                          <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                                            Bs. {formatNumber(v.precio_merma_litro_bs || 7.45, 6)}
+                                          </span>
+                                        </div>
+                                        <div className="p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-500/30">
+                                          <span className="text-[9px] text-rose-700 dark:text-rose-400 uppercase font-black block">Merma a Descontar:</span>
+                                          <span className="font-mono font-black text-rose-700 dark:text-rose-400 text-xs">
+                                            {formatCurrency(v.merma_descontar_bs || 0)}
+                                          </span>
                                         </div>
                                       </div>
-                                    ) : (
-                                      <div>
-                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">S/F</span>
-                                        <div className="text-[9.5px] font-mono text-slate-400 dark:text-slate-500 mt-0.5">-</div>
-                                      </div>
-                                    )}
-                                  </td>
 
-                                  {/* Volumen */}
-                                  <td className="py-2.5 px-2 text-right font-mono">
-                                    <div className="font-bold text-sky-700 dark:text-sky-400 text-xs">
-                                      {formatNumber(getVolFactLitros(v), 0)} L
-                                    </div>
-                                    <div className="text-[9px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
-                                      {v.volumen_origen_litros > 0 || v.volumen_recepcionado_litros > 0 ? (
-                                        <span>Ori: {formatNumber(v.volumen_origen_litros, 0)} · Rec: {formatNumber(v.volumen_recepcionado_litros, 0)}</span>
-                                      ) : (
-                                        <span>{formatNumber(getVolFactM3(v), 2)} m³</span>
-                                      )}
-                                    </div>
-                                  </td>
-
-                                  {/* Mermas */}
-                                  <td className="py-2.5 px-2 text-right font-mono">
-                                    {v.merma_descontar_bs > 0 ? (
-                                      <div>
-                                        <div className="text-rose-600 dark:text-rose-400 font-bold text-[11px]">
-                                          -{formatCurrency(v.merma_descontar_bs)}
-                                        </div>
-                                        <div className="text-[9px] text-amber-700 dark:text-amber-400">
-                                          Exc: {formatNumber(v.merma_excedente_litros, 1)} L
-                                        </div>
+                                      {/* Parámetros de Comisión y Deducción aplicables al Viaje */}
+                                      <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center gap-3 text-[10px] text-slate-600 dark:text-slate-300">
+                                        <span className="font-black text-slate-800 dark:text-slate-200 uppercase">Deducciones YPFB configuradas en viaje:</span>
+                                        <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                          T.C. Dólar: <strong>Bs. {v.tipo_cambio_bs !== undefined && v.tipo_cambio_bs !== null ? v.tipo_cambio_bs : "6.96"}</strong>
+                                        </span>
+                                        <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                          Comisión 1: <strong>{v.comision_usd_m3 !== undefined && v.comision_usd_m3 !== null ? v.comision_usd_m3 : "1.00"} $us/m³</strong>
+                                        </span>
+                                        <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                          Comisión 7%: <strong>{v.comision_pct_1 !== undefined && v.comision_pct_1 !== null ? v.comision_pct_1 : "7.00"}%</strong>
+                                        </span>
+                                        <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                          BOL-GART 7%: <strong>{v.comision_ypfb_bolgart_pct !== undefined && v.comision_ypfb_bolgart_pct !== null ? v.comision_ypfb_bolgart_pct : "7.00"}%</strong>
+                                        </span>
+                                        <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                          Comisión 3%: <strong>{v.comision_pct_2 !== undefined && v.comision_pct_2 !== null ? v.comision_pct_2 : "3.00"}%</strong>
+                                        </span>
+                                        <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                          Hojas de Ruta: <strong>Bs. {v.costo_hojas_de_ruta_bs !== undefined && v.costo_hojas_de_ruta_bs !== null ? v.costo_hojas_de_ruta_bs : "0.00"}</strong>
+                                        </span>
+                                        <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                          GPS: <strong>Bs. {v.costo_gps_bs !== undefined && v.costo_gps_bs !== null ? v.costo_gps_bs : "0.00"}</strong>
+                                        </span>
                                       </div>
-                                    ) : v.merma_real_litros > 0 ? (
-                                      <div className="text-[10px] text-slate-500">
-                                        -{formatNumber(v.merma_real_litros, 1)} L
-                                        <div className="text-[8.5px] text-emerald-600 font-medium">En Tolerancia</div>
-                                      </div>
-                                    ) : (
-                                      <span className="text-slate-400 text-[10px] font-sans">0 L / Bs. 0</span>
-                                    )}
-                                  </td>
-
-                                  {/* Total Flete */}
-                                  <td className="py-2.5 px-2 text-right font-mono">
-                                    <div className="font-black text-amber-700 dark:text-amber-400 text-xs">
-                                      {formatCurrency(v.flete_total_bs)}
-                                    </div>
-                                    <div className="text-[9px] text-slate-500 dark:text-slate-400">
-                                      Tar: Bs. {formatNumber(v.tarifa_flete, 2)}
-                                    </div>
-                                    {totDesc > 0 && (
-                                      <div className="text-[9px] text-emerald-700 dark:text-emerald-400 font-bold">
-                                        Líq: {formatCurrency(v.flete_total_bs - totDesc)}
-                                      </div>
-                                    )}
-                                  </td>
-
-                                  {/* Acciones */}
-                                  <td className="py-2.5 px-1.5 text-center whitespace-nowrap">
-                                    <div className="flex items-center justify-center gap-0.5">
-                                      <button
-                                        onClick={() => handleDuplicate(v)}
-                                        className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition"
-                                        title="Duplicar Despacho"
-                                      >
-                                        <Copy className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        onClick={() => openEditModal(v)}
-                                        className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-900 dark:hover:text-white transition"
-                                        title="Editar Despacho"
-                                      >
-                                        <Edit className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        onClick={() => handleDelete(v)}
-                                        className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
-                                        title="Eliminar Despacho"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
                                     </div>
                                   </td>
                                 </tr>
-                              );
-                            })}
+                              )}
+                              </Fragment>
+                            );
+                          })}
 
-                            {/* FILA ESPECIAL COMPACTA: Subtotal del Grupo con Facturación */}
-                            {(() => {
-                              const facClean = (group.factura || "").trim().toUpperCase();
-                              const isConDerecho = Boolean(facClean && facClean !== "S/F" && facturasConDerecho.includes(facClean));
-                              const debito13 = isConDerecho ? Math.round(grpFlete * 0.13 * 100) / 100 : 0;
-                              const vnNeto87 = isConDerecho ? grpFlete - debito13 : grpFlete;
+                          {/* FILA ESPECIAL: Subtotal del Grupo con Facturación */}
+                          {(() => {
+                            const groupKey = group.key || `${group.factura}___${group.producto}`;
+                            const facClean = (group.factura || "").trim().toUpperCase();
+                            const isConDerecho = Boolean(groupKey && facClean !== "S/F" && facturasConDerecho.includes(groupKey));
+                            const debito13 = isConDerecho ? Math.round(grpFlete * 0.13 * 100) / 100 : 0;
+                            const vnNeto87 = isConDerecho ? grpFlete - debito13 : grpFlete;
 
-                              return (
-                                <tr className={`border-y-2 text-[10.5px] transition ${
-                                  isConDerecho
-                                    ? "bg-amber-200/60 dark:bg-amber-950/70 border-amber-400 dark:border-amber-600 font-bold"
-                                    : "bg-amber-100/70 dark:bg-amber-950/40 font-bold border-amber-300 dark:border-amber-700"
-                                }`}>
-                                  <td colSpan={6} className="py-2 px-2.5 text-left border-x border-amber-300 dark:border-amber-700">
-                                    <div className="flex items-center justify-between flex-wrap gap-1.5">
-                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-1">TOTAL {group.producto}</span>
-                                        <span className="text-slate-700 dark:text-slate-300 font-medium">| FAC: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
-                                        {fechaLabel !== "-" && (
-                                          <span className="text-slate-700 dark:text-slate-300 font-medium ml-1">| FECHA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
+                            return (
+                              <tr className={`border-y-2 text-[10.5px] transition ${
+                                isConDerecho
+                                  ? "bg-amber-200/60 dark:bg-amber-950/70 border-amber-400 dark:border-amber-600 font-bold"
+                                  : "bg-amber-100/70 dark:bg-amber-950/40 font-bold border-amber-300 dark:border-amber-700"
+                              }`}>
+                                <td colSpan={10} className="py-2 px-2.5 text-left border-x border-amber-300 dark:border-amber-700">
+                                  <div className="flex items-center justify-between flex-wrap gap-1.5">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-1">TOTAL {group.producto}</span>
+                                      <span className="text-slate-700 dark:text-slate-300 font-medium">| FAC: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
+                                      {fechaLabel !== "-" && (
+                                        <span className="text-slate-700 dark:text-slate-300 font-medium ml-1">| FECHA FACTURA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
+                                      )}
+                                    </div>
+
+                                    {/* Checkbox Con Factura Con Derecho */}
+                                    {facClean && facClean !== "S/F" && (
+                                      <label className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border transition cursor-pointer select-none text-[10px] ${
+                                        isConDerecho
+                                          ? "bg-amber-500 text-slate-950 border-amber-600 font-black shadow-xs ring-1 ring-amber-400"
+                                          : "bg-white/95 dark:bg-slate-900/90 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-amber-400 font-bold"
+                                      }`}>
+                                        <input
+                                          type="checkbox"
+                                          checked={isConDerecho}
+                                          onChange={(e) => toggleFacturaConDerecho(groupKey, e.target.checked)}
+                                          className="w-3.5 h-3.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600"
+                                        />
+                                        <span>Con Factura Con Derecho</span>
+                                        {isConDerecho && (
+                                          <span className="px-1.5 py-0.2 rounded bg-slate-950/20 text-slate-950 font-mono font-black ml-0.5">
+                                            (13% Débito: -{formatCurrency(debito13)})
+                                          </span>
                                         )}
-                                      </div>
-
-                                      {/* Checkbox Con Factura Con Derecho */}
-                                      {facClean && facClean !== "S/F" && (
-                                        <label className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border transition cursor-pointer select-none text-[10px] ${
-                                          isConDerecho
-                                            ? "bg-amber-500 text-slate-950 border-amber-600 font-black shadow-xs ring-1 ring-amber-400"
-                                            : "bg-white/95 dark:bg-slate-900/90 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-amber-400 font-bold"
-                                        }`}>
-                                          <input
-                                            type="checkbox"
-                                            checked={isConDerecho}
-                                            onChange={(e) => toggleFacturaConDerecho(facClean, e.target.checked)}
-                                            className="w-3.5 h-3.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600"
-                                          />
-                                          <span>Con Factura Con Derecho</span>
-                                          {isConDerecho && (
-                                            <span className="px-1.5 py-0.2 rounded bg-slate-950/20 text-slate-950 font-mono font-black ml-0.5">
-                                              (13% Débito: -{formatCurrency(debito13)})
-                                            </span>
-                                          )}
-                                        </label>
-                                      )}
+                                      </label>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300 text-xs whitespace-nowrap">
+                                  {formatNumber(grpVolFact, 0)} L
+                                </td>
+                                <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-slate-700 dark:text-slate-300 text-xs whitespace-nowrap">
+                                  {formatNumber(grpTarifa, 2)}
+                                </td>
+                                <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 whitespace-nowrap">
+                                  <div className="font-black text-amber-900 dark:text-amber-400 text-xs">{formatCurrency(grpFlete)}</div>
+                                  {isConDerecho && (
+                                    <div className="text-[9.5px] text-rose-700 dark:text-rose-400 font-bold">
+                                      Neto 87%: {formatCurrency(vnNeto87)}
                                     </div>
-                                  </td>
-                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700">
-                                    <div className="font-black text-sky-800 dark:text-sky-300 text-[11px]">{formatNumber(grpVolFact, 0)} L</div>
-                                    <div className="text-[9px] text-slate-500 dark:text-slate-400">Orig: {formatNumber(grpVolOrig, 0)} · Rec: {formatNumber(grpVolRec, 0)}</div>
-                                  </td>
-                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700">
-                                    {grpMDesc > 0 ? (
-                                      <div>
-                                        <div className="font-bold text-rose-700 dark:text-rose-400 text-[11px]">-{formatCurrency(grpMDesc)}</div>
-                                        <div className="text-[9px] text-amber-800 dark:text-amber-400">Exc: {formatNumber(grpMermaExc, 1)} L</div>
-                                      </div>
-                                    ) : (
-                                      <div className="text-slate-600 dark:text-slate-400 text-[10px]">-{formatNumber(Math.abs(grpMermaReal), 1)} L</div>
-                                    )}
-                                  </td>
-                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700">
-                                    <div className="font-black text-amber-900 dark:text-amber-400 text-[11px]">{formatCurrency(grpFlete)}</div>
-                                    {isConDerecho && (
-                                      <div className="text-[9.5px] text-rose-700 dark:text-rose-400 font-bold">
-                                        Neto 87%: {formatCurrency(vnNeto87)}
-                                      </div>
-                                    )}
-                                    <div className="text-[9px] text-slate-600 dark:text-slate-400">Tar: Bs. {formatNumber(grpTarifa, 2)}</div>
-                                    {grpTotDesc > 0 && (
-                                      <div className="text-[9px] text-emerald-800 dark:text-emerald-300 font-bold">Líq: {formatCurrency(grpLiquido)}</div>
-                                    )}
-                                  </td>
-                                  <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
-                                </tr>
-                              );
-                            })()}
-                          </Fragment>
-                        );
-                      });
-                    })()}
+                                  )}
+                                </td>
+                                <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
+                              </tr>
+                            );
+                          })()}
+                        </Fragment>
+                      );
+                    });
+                  })()}
 
-                    {/* Fila de Totales Generales de Planilla en Modo Compacto */}
-                    <tr className="bg-slate-100 dark:bg-slate-800/90 font-black text-slate-900 dark:text-white border-t-2 border-b border-slate-300 dark:border-slate-700 text-xs">
-                      <td colSpan={6} className="py-2.5 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 text-[11px]">
-                        TOTAL GENERAL ({filtered.length} DESPACHOS):
+                  {/* Fila de Totales Generales de Planilla */}
+                  <tr className="bg-slate-100 dark:bg-slate-800/90 font-black text-slate-900 dark:text-white border-t-2 border-b border-slate-300 dark:border-slate-700 text-xs">
+                    <td colSpan={10} className="py-2.5 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 text-[11px]">
+                      TOTAL GENERAL ({filtered.length} DESPACHOS):
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 whitespace-nowrap">
+                      <div className="font-black text-sky-700 dark:text-sky-400 text-xs">{formatNumber(totalVolFacturado, 0)} L</div>
+                    </td>
+                    <td className="py-2.5 px-1.5 border-x border-slate-300 dark:border-slate-700"></td>
+                    <td className="py-2.5 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 whitespace-nowrap">
+                      <div className="font-black text-amber-600 dark:text-amber-400 text-sm">{formatCurrency(totalFleteBs)}</div>
+                      {totalTodosDescuentos > 0 && (
+                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">Líq: {formatCurrency(totalLiquidoGeneral)}</div>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-1 border-x border-slate-300 dark:border-slate-700"></td>
+                  </tr>
+
+                  {/* ============================================================== */}
+                  {/* BLOQUE DE CONCILIACIÓN FISCAL (IVA 13%)                         */}
+                  {/* ============================================================== */}
+                  
+                  {/* TOTAL VENTAS BRUTAS */}
+                  <tr className="bg-emerald-100/90 dark:bg-emerald-950/70 font-black text-slate-900 dark:text-white border-t-2 border-emerald-400 dark:border-emerald-600 text-xs">
+                    <td colSpan={12} className="py-2 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 font-black italic">
+                      TOTAL VENTAS BRUTAS:
+                    </td>
+                    <td className="py-2 px-2 text-right font-mono text-sm font-black border-x border-slate-300 dark:border-slate-700 text-emerald-900 dark:text-emerald-300 bg-emerald-200/70 dark:bg-emerald-900/50 whitespace-nowrap">
+                      {formatCurrency(fiscalStats.totVentasBrutas)}
+                    </td>
+                    <td className="py-2 px-1 border-x border-slate-300 dark:border-slate-700"></td>
+                  </tr>
+
+                  {/* V.N. SIN DERECHO */}
+                  <tr className="bg-slate-50 dark:bg-slate-900/80 font-bold text-slate-700 dark:text-slate-300 text-xs border-b border-slate-200 dark:border-slate-800">
+                    <td colSpan={12} className="py-1.5 px-3 text-right italic uppercase">
+                      V.N. SIN DERECHO:
+                    </td>
+                    <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                      {formatCurrency(fiscalStats.totVnSinDerecho)}
+                    </td>
+                    <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                  </tr>
+
+                  {/* V.B. CON DERECHO */}
+                  <tr className="bg-amber-50/70 dark:bg-amber-950/40 font-bold text-amber-900 dark:text-amber-300 text-xs border-b border-slate-200 dark:border-slate-800">
+                    <td colSpan={12} className="py-1.5 px-3 text-right italic uppercase">
+                      V.B. CON DERECHO {fiscalStats.countConDerecho > 0 ? `(${fiscalStats.countConDerecho} facturas)` : "(0 facturas seleccionadas)"}:
+                    </td>
+                    <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-amber-800 dark:text-amber-400 whitespace-nowrap">
+                      {formatCurrency(fiscalStats.totVbConDerecho)}
+                    </td>
+                    <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                  </tr>
+
+                  {/* Sub-filas por cada Factura con Derecho seleccionada */}
+                  {facturasConDerechoDetalle.map((fac) => (
+                    <tr key={`unified-${fac.key}`} className="bg-amber-100/40 dark:bg-amber-950/30 text-[11px] text-slate-700 dark:text-slate-300 border-b border-amber-200/50 dark:border-amber-900/30">
+                      <td colSpan={12} className="py-1 px-4 text-right">
+                        <span className="font-bold text-amber-900 dark:text-amber-300 mr-2">• Factura {fac.factura}</span>
+                        <span className="text-slate-700 dark:text-slate-300 font-semibold mr-2">[{fac.producto}]</span>
+                        <span className="text-slate-500 mr-2">({fac.fechas.length > 0 ? fac.fechas.map(f => formatDate(f)).join(", ") : "-"})</span>
+                        <span className="text-slate-600 dark:text-slate-400 font-mono">Flete Bruto: {formatCurrency(fac.flete)}</span>
+                        <span className="font-bold text-rose-600 dark:text-rose-400 ml-2">→ Débito Fiscal IVA 13%:</span>
                       </td>
-                      <td className="py-2.5 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700">
-                        <div className="font-black text-sky-700 dark:text-sky-400 text-xs">{formatNumber(totalVolFacturado, 0)} L</div>
-                        <div className="text-[9px] text-slate-500 font-normal">Rec: {formatNumber(totalRecepcionado, 0)} L</div>
+                      <td className="py-1 px-2 text-right font-mono font-bold text-rose-700 dark:text-rose-400 border-x border-slate-200 dark:border-slate-800 whitespace-nowrap">
+                        -{formatCurrency(fac.debito)}
                       </td>
-                      <td className="py-2.5 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700">
-                        <div className="font-bold text-rose-700 dark:text-rose-400 text-xs">{formatCurrency(totalDescMermaBs)}</div>
-                        <div className="text-[9px] text-slate-500 font-normal">Real: -{formatNumber(Math.abs(totalMermaReal), 1)} L</div>
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700">
-                        <div className="font-black text-amber-600 dark:text-amber-400 text-sm">{formatCurrency(totalFleteBs)}</div>
-                        <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold" title="Flete Bruto menos Descuento de Mermas">Flete-M: {formatCurrency(totalFleteMenosMermasBs)}</div>
-                        {totalTodosDescuentos > 0 && (
-                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">Líq: {formatCurrency(totalLiquidoGeneral)}</div>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-1 border-x border-slate-300 dark:border-slate-700"></td>
+                      <td className="py-1 px-1 border-x border-slate-200 dark:border-slate-800"></td>
                     </tr>
+                  ))}
 
-                    {/* ============================================================== */}
-                    {/* BLOQUE DE CONCILIACIÓN FISCAL (IVA 13%) EN MODO COMPACTO         */}
-                    {/* ============================================================== */}
-                    
-                    {/* TOTAL VENTAS BRUTAS */}
-                    <tr className="bg-emerald-100/90 dark:bg-emerald-950/70 font-black text-slate-900 dark:text-white border-t-2 border-emerald-400 dark:border-emerald-600 text-xs">
-                      <td colSpan={8} className="py-2 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 font-black italic">
-                        TOTAL VENTAS BRUTAS:
-                      </td>
-                      <td className="py-2 px-2 text-right font-mono text-sm font-black border-x border-slate-300 dark:border-slate-700 text-emerald-900 dark:text-emerald-300 bg-emerald-200/70 dark:bg-emerald-900/50">
-                        {formatCurrency(fiscalStats.totVentasBrutas)}
-                      </td>
-                      <td className="py-2 px-1 border-x border-slate-300 dark:border-slate-700"></td>
-                    </tr>
+                  {/* DEBITO (13%) */}
+                  <tr className="bg-rose-50/70 dark:bg-rose-950/40 font-bold text-rose-900 dark:text-rose-300 text-xs border-b border-slate-200 dark:border-slate-800">
+                    <td colSpan={12} className="py-1.5 px-3 text-right italic uppercase font-black">
+                      DEBITO:
+                    </td>
+                    <td className="py-1.5 px-2 text-right font-mono font-black border-x border-slate-200 dark:border-slate-800 text-rose-600 dark:text-rose-400 whitespace-nowrap">
+                      {fiscalStats.totDebito13 > 0 ? `-${formatCurrency(fiscalStats.totDebito13)}` : "Bs. 0,00"}
+                    </td>
+                    <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                  </tr>
 
-                    {/* V.N. SIN DERECHO */}
-                    <tr className="bg-slate-50 dark:bg-slate-900/80 font-bold text-slate-700 dark:text-slate-300 text-xs border-b border-slate-200 dark:border-slate-800">
-                      <td colSpan={8} className="py-1.5 px-3 text-right italic uppercase">
-                        V.N. SIN DERECHO:
-                      </td>
-                      <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200">
-                        {formatCurrency(fiscalStats.totVnSinDerecho)}
-                      </td>
-                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
-                    </tr>
+                  {/* V.N. CON DERECHO (87%) */}
+                  <tr className="bg-slate-50 dark:bg-slate-900/80 font-bold text-slate-700 dark:text-slate-300 text-xs border-b border-slate-200 dark:border-slate-800">
+                    <td colSpan={12} className="py-1.5 px-3 text-right italic uppercase">
+                      V.N. CON DERECHO:
+                    </td>
+                    <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                      {formatCurrency(fiscalStats.totVnConDerecho)}
+                    </td>
+                    <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                  </tr>
 
-                    {/* V.B. CON DERECHO */}
-                    <tr className="bg-amber-50/70 dark:bg-amber-950/40 font-bold text-amber-900 dark:text-amber-300 text-xs border-b border-slate-200 dark:border-slate-800">
-                      <td colSpan={8} className="py-1.5 px-3 text-right italic uppercase">
-                        V.B. CON DERECHO {fiscalStats.countConDerecho > 0 ? `(${fiscalStats.countConDerecho} facturas)` : "(0 facturas seleccionadas)"}:
-                      </td>
-                      <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-amber-800 dark:text-amber-400">
-                        {formatCurrency(fiscalStats.totVbConDerecho)}
-                      </td>
-                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
-                    </tr>
+                  {/* VENTAS NETAS GESTION (Fondo Amarillo Brillante según Captura) */}
+                  <tr className="bg-yellow-300 dark:bg-yellow-400 font-black text-slate-950 border-t-2 border-b-2 border-yellow-500 text-sm">
+                    <td colSpan={12} className="py-2.5 px-3 text-right uppercase font-black tracking-wide text-slate-950">
+                      VENTAS NETAS GESTION {gestionYearLabel}:
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-mono text-base font-black border-x border-yellow-500 text-slate-950 bg-yellow-400 dark:bg-yellow-300 whitespace-nowrap">
+                      {formatCurrency(fiscalStats.totVentasNetasGestion)}
+                    </td>
+                    <td className="py-2.5 px-1 border-x border-yellow-500 bg-yellow-400 dark:bg-yellow-300"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+{renderPagination(totalPlanillaGroups, totalPlanillaPages, `grupos (${filtered.length} despachos)`)}
 
-                    {/* Sub-filas por cada Factura con Derecho seleccionada */}
-                    {facturasConDerechoDetalle.map((fac) => (
-                      <tr key={`compact-${fac.factura}`} className="bg-amber-100/40 dark:bg-amber-950/30 text-[11px] text-slate-700 dark:text-slate-300 border-b border-amber-200/50 dark:border-amber-900/30">
-                        <td colSpan={8} className="py-1 px-4 text-right">
-                          <span className="font-bold text-amber-900 dark:text-amber-300 mr-2">• Factura {fac.factura}</span>
-                          <span className="text-slate-500 mr-2">({fac.fechas.length > 0 ? fac.fechas.map(f => formatDate(f)).join(", ") : "-"})</span>
-                          <span className="text-slate-600 dark:text-slate-400 font-mono">Flete Bruto: {formatCurrency(fac.flete)}</span>
-                          <span className="font-bold text-rose-600 dark:text-rose-400 ml-2">→ Débito Fiscal IVA 13%:</span>
-                        </td>
-                        <td className="py-1 px-2 text-right font-mono font-bold text-rose-700 dark:text-rose-400 border-x border-slate-200 dark:border-slate-800">
-                          -{formatCurrency(fac.debito)}
-                        </td>
-                        <td className="py-1 px-1 border-x border-slate-200 dark:border-slate-800"></td>
-                      </tr>
-                    ))}
+            {/* ============================================================== */}
+            {/* RESUMEN DE DEDUCCIONES Y PAGOS (HOJA 2 / YPFB CONTRACTUAL)      */}
+            {/* ============================================================== */}
+            <div className="mt-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm dark:shadow-xl">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-amber-600 dark:text-amber-400 font-black tracking-wide text-sm sm:text-base uppercase">
+                      LIQUIDACION DE FLETES
+                    </h2>
+                    {deduccionesResumen.hasOverrides && (
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/30">
+                        Ajustado Manualmente
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-1">
+                    MES: <span className="text-slate-900 dark:text-white font-mono">{periodo || "GESTIÓN " + gestionYearLabel}</span>
+                    <span className="mx-2">•</span>
+                    PLACA: <span className="text-slate-900 dark:text-white font-mono">{placaFiltro || "TODAS"}</span>
+                  </div>
+                </div>
 
-                    {/* DEBITO (13%) */}
-                    <tr className="bg-rose-50/70 dark:bg-rose-950/40 font-bold text-rose-900 dark:text-rose-300 text-xs border-b border-slate-200 dark:border-slate-800">
-                      <td colSpan={8} className="py-1.5 px-3 text-right italic uppercase font-black">
-                        DEBITO:
-                      </td>
-                      <td className="py-1.5 px-2 text-right font-mono font-black border-x border-slate-200 dark:border-slate-800 text-rose-600 dark:text-rose-400">
-                        {fiscalStats.totDebito13 > 0 ? `-${formatCurrency(fiscalStats.totDebito13)}` : "Bs. 0,00"}
-                      </td>
-                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
-                    </tr>
-
-                    {/* V.N. CON DERECHO (87%) */}
-                    <tr className="bg-slate-50 dark:bg-slate-900/80 font-bold text-slate-700 dark:text-slate-300 text-xs border-b border-slate-200 dark:border-slate-800">
-                      <td colSpan={8} className="py-1.5 px-3 text-right italic uppercase">
-                        V.N. CON DERECHO:
-                      </td>
-                      <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200">
-                        {formatCurrency(fiscalStats.totVnConDerecho)}
-                      </td>
-                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
-                    </tr>
-
-                    {/* VENTAS NETAS GESTION (Fondo Amarillo Brillante según Captura) */}
-                    <tr className="bg-yellow-300 dark:bg-yellow-400 font-black text-slate-950 border-t-2 border-b-2 border-yellow-500 text-sm">
-                      <td colSpan={8} className="py-2.5 px-3 text-right uppercase font-black tracking-wide text-slate-950">
-                        VENTAS NETAS GESTION {gestionYearLabel}:
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono text-base font-black border-x border-yellow-500 text-slate-950 bg-yellow-400 dark:bg-yellow-300">
-                        {formatCurrency(fiscalStats.totVentasNetasGestion)}
-                      </td>
-                      <td className="py-2.5 px-1 border-x border-yellow-500 bg-yellow-400 dark:bg-yellow-300"></td>
-                    </tr>
-                  </tbody>
-                </table>
+                <div className="text-left sm:text-right">
+                  <div className="text-sm font-black text-slate-900 dark:text-white uppercase">
+                    {schema.replace(/^empresa_/, '').replace(/_/g, ' ').toUpperCase() || "EMPRESA DE TRANSPORTE"}
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold">
+                    Resumen de Deducciones y Pagos
+                  </div>
+                  <div className="mt-2.5 flex items-center justify-start sm:justify-end gap-2">
+                    <button
+                      onClick={openAdjustDeductionsModal}
+                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5 transition shadow-sm"
+                      title="Ajustar o corregir montos de deducción"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                      <span>Ajustar / Editar Deducciones</span>
+                    </button>
+                    {deduccionesResumen.ypfbCount > 0 && (
+                      <button
+                        onClick={() => setShowYpfbBreakdown(!showYpfbBreakdown)}
+                        className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition border border-slate-200 dark:border-slate-700"
+                      >
+                        {showYpfbBreakdown ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        <span>{showYpfbBreakdown ? "Ocultar Desglose" : `Ver Desglose (${deduccionesResumen.ypfbCount} YPFB)`}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-            ) : (
-              /* ============================================================== */
-              /* TABLA MODO EXTENDIDO (20 COLUMNAS CON SCROLL HORIZONTAL)        */
-              /* ============================================================== */
-              <div className="overflow-x-auto">
+
+              {/* Tabla Central de Deducciones (Idéntica a Hoja 2 de Liquidaciones) */}
+              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden mb-6 shadow-sm dark:shadow-xl">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-black uppercase text-[10px]">
-                      <th className="py-3 px-1 text-center">Nº</th>
-                      <th className="py-3 px-2 text-center whitespace-nowrap">FECHA DE CARGA</th>
-                      <th className="py-3 px-2 text-center whitespace-nowrap">FECHA DE DESCARGA</th>
-                      <th className="py-3 px-2 text-center whitespace-nowrap">MCI/DTA Nº Y OTROS</th>
-                      <th className="py-3 px-2 text-center">PLACA</th>
-                      <th className="py-3 px-2.5 text-left">TRAMO</th>
-                      <th className="py-3 px-2 text-center">CLIENTE</th>
-                      <th className="py-3 px-2 text-center">PRODUCTO</th>
-                      <th className="py-3 px-2 text-center whitespace-nowrap">N° FACTURA</th>
-                      <th className="py-3 px-2 text-center whitespace-nowrap">FECHA FACTURA</th>
-                      <th className="py-3 px-2 text-right whitespace-nowrap">Volumen en Lt. Origen</th>
-                      <th className="py-3 px-2 text-right whitespace-nowrap">Volumen Recepcionado/Descargado</th>
-                      <th className="py-3 px-1.5 text-right whitespace-nowrap">Merma T/Tr</th>
-                      <th className="py-3 px-1.5 text-right whitespace-nowrap">Total Merma (Lt)</th>
-                      <th className="py-3 px-1.5 text-center whitespace-nowrap">MERMA Tolerable</th>
-                      <th className="py-3 px-2 text-right whitespace-nowrap">Merma a Descontar Y.P.F.B. Bs.</th>
-                      <th className="py-3 px-2 text-right whitespace-nowrap">Volumen Facturado</th>
-                      <th className="py-3 px-2 text-right whitespace-nowrap">TARIFA Bs.</th>
-                      <th className="py-3 px-2 text-right whitespace-nowrap">Total a pagar en Bob.</th>
-                      <th className="py-3 px-2 text-center whitespace-nowrap">Acciones</th>
+                    <tr className="bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-200 font-black text-[11px] uppercase border-b border-slate-200 dark:border-slate-800">
+                      <th className="py-3 px-4">DESCRIPCION</th>
+                      <th className="py-3 px-4 text-right">TOTAL Bs</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                    {(() => {
-                      let globalIdx = startGlobalIdx;
-
-                      return paginatedGroups.map((group, gIdx) => {
-                        const grpVolOrig = group.items.reduce((acc, x) => acc + (Number(x.volumen_origen_litros) || 0), 0);
-                        const grpVolRec = group.items.reduce((acc, x) => acc + (Number(x.volumen_recepcionado_litros) || 0), 0);
-                        const grpMermaReal = group.items.reduce((acc, x) => acc + (Number(x.merma_real_litros) || 0), 0);
-                        const grpMermaExc = group.items.reduce((acc, x) => acc + (Number(x.merma_excedente_litros) || 0), 0);
-                        const grpMermaTol = group.items.reduce((acc, x) => acc + (Number(x.merma_tolerable_litros) || 0), 0);
-                        const grpMDesc = group.items.reduce((acc, x) => acc + (Number(x.merma_descontar_bs) || 0), 0);
-                        const grpDescAdic = group.items.reduce((acc, x) => acc + (Number(x.total_descuentos_adicionales_bs) || 0) + (Number(x.total_descuentos_mermas_bs) || 0), 0);
-                        const grpTotDesc = grpMDesc + grpDescAdic;
-                        const grpVolFact = group.items.reduce((acc, x) => acc + getVolFactLitros(x), 0);
-                        const grpFlete = group.items.reduce((acc, x) => acc + (Number(x.flete_total_bs) || 0), 0);
-                        const grpLiquido = grpFlete - grpTotDesc;
-                        const grpTarifa = group.items[0]?.tarifa_flete || 0;
-
-                        const facLabel = group.factura === "S/F" ? "S/F" : group.factura;
-                        const fechasFac = Array.from(new Set(group.items.map(x => x.fecha_factura).filter(Boolean)));
-                        const fechaLabel = fechasFac.length > 0 ? fechasFac.map(f => formatDate(f)).join(", ") : "-";
-
-                        return (
-                          <Fragment key={`grp-${gIdx}`}>
-                            {group.items.map((v) => {
-                              globalIdx++;
-                              return (
-                                <tr key={v.id} className="hover:bg-amber-50/40 dark:hover:bg-slate-800/50 transition">
-                                  <td className="py-2.5 px-1 text-center font-bold text-slate-700 dark:text-slate-300">{globalIdx}</td>
-                                  <td className="py-2.5 px-2 text-center text-slate-500 dark:text-slate-400 whitespace-nowrap">{formatDate(v.fecha_carga)}</td>
-                                  <td className="py-2.5 px-2 text-center text-slate-500 dark:text-slate-400 whitespace-nowrap">{formatDate(v.fecha_descarga)}</td>
-                                  <td className="py-2.5 px-2 text-center font-mono font-bold text-amber-700 dark:text-amber-400 whitespace-nowrap">{v.mic_dta || "-"}</td>
-                                  <td className="py-2.5 px-2 text-center">
-                                    <div className="font-mono font-bold text-slate-900 dark:text-white flex items-center justify-center gap-1.5">
-                                      <span>{v.placa}</span>
-                                    </div>
-                                    {v.es_apoyo ? (
-                                      <div className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold flex items-center justify-center gap-1 mt-0.5">
-                                        <Handshake className="w-3 h-3 text-amber-600 dark:text-amber-500" />
-                                        <span className="truncate max-w-[100px]" title={v.empresa_apoyo_nombre || "Empresa de Apoyo"}>
-                                          {v.empresa_apoyo_nombre || "Apoyo"}
-                                        </span>
-                                      </div>
-                                    ) : null}
-                                  </td>
-                                  <td className="py-2.5 px-2.5 text-slate-700 dark:text-slate-300 truncate max-w-[160px]" title={v.tramo}>
-                                    {v.tramo}
-                                  </td>
-                                  <td className="py-2.5 px-2 text-center font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                                    {v.cliente || "Y.P.F.B."}
-                                  </td>
-                                  <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                                      v.producto === "GASOLINA" 
-                                        ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" 
-                                        : v.producto === "DIESEL"
-                                        ? "bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30"
-                                        : v.producto.includes("PLANCHA")
-                                        ? "bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30"
-                                        : v.producto.includes("SOYA")
-                                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
-                                        : v.producto.includes("GIRASOL")
-                                        ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30"
-                                        : "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30"
-                                    }`}>
-                                      {v.producto}
-                                    </span>
-                                  </td>
-                                  <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                                    {v.nro_factura && v.nro_factura.trim() ? (
-                                      <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                                        {v.nro_factura}
-                                      </span>
-                                    ) : (
-                                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">S/F</span>
-                                    )}
-                                  </td>
-                                  <td className="py-2.5 px-2 text-center text-slate-500 dark:text-slate-400 whitespace-nowrap font-mono text-[11px]">
-                                    {v.fecha_factura ? formatDate(v.fecha_factura) : "-"}
-                                  </td>
-                                  <td className="py-2.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">{formatNumber(v.volumen_origen_litros, 0)} L</td>
-                                  <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400 whitespace-nowrap">{formatNumber(v.volumen_recepcionado_litros, 0)} L</td>
-                                  <td className="py-2.5 px-1.5 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                                    {v.merma_real_litros > 0 ? `-${formatNumber(v.merma_real_litros, 1)}` : formatNumber(v.merma_real_litros, 1)} L
-                                  </td>
-                                  <td className={`py-2.5 px-1.5 text-right font-mono whitespace-nowrap ${v.merma_excedente_litros > 0 ? "text-amber-700 dark:text-amber-400 font-bold" : "text-slate-400 dark:text-slate-500"}`}>
-                                    {formatNumber(v.merma_excedente_litros, 1)} L
-                                  </td>
-                                  <td className="py-2.5 px-1.5 text-center font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                                    {v.merma_tolerable_litros !== null && v.merma_tolerable_litros !== undefined ? Number(v.merma_tolerable_litros).toFixed(0) : "0"} L
-                                  </td>
-                                  <td className={`py-2.5 px-2 text-right font-mono whitespace-nowrap ${v.merma_descontar_bs > 0 ? "text-rose-700 dark:text-rose-400 font-bold" : "text-slate-400 dark:text-slate-500"}`}>
-                                    {formatCurrency(v.merma_descontar_bs)}
-                                  </td>
-                                  <td className="py-2.5 px-2 text-right font-mono font-bold text-sky-700 dark:text-sky-400 whitespace-nowrap">
-                                    {formatNumber(getVolFactLitros(v), 0)} L
-                                  </td>
-                                  <td className="py-2.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                                    Bs. {formatNumber(v.tarifa_flete, 2)}
-                                  </td>
-                                  <td className="py-2.5 px-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 whitespace-nowrap">
-                                    <div>{formatCurrency(v.flete_total_bs)}</div>
-                                    {(() => {
-                                      const totDesc = (v.merma_descontar_bs || 0) + (v.total_descuentos_adicionales_bs || 0) + (v.total_descuentos_mermas_bs || 0);
-                                      if (totDesc <= 0) return null;
-                                      return (
-                                        <div className="text-[9px] font-normal leading-tight mt-0.5">
-                                          <div className="text-rose-600 dark:text-rose-400">Desc: -{formatCurrency(totDesc)}</div>
-                                          <div className="text-emerald-700 dark:text-emerald-400 font-bold">Líq: {formatCurrency(v.flete_total_bs - totDesc)}</div>
-                                        </div>
-                                      );
-                                    })()}
-                                  </td>
-                                  <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                                    <div className="flex items-center justify-center gap-1">
-                                      <button
-                                        onClick={() => handleDuplicate(v)}
-                                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition"
-                                        title="Duplicar Despacho"
-                                      >
-                                        <Copy className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        onClick={() => openEditModal(v)}
-                                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-900 dark:hover:text-white transition"
-                                        title="Editar Despacho"
-                                      >
-                                        <Edit className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        onClick={() => handleDelete(v)}
-                                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
-                                        title="Eliminar Despacho"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-
-                            {/* FILA ESPECIAL: Subtotal del Grupo con Facturación y Fechas */}
-                            {(() => {
-                              const facClean = (group.factura || "").trim().toUpperCase();
-                              const isConDerecho = Boolean(facClean && facClean !== "S/F" && facturasConDerecho.includes(facClean));
-                              const debito13 = isConDerecho ? Math.round(grpFlete * 0.13 * 100) / 100 : 0;
-                              const vnNeto87 = isConDerecho ? grpFlete - debito13 : grpFlete;
-
-                              return (
-                                <tr className={`border-y-2 text-[10.5px] transition ${
-                                  isConDerecho
-                                    ? "bg-amber-200/60 dark:bg-amber-950/70 border-amber-400 dark:border-amber-600 font-bold"
-                                    : "bg-amber-100/70 dark:bg-amber-950/40 font-bold border-amber-300 dark:border-amber-700"
-                                }`}>
-                                  <td colSpan={10} className="py-2.5 px-3 text-left border-x border-amber-300 dark:border-amber-700">
-                                    <div className="flex items-center justify-between flex-wrap gap-2">
-                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span className="font-black text-amber-900 dark:text-amber-300 uppercase mr-2">TOTAL {group.producto}</span>
-                                        <span className="text-slate-700 dark:text-slate-300 font-medium">| FACTURA: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
-                                        <span className="text-slate-700 dark:text-slate-300 font-medium ml-2">| FECHA FACTURA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
-                                      </div>
-
-                                      {/* Checkbox Con Factura Con Derecho */}
-                                      {facClean && facClean !== "S/F" && (
-                                        <label className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition cursor-pointer select-none text-[10.5px] ${
-                                          isConDerecho
-                                            ? "bg-amber-500 text-slate-950 border-amber-600 font-black shadow-xs ring-1 ring-amber-400"
-                                            : "bg-white/95 dark:bg-slate-900/90 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-amber-400 font-bold"
-                                        }`}>
-                                          <input
-                                            type="checkbox"
-                                            checked={isConDerecho}
-                                            onChange={(e) => toggleFacturaConDerecho(facClean, e.target.checked)}
-                                            className="w-3.5 h-3.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600"
-                                          />
-                                          <span>Con Factura Con Derecho</span>
-                                          {isConDerecho && (
-                                            <span className="px-1.5 py-0.2 rounded bg-slate-950/20 text-slate-950 font-mono font-black ml-1">
-                                              (13% Débito: -{formatCurrency(debito13)})
-                                            </span>
-                                          )}
-                                        </label>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-900 dark:text-white">{formatNumber(grpVolOrig, 0)} L</td>
-                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-emerald-800 dark:text-emerald-300">{formatNumber(grpVolRec, 0)} L</td>
-                                  <td className="py-2 px-1 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-700 dark:text-slate-300">-{formatNumber(Math.abs(grpMermaReal), 1)} L</td>
-                                  <td className="py-2 px-1 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-400">{formatNumber(grpMermaExc, 1)} L</td>
-                                  <td className="py-2 px-1 text-center font-mono border-x border-amber-300 dark:border-amber-700 text-slate-500">{formatNumber(grpMermaTol, 1)} L</td>
-                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-rose-700 dark:text-rose-400">{formatCurrency(grpMDesc)}</td>
-                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 0)} L</td>
-                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-slate-700 dark:text-slate-300">Bs. {formatNumber(grpTarifa, 2)}</td>
-                                  <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-amber-900 dark:text-amber-400">
-                                    <div>{formatCurrency(grpFlete)}</div>
-                                    {isConDerecho && (
-                                      <div className="text-[9.5px] text-rose-700 dark:text-rose-400 font-bold">
-                                        Neto 87%: {formatCurrency(vnNeto87)}
-                                      </div>
-                                    )}
-                                    {grpTotDesc > 0 && (
-                                      <div className="text-[9px] font-normal leading-tight mt-0.5">
-                                        <div className="text-rose-700 dark:text-rose-400">Desc: -{formatCurrency(grpTotDesc)}</div>
-                                        <div className="text-emerald-800 dark:text-emerald-300 font-bold">Líq: {formatCurrency(grpLiquido)}</div>
-                                      </div>
-                                    )}
-                                  </td>
-                                  <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
-                                </tr>
-                              );
-                            })()}
-                          </Fragment>
-                        );
-                      });
-                    })()}
-
-                    {/* Fila de Totales Generales de Planilla */}
-                    <tr className="bg-slate-100 dark:bg-slate-800/90 font-black text-slate-900 dark:text-white border-t-2 border-b border-slate-300 dark:border-slate-700 text-xs">
-                      <td colSpan={10} className="py-3 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700">
-                        TOTAL GENERAL:
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-[12px]">
+                    <tr className="bg-amber-50 dark:bg-amber-500/15 font-black text-amber-900 dark:text-amber-300">
+                      <td className="py-3 px-4 uppercase">FLETE TOTAL</td>
+                      <td className="py-3 px-4 text-right font-mono text-sm font-black text-amber-700 dark:text-amber-400">
+                        {formatNumber(deduccionesResumen.fleteTotalBruto, 2)}
                       </td>
-                      <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white">{formatNumber(totalDespachado, 0)} L</td>
-                      <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-emerald-700 dark:text-emerald-400">{formatNumber(totalRecepcionado, 0)} L</td>
-                      <td className="py-3 px-1.5 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-slate-700 dark:text-slate-300">-{formatNumber(Math.abs(totalMermaReal), 1)} L</td>
-                      <td className="py-3 px-1.5 border-x border-slate-300 dark:border-slate-700"></td>
-                      <td className="py-3 px-1.5 border-x border-slate-300 dark:border-slate-700"></td>
-                      <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-bold text-rose-700 dark:text-rose-400">{formatCurrency(totalDescMermaBs)}</td>
-                      <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-black text-sky-700 dark:text-sky-400">{formatNumber(totalVolFacturado, 0)} L</td>
-                      <td className="py-3 px-2 border-x border-slate-300 dark:border-slate-700"></td>
-                      <td className="py-3 px-2 text-right font-mono border-x border-slate-300 dark:border-slate-700 font-black text-amber-600 dark:text-amber-400 text-sm">
-                        <div>{formatCurrency(totalFleteBs)}</div>
-                        <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold" title="Flete Bruto menos Descuento de Mermas">Flete-M: {formatCurrency(totalFleteMenosMermasBs)}</div>
-                        {totalTodosDescuentos > 0 && (
-                          <div className="text-[10px] font-bold leading-tight mt-0.5">
-                            <div className="text-rose-600 dark:text-rose-400">Desc: -{formatCurrency(totalTodosDescuentos)}</div>
-                            <div className="text-emerald-600 dark:text-emerald-400">Líq: {formatCurrency(totalLiquidoGeneral)}</div>
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-3 px-2 border-x border-slate-300 dark:border-slate-700"></td>
                     </tr>
-
-                    {/* ============================================================== */}
-                    {/* BLOQUE DE CONCILIACIÓN FISCAL (IVA 13%) EN MODO EXTENDIDO       */}
-                    {/* ============================================================== */}
-                    
-                    {/* TOTAL VENTAS BRUTAS */}
-                    <tr className="bg-emerald-100/90 dark:bg-emerald-950/70 font-black text-slate-900 dark:text-white border-t-2 border-emerald-400 dark:border-emerald-600 text-xs">
-                      <td colSpan={18} className="py-2 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 font-black italic">
-                        TOTAL VENTAS BRUTAS:
-                      </td>
-                      <td className="py-2 px-2 text-right font-mono text-sm font-black border-x border-slate-300 dark:border-slate-700 text-emerald-900 dark:text-emerald-300 bg-emerald-200/70 dark:bg-emerald-900/50">
-                        {formatCurrency(fiscalStats.totVentasBrutas)}
-                      </td>
-                      <td className="py-2 px-1 border-x border-slate-300 dark:border-slate-700"></td>
+                    <tr>
+                      <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300">Descuento por Merma</td>
+                      <td className="py-2.5 px-4 text-right font-mono text-slate-900 dark:text-white">{formatNumber(deduccionesResumen.descMerma, 2)}</td>
                     </tr>
-
-                    {/* V.N. SIN DERECHO */}
-                    <tr className="bg-slate-50 dark:bg-slate-900/80 font-bold text-slate-700 dark:text-slate-300 text-xs border-b border-slate-200 dark:border-slate-800">
-                      <td colSpan={18} className="py-1.5 px-3 text-right italic uppercase">
-                        V.N. SIN DERECHO:
-                      </td>
-                      <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200">
-                        {formatCurrency(fiscalStats.totVnSinDerecho)}
-                      </td>
-                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                    <tr>
+                      <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300">Descuento de Comision 1 $us p/m3</td>
+                      <td className="py-2.5 px-4 text-right font-mono text-slate-900 dark:text-white">{formatNumber(deduccionesResumen.descComisionUsd, 2)}</td>
                     </tr>
-
-                    {/* V.B. CON DERECHO */}
-                    <tr className="bg-amber-50/70 dark:bg-amber-950/40 font-bold text-amber-900 dark:text-amber-300 text-xs border-b border-slate-200 dark:border-slate-800">
-                      <td colSpan={18} className="py-1.5 px-3 text-right italic uppercase">
-                        V.B. CON DERECHO {fiscalStats.countConDerecho > 0 ? `(${fiscalStats.countConDerecho} facturas)` : "(0 facturas seleccionadas)"}:
-                      </td>
-                      <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-amber-800 dark:text-amber-400">
-                        {formatCurrency(fiscalStats.totVbConDerecho)}
-                      </td>
-                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                    <tr>
+                      <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300">Descuento de Comision 7%</td>
+                      <td className="py-2.5 px-4 text-right font-mono text-slate-900 dark:text-white">{formatNumber(deduccionesResumen.descComision7, 2)}</td>
                     </tr>
-
-                    {/* Sub-filas por cada Factura con Derecho seleccionada */}
-                    {facturasConDerechoDetalle.map((fac) => (
-                      <tr key={`ext-${fac.factura}`} className="bg-amber-100/40 dark:bg-amber-950/30 text-[11px] text-slate-700 dark:text-slate-300 border-b border-amber-200/50 dark:border-amber-900/30">
-                        <td colSpan={18} className="py-1 px-4 text-right">
-                          <span className="font-bold text-amber-900 dark:text-amber-300 mr-2">• Factura {fac.factura}</span>
-                          <span className="text-slate-500 mr-2">({fac.fechas.length > 0 ? fac.fechas.map(f => formatDate(f)).join(", ") : "-"})</span>
-                          <span className="text-slate-600 dark:text-slate-400 font-mono">Flete Bruto: {formatCurrency(fac.flete)}</span>
-                          <span className="font-bold text-rose-600 dark:text-rose-400 ml-2">→ Débito Fiscal IVA 13%:</span>
-                        </td>
-                        <td className="py-1 px-2 text-right font-mono font-bold text-rose-700 dark:text-rose-400 border-x border-slate-200 dark:border-slate-800">
-                          -{formatCurrency(fac.debito)}
-                        </td>
-                        <td className="py-1 px-1 border-x border-slate-200 dark:border-slate-800"></td>
+                    <tr>
+                      <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300">Descuento YPFB BOL-GART 7%</td>
+                      <td className="py-2.5 px-4 text-right font-mono text-slate-900 dark:text-white">{formatNumber(deduccionesResumen.descBolGart7, 2)}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300">Descuento de Comision 3%</td>
+                      <td className="py-2.5 px-4 text-right font-mono text-slate-900 dark:text-white">{formatNumber(deduccionesResumen.descComision3, 2)}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300">Hojas de Ruta</td>
+                      <td className="py-2.5 px-4 text-right font-mono text-slate-900 dark:text-white">{formatNumber(deduccionesResumen.descHojasRuta, 2)}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300">GPS</td>
+                      <td className="py-2.5 px-4 text-right font-mono text-slate-900 dark:text-white">{formatNumber(deduccionesResumen.descGps, 2)}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300">Anticipos y Otros 7%</td>
+                      <td className="py-2.5 px-4 text-right font-mono text-slate-900 dark:text-white">{formatNumber(deduccionesResumen.descAnticipos, 2)}</td>
+                    </tr>
+                    {deduccionesResumen.descOtros !== 0 && (
+                      <tr>
+                        <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300">Otros Ajustes / Descuentos</td>
+                        <td className="py-2.5 px-4 text-right font-mono text-slate-900 dark:text-white">{formatNumber(deduccionesResumen.descOtros, 2)}</td>
                       </tr>
-                    ))}
+                    )}
 
-                    {/* DEBITO (13%) */}
-                    <tr className="bg-rose-50/70 dark:bg-rose-950/40 font-bold text-rose-900 dark:text-rose-300 text-xs border-b border-slate-200 dark:border-slate-800">
-                      <td colSpan={18} className="py-1.5 px-3 text-right italic uppercase font-black">
-                        DEBITO:
+                    {/* Total Descuento */}
+                    <tr className="bg-rose-50 dark:bg-rose-500/15 font-bold text-rose-900 dark:text-rose-300 border-t-2 border-slate-200 dark:border-slate-700">
+                      <td className="py-3 px-4 uppercase font-black">TOTAL DESCUENTO</td>
+                      <td className="py-3 px-4 text-right font-mono text-sm text-rose-700 dark:text-rose-400 font-black">
+                        {formatNumber(deduccionesResumen.totalDescuento, 2)}
                       </td>
-                      <td className="py-1.5 px-2 text-right font-mono font-black border-x border-slate-200 dark:border-slate-800 text-rose-600 dark:text-rose-400">
-                        {fiscalStats.totDebito13 > 0 ? `-${formatCurrency(fiscalStats.totDebito13)}` : "Bs. 0,00"}
-                      </td>
-                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
                     </tr>
 
-                    {/* V.N. CON DERECHO (87%) */}
-                    <tr className="bg-slate-50 dark:bg-slate-900/80 font-bold text-slate-700 dark:text-slate-300 text-xs border-b border-slate-200 dark:border-slate-800">
-                      <td colSpan={18} className="py-1.5 px-3 text-right italic uppercase">
-                        V.N. CON DERECHO:
+                    {/* Líquido Pagable */}
+                    <tr className="bg-emerald-50 dark:bg-emerald-500/20 font-black text-emerald-950 dark:text-emerald-300 border-t-2 border-emerald-500">
+                      <td className="py-3.5 px-4 uppercase text-sm">LIQUIDO PAGABLE</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-base font-black text-emerald-700 dark:text-emerald-400">
+                        {formatNumber(deduccionesResumen.liquidoPagable, 2)}
                       </td>
-                      <td className="py-1.5 px-2 text-right font-mono font-bold border-x border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200">
-                        {formatCurrency(fiscalStats.totVnConDerecho)}
-                      </td>
-                      <td className="py-1.5 px-1 border-x border-slate-200 dark:border-slate-800"></td>
-                    </tr>
-
-                    {/* VENTAS NETAS GESTION (Fondo Amarillo Brillante según Captura) */}
-                    <tr className="bg-yellow-300 dark:bg-yellow-400 font-black text-slate-950 border-t-2 border-b-2 border-yellow-500 text-sm">
-                      <td colSpan={18} className="py-2.5 px-3 text-right uppercase font-black tracking-wide text-slate-950">
-                        VENTAS NETAS GESTION {gestionYearLabel}:
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono text-base font-black border-x border-yellow-500 text-slate-950 bg-yellow-400 dark:bg-yellow-300">
-                        {formatCurrency(fiscalStats.totVentasNetasGestion)}
-                      </td>
-                      <td className="py-2.5 px-1 border-x border-yellow-500 bg-yellow-400 dark:bg-yellow-300"></td>
                     </tr>
                   </tbody>
                 </table>
               </div>
-            )}
-            {renderPagination(totalPlanillaGroups, totalPlanillaPages, `grupos (${filtered.length} despachos)`)}
+
+              {/* Subtabla desplegable: Desglose por viaje YPFB */}
+              {showYpfbBreakdown && deduccionesResumen.ypfbCount > 0 && (
+                <div className="mb-6 p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800">
+                  <div className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase mb-3 flex items-center justify-between">
+                    <span>Desglose Contractual por Despacho YPFB ({deduccionesResumen.ypfbCount} viajes)</span>
+                    <span className="text-[10px] text-slate-500 font-normal">Haga clic en Editar para modificar parámetros de un viaje específico</span>
+                  </div>
+                  <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                    <table className="w-full text-left text-[11px] border-collapse">
+                      <thead>
+                        <tr className="bg-slate-200/70 dark:bg-slate-900 font-bold text-slate-700 dark:text-slate-300 uppercase">
+                          <th className="py-2 px-2">Placa</th>
+                          <th className="py-2 px-2">Fecha</th>
+                          <th className="py-2 px-2">Producto</th>
+                          <th className="py-2 px-2 text-right">Flete (Bs)</th>
+                          <th className="py-2 px-2 text-right">Merma (Bs)</th>
+                          <th className="py-2 px-2 text-right">T.C. ($us)</th>
+                          <th className="py-2 px-2 text-right">Com 1 $us</th>
+                          <th className="py-2 px-2 text-right">Com 7%</th>
+                          <th className="py-2 px-2 text-right">Bol-Gart</th>
+                          <th className="py-2 px-2 text-right">Com 3%</th>
+                          <th className="py-2 px-2 text-right">Hojas Ruta</th>
+                          <th className="py-2 px-2 text-right">GPS</th>
+                          <th className="py-2 px-2 text-center w-24">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200/50 dark:divide-slate-800 font-mono">
+                        {deduccionesResumen.ypfbViajes.map((v) => {
+                          const vFact = (v.volumen_facturado || v.volumen_recepcionado_litros || 0) / 1000;
+                          const isRowEditing = inlineEditingId === v.id;
+                          const tc = isRowEditing ? (Number(inlineEditForm.tipo_cambio_bs) || 6.96) : (v.tipo_cambio_bs ?? 6.96);
+                          const comUsdBs = isRowEditing
+                            ? vFact * (Number(inlineEditForm.comision_usd_m3) || 0) * tc
+                            : vFact * (v.comision_usd_m3 ?? 1.0) * tc;
+                          const flete = Number(v.flete_total_bs) || 0;
+                          const com7Bs = isRowEditing
+                            ? flete * ((Number(inlineEditForm.comision_pct_1) || 0) / 100)
+                            : flete * ((v.comision_pct_1 ?? 7.0) / 100);
+                          const bolGartBs = isRowEditing
+                            ? flete * ((Number(inlineEditForm.comision_ypfb_bolgart_pct) || 0) / 100)
+                            : flete * ((v.comision_ypfb_bolgart_pct ?? 7.0) / 100);
+                          const com3Bs = isRowEditing
+                            ? flete * ((Number(inlineEditForm.comision_pct_2) || 0) / 100)
+                            : flete * ((v.comision_pct_2 ?? 3.0) / 100);
+
+                          if (isRowEditing) {
+                            return (
+                              <tr key={v.id} className="bg-amber-500/10 dark:bg-amber-950/30 border-y-2 border-amber-500/40">
+                                <td className="py-1.5 px-2 font-bold font-sans text-slate-900 dark:text-white">{v.placa}</td>
+                                <td className="py-1.5 px-2 font-sans text-slate-600 dark:text-slate-400">{v.fecha_carga}</td>
+                                <td className="py-1.5 px-2 font-sans text-slate-700 dark:text-slate-300">{v.producto}</td>
+                                <td className="py-1.5 px-2 text-right text-slate-900 dark:text-white font-bold">{formatNumber(flete, 2)}</td>
+                                
+                                {/* Merma Bs editable */}
+                                <td className="py-1 px-1.5 text-right">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={inlineEditForm.merma_descontar_bs}
+                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, merma_descontar_bs: e.target.value })}
+                                    className="w-16 px-1 py-0.5 text-right bg-white dark:bg-slate-900 border border-amber-500 rounded text-rose-600 dark:text-rose-400 font-bold text-[11px] focus:outline-none"
+                                    title="Merma Bs. a descontar"
+                                  />
+                                </td>
+
+                                {/* TC editable */}
+                                <td className="py-1 px-1.5 text-right">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={inlineEditForm.tipo_cambio_bs}
+                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, tipo_cambio_bs: e.target.value })}
+                                    className="w-14 px-1 py-0.5 text-right bg-white dark:bg-slate-900 border border-amber-500 rounded text-slate-900 dark:text-white text-[11px] focus:outline-none"
+                                    title="Tipo de Cambio (Bs/$us)"
+                                  />
+                                </td>
+
+                                {/* Com 1 $us editable */}
+                                <td className="py-1 px-1.5 text-right">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={inlineEditForm.comision_usd_m3}
+                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, comision_usd_m3: e.target.value })}
+                                    className="w-12 px-1 py-0.5 text-right bg-white dark:bg-slate-900 border border-amber-500 rounded text-slate-900 dark:text-white text-[11px] focus:outline-none"
+                                    title="Comisión 1 ($us/m³)"
+                                  />
+                                </td>
+
+                                {/* Com 7% editable */}
+                                <td className="py-1 px-1.5 text-right">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={inlineEditForm.comision_pct_1}
+                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, comision_pct_1: e.target.value })}
+                                    className="w-12 px-1 py-0.5 text-right bg-white dark:bg-slate-900 border border-amber-500 rounded text-slate-900 dark:text-white text-[11px] focus:outline-none"
+                                    title="Comisión 1 (% Retención)"
+                                  />
+                                </td>
+
+                                {/* Bol-Gart editable */}
+                                <td className="py-1 px-1.5 text-right">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={inlineEditForm.comision_ypfb_bolgart_pct}
+                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, comision_ypfb_bolgart_pct: e.target.value })}
+                                    className="w-12 px-1 py-0.5 text-right bg-white dark:bg-slate-900 border border-amber-500 rounded text-slate-900 dark:text-white text-[11px] focus:outline-none"
+                                    title="BOL-GART (%)"
+                                  />
+                                </td>
+
+                                {/* Com 3% editable */}
+                                <td className="py-1 px-1.5 text-right">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={inlineEditForm.comision_pct_2}
+                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, comision_pct_2: e.target.value })}
+                                    className="w-12 px-1 py-0.5 text-right bg-white dark:bg-slate-900 border border-amber-500 rounded text-slate-900 dark:text-white text-[11px] focus:outline-none"
+                                    title="Comisión 2 (% Gestión)"
+                                  />
+                                </td>
+
+                                {/* Hojas de Ruta editable */}
+                                <td className="py-1 px-1.5 text-right">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={inlineEditForm.costo_hojas_de_ruta_bs}
+                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, costo_hojas_de_ruta_bs: e.target.value })}
+                                    className="w-14 px-1 py-0.5 text-right bg-white dark:bg-slate-900 border border-amber-500 rounded text-slate-900 dark:text-white text-[11px] focus:outline-none"
+                                    title="Hojas de Ruta (Bs)"
+                                  />
+                                </td>
+
+                                {/* GPS editable */}
+                                <td className="py-1 px-1.5 text-right">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={inlineEditForm.costo_gps_bs}
+                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, costo_gps_bs: e.target.value })}
+                                    className="w-14 px-1 py-0.5 text-right bg-white dark:bg-slate-900 border border-amber-500 rounded text-slate-900 dark:text-white text-[11px] focus:outline-none"
+                                    title="GPS (Bs)"
+                                  />
+                                </td>
+
+                                <td className="py-1.5 px-2 text-center whitespace-nowrap">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <button
+                                      type="button"
+                                      disabled={savingInlineContractual}
+                                      onClick={() => handleSaveInlineContractual(v)}
+                                      className="px-2 py-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 font-sans font-black text-[10px] rounded-lg transition shadow-xs cursor-pointer"
+                                    >
+                                      {savingInlineContractual ? "..." : "Guardar"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={savingInlineContractual}
+                                      onClick={() => setInlineEditingId(null)}
+                                      className="px-1.5 py-1 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 text-slate-700 dark:text-slate-300 font-sans font-bold text-[10px] rounded-lg transition cursor-pointer"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return (
+                            <tr key={v.id} className="hover:bg-slate-100 dark:hover:bg-slate-900/60 transition">
+                              <td className="py-1.5 px-2 font-bold font-sans text-slate-900 dark:text-white">{v.placa}</td>
+                              <td className="py-1.5 px-2 font-sans text-slate-600 dark:text-slate-400">{v.fecha_carga}</td>
+                              <td className="py-1.5 px-2 font-sans text-slate-700 dark:text-slate-300">{v.producto}</td>
+                              <td className="py-1.5 px-2 text-right text-slate-900 dark:text-white">{formatNumber(flete, 2)}</td>
+                              <td className="py-1.5 px-2 text-right text-rose-600 dark:text-rose-400">{formatNumber(v.merma_descontar_bs || 0, 2)}</td>
+                              <td className="py-1.5 px-2 text-right text-slate-700 dark:text-slate-300" title="Tipo de Cambio Bs/$us">{formatNumber(v.tipo_cambio_bs ?? 6.96, 2)}</td>
+                              <td className="py-1.5 px-2 text-right text-slate-700 dark:text-slate-300" title={`${v.comision_usd_m3 ?? 1.0} $us/m³`}>{formatNumber(comUsdBs, 2)}</td>
+                              <td className="py-1.5 px-2 text-right text-slate-700 dark:text-slate-300" title={`${v.comision_pct_1 ?? 7.0}%`}>{formatNumber(com7Bs, 2)}</td>
+                              <td className="py-1.5 px-2 text-right text-slate-700 dark:text-slate-300" title={`${v.comision_ypfb_bolgart_pct ?? 7.0}%`}>{formatNumber(bolGartBs, 2)}</td>
+                              <td className="py-1.5 px-2 text-right text-slate-700 dark:text-slate-300" title={`${v.comision_pct_2 ?? 3.0}%`}>{formatNumber(com3Bs, 2)}</td>
+                              <td className="py-1.5 px-2 text-right text-slate-700 dark:text-slate-300">{formatNumber(v.costo_hojas_de_ruta_bs || 0, 2)}</td>
+                              <td className="py-1.5 px-2 text-right text-slate-700 dark:text-slate-300">{formatNumber(v.costo_gps_bs || 0, 2)}</td>
+                              <td className="py-1.5 px-2 text-center whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={() => startInlineEdit(v)}
+                                  className="px-2 py-0.5 bg-amber-500/15 hover:bg-amber-500/30 text-amber-700 dark:text-amber-400 font-sans font-black text-[10px] rounded-lg transition border border-amber-500/25 cursor-pointer"
+                                >
+                                  Editar
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Bloque de Firmas Página 3 */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-center text-xs">
+                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60">
+                  <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 mb-6">REALIZADO POR:</div>
+                  <div className="font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-800 pt-1 text-[11px]">JAQUELINE LOVERA TIÑINI</div>
+                </div>
+                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60">
+                  <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 mb-6">REVISADO POR:</div>
+                  <div className="font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-800 pt-1 text-[11px]">JOSE LOVERA TIÑINI / GERENTE GENERAL</div>
+                </div>
+                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60">
+                  <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 mb-6">AUTORIZADO POR:</div>
+                  <div className="font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-800 pt-1 text-[11px]">DIRECTORIO</div>
+                </div>
+                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60">
+                  <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 mb-6">CANCELADO POR:</div>
+                  <div className="font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-800 pt-1 text-[11px]">TOMASA TIÑINI MITA / APOYO</div>
+                </div>
+              </div>
+            </div>
           </div>
         )
       )}
@@ -4182,9 +4691,10 @@ function ViajesContent() {
                 </div>
               </div>
 
-              {/* Fila 3: Tramo y Cliente */}
+              {/* Fila 3: Tramo y Cliente con Dropdowns Interactivos */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                <div>
+                {/* Tramo de Transporte con Dropdown Interactivo */}
+                <div ref={tramoDropdownRef} className="relative">
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
                       Tramo de Transporte *
@@ -4198,31 +4708,95 @@ function ViajesContent() {
                       <span>Nuevo Tramo</span>
                     </button>
                   </div>
-                  <input
-                    type="text"
-                    required
-                    list="tramos-sugeridos"
-                    value={formData.tramo}
-                    onChange={(e) => setFormData({ ...formData, tramo: e.target.value.toUpperCase() })}
-                    placeholder="ej. ARICA - TAMBO QUEMADO - LA PAZ"
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs uppercase text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
-                  />
-                  <datalist id="tramos-sugeridos">
-                    {catalogTramos.map((tr) => (
-                      <option key={tr} value={tr} />
-                    ))}
-                  </datalist>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={formData.tramo}
+                      onFocus={() => setShowTramoDropdown(true)}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase();
+                        setFormData({ ...formData, tramo: val });
+                        setShowTramoDropdown(true);
+                      }}
+                      placeholder="ej. ARICA - TAMBO QUEMADO - LA PAZ"
+                      className="w-full pl-3.5 pr-9 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs uppercase font-semibold text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500 transition shadow-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowTramoDropdown(!showTramoDropdown)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 transition"
+                      title="Mostrar lista de tramos"
+                    >
+                      {showTramoDropdown ? (
+                        <ChevronUp className="w-4 h-4 text-amber-500" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                    </button>
+
+                    {/* Menú Flotante de Selección de Tramo */}
+                    {showTramoDropdown && (
+                      <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-slate-900/95 dark:bg-slate-900/98 backdrop-blur-md border border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-56 overflow-y-auto">
+                        {(() => {
+                          const query = (formData.tramo || "").trim().toUpperCase();
+                          const filtered = availableTramos.filter(t => !query || t.includes(query));
+                          return (
+                            <div className="p-1.5 space-y-0.5">
+                              {filtered.length > 0 ? (
+                                filtered.map((t) => {
+                                  const isSelected = formData.tramo.toUpperCase() === t;
+                                  return (
+                                    <button
+                                      key={t}
+                                      type="button"
+                                      onClick={() => {
+                                        setFormData({ ...formData, tramo: t });
+                                        setShowTramoDropdown(false);
+                                      }}
+                                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-between transition ${
+                                        isSelected
+                                          ? "bg-amber-500 text-slate-950 font-black shadow-sm"
+                                          : "text-slate-200 hover:bg-slate-800 hover:text-white"
+                                      }`}
+                                    >
+                                      <span className="truncate">{t}</span>
+                                      {isSelected && <Check className="w-3.5 h-3.5 text-slate-950 flex-shrink-0 ml-2 stroke-[3]" />}
+                                    </button>
+                                  );
+                                })
+                              ) : (
+                                <div className="p-2.5 text-center text-xs text-slate-400">
+                                  <span>No hay tramos que coincidan con la búsqueda.</span>
+                                </div>
+                              )}
+                              {query && !availableTramos.includes(query) && (
+                                <button
+                                  type="button"
+                                  onClick={() => setShowTramoDropdown(false)}
+                                  className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 flex items-center gap-1.5 transition mt-1"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>Usar tramo personalizado: "{query}"</span>
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* Cliente / Consignatario */}
-                <div>
+                {/* Cliente / Consignatario con Dropdown Interactivo */}
+                <div ref={clienteDropdownRef} className="relative">
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
                       Cliente / Consignatario *
                     </label>
                     {formData.cliente && (
                       (() => {
-                        const isReg = clientes.some(c => c.nombre?.toUpperCase() === formData.cliente.toUpperCase());
+                        const isReg = availableClientes.some(c => c.toUpperCase() === formData.cliente.toUpperCase());
                         if (isReg) {
                           return (
                             <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/25">
@@ -4243,37 +4817,97 @@ function ViajesContent() {
                     <input
                       type="text"
                       required
-                      list="lista-clientes-disponibles"
                       value={formData.cliente}
-                      onChange={(e) => setFormData({ ...formData, cliente: e.target.value.toUpperCase() })}
-                      placeholder="ej. Y.P.F.B. (escribe o elige)"
-                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-bold uppercase text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
+                      onFocus={() => setShowClienteDropdown(true)}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase();
+                        setFormData({ ...formData, cliente: val });
+                        setShowClienteDropdown(true);
+                      }}
+                      placeholder="ej. YPFB o ACEROSPAURITO S.R.L."
+                      className="w-full pl-3.5 pr-9 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-bold uppercase text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500 transition shadow-xs"
                     />
-                    <datalist id="lista-clientes-disponibles">
-                      {clientes.map(c => (
-                        <option key={c.id} value={c.nombre}>
-                          {c.nombre} {c.nit ? `(NIT: ${c.nit})` : ""}
-                        </option>
-                      ))}
-                    </datalist>
+                    <button
+                      type="button"
+                      onClick={() => setShowClienteDropdown(!showClienteDropdown)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 transition"
+                      title="Mostrar lista de clientes"
+                    >
+                      {showClienteDropdown ? (
+                        <ChevronUp className="w-4 h-4 text-amber-500" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                    </button>
+
+                    {/* Menú Flotante de Selección de Cliente */}
+                    {showClienteDropdown && (
+                      <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-slate-900/95 dark:bg-slate-900/98 backdrop-blur-md border border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-56 overflow-y-auto">
+                        {(() => {
+                          const query = (formData.cliente || "").trim().toUpperCase();
+                          const filtered = availableClientes.filter(c => !query || c.includes(query));
+                          return (
+                            <div className="p-1.5 space-y-0.5">
+                              {filtered.length > 0 ? (
+                                filtered.map((c) => {
+                                  const isSelected = formData.cliente.toUpperCase() === c;
+                                  return (
+                                    <button
+                                      key={c}
+                                      type="button"
+                                      onClick={() => {
+                                        setFormData({ ...formData, cliente: c });
+                                        setShowClienteDropdown(false);
+                                      }}
+                                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between transition ${
+                                        isSelected
+                                          ? "bg-amber-500 text-slate-950 font-black shadow-sm"
+                                          : "text-slate-200 hover:bg-slate-800 hover:text-white"
+                                      }`}
+                                    >
+                                      <span className="truncate">{c}</span>
+                                      {isSelected && <Check className="w-3.5 h-3.5 text-slate-950 flex-shrink-0 ml-2 stroke-[3]" />}
+                                    </button>
+                                  );
+                                })
+                              ) : (
+                                <div className="p-2.5 text-center text-xs text-slate-400">
+                                  <span>No hay clientes que coincidan con la búsqueda.</span>
+                                </div>
+                              )}
+                              {query && !availableClientes.includes(query) && (
+                                <button
+                                  type="button"
+                                  onClick={() => setShowClienteDropdown(false)}
+                                  className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 flex items-center gap-1.5 transition mt-1"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>Usar cliente nuevo: "{query}"</span>
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
 
                   {/* Acceso Rápido a Clientes Registrados */}
-                  {clientes.length > 0 && (
+                  {availableClientes.length > 0 && (
                     <div className="flex items-center gap-1 mt-1.5 flex-wrap">
                       <span className="text-[10px] text-slate-400 font-semibold mr-0.5">Clientes:</span>
-                      {clientes.slice(0, 4).map(c => (
+                      {availableClientes.slice(0, 4).map(c => (
                         <button
-                          key={c.id}
+                          key={c}
                           type="button"
-                          onClick={() => setFormData({ ...formData, cliente: c.nombre.toUpperCase() })}
+                          onClick={() => setFormData({ ...formData, cliente: c })}
                           className={`text-[10px] px-2 py-0.5 rounded-lg font-bold transition border ${
-                            formData.cliente.toUpperCase() === c.nombre.toUpperCase()
+                            formData.cliente.toUpperCase() === c
                               ? "bg-amber-500 text-slate-950 border-amber-600 font-black shadow-xs"
                               : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-500 hover:text-amber-500"
                           }`}
                         >
-                          {c.nombre}
+                          {c}
                         </button>
                       ))}
                     </div>
@@ -4470,6 +5104,212 @@ function ViajesContent() {
                 </div>
               </div>
 
+              {/* Sección Exclusiva: Parámetros y Deducciones Contractuales YPFB */}
+              {isYpfbClient(formData.cliente) && (
+                <div className="p-4 bg-amber-500/5 dark:bg-amber-950/20 border-2 border-amber-500/30 rounded-2xl space-y-3 animate-in fade-in transition-all">
+                  <div className="flex items-center justify-between border-b border-amber-500/20 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-black text-xs">
+                        YPFB
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                          Parámetros y Comisiones Contractuales YPFB
+                        </h4>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                          Configuración de descuentos de combustible y deducciones de liquidación para este viaje
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+                      Exclusivo YPFB
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                        Comisión 1 ($us/m³)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.comision_usd_m3}
+                        onChange={(e) => setFormData({ ...formData, comision_usd_m3: e.target.value })}
+                        onBlur={(e) => {
+                          if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                            setFormData((prev) => ({ ...prev, comision_usd_m3: 1.00 }));
+                          }
+                        }}
+                        placeholder="1.00"
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[9px] text-slate-400 block mt-0.5">1 $us/m³</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                        Comisión 7% (%)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.comision_pct_1}
+                        onChange={(e) => setFormData({ ...formData, comision_pct_1: e.target.value })}
+                        onBlur={(e) => {
+                          if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                            setFormData((prev) => ({ ...prev, comision_pct_1: 7.00 }));
+                          }
+                        }}
+                        placeholder="7.00"
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[9px] text-slate-400 block mt-0.5">Retención 7%</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                        BOL-GART 7% (%)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.comision_ypfb_bolgart_pct}
+                        onChange={(e) => setFormData({ ...formData, comision_ypfb_bolgart_pct: e.target.value })}
+                        onBlur={(e) => {
+                          if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                            setFormData((prev) => ({ ...prev, comision_ypfb_bolgart_pct: 7.00 }));
+                          }
+                        }}
+                        placeholder="7.00"
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[9px] text-slate-400 block mt-0.5">Boleta Garantía 7%</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                        Comisión 3% (%)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.comision_pct_2}
+                        onChange={(e) => setFormData({ ...formData, comision_pct_2: e.target.value })}
+                        onBlur={(e) => {
+                          if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                            setFormData((prev) => ({ ...prev, comision_pct_2: 3.00 }));
+                          }
+                        }}
+                        placeholder="3.00"
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[9px] text-slate-400 block mt-0.5">Gestión 3%</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                        Hojas de Ruta (Bs.)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.costo_hojas_de_ruta_bs}
+                        onChange={(e) => setFormData({ ...formData, costo_hojas_de_ruta_bs: e.target.value })}
+                        onBlur={(e) => {
+                          if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                            setFormData((prev) => ({ ...prev, costo_hojas_de_ruta_bs: 0.00 }));
+                          }
+                        }}
+                        placeholder="0.00"
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[9px] text-slate-400 block mt-0.5">0.00 Bs fijo</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                        GPS / Precintos (Bs.)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.costo_gps_bs}
+                        onChange={(e) => setFormData({ ...formData, costo_gps_bs: e.target.value })}
+                        onBlur={(e) => {
+                          if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                            setFormData((prev) => ({ ...prev, costo_gps_bs: 0.00 }));
+                          }
+                        }}
+                        placeholder="0.00"
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[9px] text-slate-400 block mt-0.5">0.00 Bs fijo</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                        Precio Merma + IVA
+                      </label>
+                      <input
+                        type="number"
+                        step="0.000001"
+                        value={formData.precio_merma_litro_bs}
+                        onChange={(e) => setFormData({ ...formData, precio_merma_litro_bs: e.target.value })}
+                        onBlur={(e) => {
+                          if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                            setFormData((prev) => ({ ...prev, precio_merma_litro_bs: 7.450000 }));
+                          }
+                        }}
+                        placeholder="7.450000"
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[9px] text-slate-400 block mt-0.5">6 decimales (ej. 7.450000 Bs/L)</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                        Anticipos y Otros (%)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.anticipos_otros_pct}
+                        onChange={(e) => setFormData({ ...formData, anticipos_otros_pct: e.target.value })}
+                        onBlur={(e) => {
+                          if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                            setFormData((prev) => ({ ...prev, anticipos_otros_pct: 0.00 }));
+                          }
+                        }}
+                        placeholder="0.00"
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[9px] text-slate-400 block mt-0.5">0.00% opcional</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                        T.C. Dólar (Bs/$us)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.tipo_cambio_bs}
+                        onChange={(e) => setFormData({ ...formData, tipo_cambio_bs: e.target.value })}
+                        onBlur={(e) => {
+                          if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                            setFormData((prev) => ({ ...prev, tipo_cambio_bs: 6.96 }));
+                          }
+                        }}
+                        placeholder="6.96"
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[9px] text-slate-400 block mt-0.5">6.96 Bs/$us</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Fila 7: Listas Dinámicas de Descuentos (Adicionales y Mermas) */}
               <div className="space-y-3 pt-1">
                 {/* 1. Descuentos Adicionales */}
@@ -4604,24 +5444,28 @@ function ViajesContent() {
               {/* Fila 8: Panel de Cálculos Automáticos Oficiales (Tiempo Real) */}
               <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
                 <span className="font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider text-[10px] block">
-                  Cálculos Automáticos YPFB en Tiempo Real:
+                  {isYpfbClient(formData.cliente) ? "Cálculos Automáticos YPFB en Tiempo Real:" : "Cálculos de Flete en Tiempo Real (Carga Seca / No YPFB - Sin Mermas ni Deducciones Contractuales):"}
                 </span>
                 
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
                   <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80">
                     <span className="text-slate-500 dark:text-slate-400 text-[10px] block uppercase font-bold">Merma Real:</span>
                     <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
-                      {liveCalc.merma_real > 0 ? `+${liveCalc.merma_real}` : liveCalc.merma_real} L
+                      {isYpfbClient(formData.cliente) ? (liveCalc.merma_real > 0 ? `+${liveCalc.merma_real}` : `${liveCalc.merma_real}`) : "0"} L
                     </span>
-                    <span className="text-[9px] text-slate-400 block">Tol: {liveCalc.merma_tolerable} L ({liveCalc.tolerancia_pct}%)</span>
+                    <span className="text-[9px] text-slate-400 block">
+                      {isYpfbClient(formData.cliente) ? `Tol: ${liveCalc.merma_tolerable} L (${liveCalc.tolerancia_pct}%)` : "No aplica (0.0%)"}
+                    </span>
                   </div>
 
                   <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80">
                     <span className="text-slate-500 dark:text-slate-400 text-[10px] block uppercase font-bold">Desc. Merma (Carga):</span>
                     <span className={`font-mono font-bold text-xs ${liveCalc.merma_descontar_bs > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-                      {formatCurrency(liveCalc.merma_descontar_bs)}
+                      {isYpfbClient(formData.cliente) ? formatCurrency(liveCalc.merma_descontar_bs) : "Bs. 0,00"}
                     </span>
-                    <span className="text-[9px] text-slate-400 block">Exc: {liveCalc.merma_excedente} L</span>
+                    <span className="text-[9px] text-slate-400 block">
+                      {isYpfbClient(formData.cliente) ? `Exc: ${liveCalc.merma_excedente} L` : "Sin merma"}
+                    </span>
                   </div>
 
                   <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80">
@@ -4689,6 +5533,174 @@ function ViajesContent() {
         onCancel={() => setShowSaveNewModal(false)}
         loading={savingCatalog}
       />
+
+      {/* Modal para Ajustar Deducciones en Viajes */}
+      {showAdjustDeductionsModal && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-hidden animate-in fade-in">
+            <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
+                <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
+                    <SlidersHorizontal className="w-4 h-4" />
+                  </div>
+                  <span>Ajustar Montos de Deducción (Hoja 2)</span>
+                </h3>
+                <button
+                  onClick={() => setShowAdjustDeductionsModal(false)}
+                  className="text-slate-400 hover:text-slate-900 dark:hover:text-white p-1 rounded-lg transition"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form id="adjust-deductions-form" onSubmit={handleSaveDeductionsAdjustments} className="p-6 space-y-3.5 flex-1 overflow-y-auto text-xs">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
+                  Modifique directamente los valores consolidados de deducción para este conjunto de viajes o período.
+                </p>
+
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Descuento Merma (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustDeductionForm.desc_merma_bs}
+                      onChange={(e) => setAdjustDeductionForm({ ...adjustDeductionForm, desc_merma_bs: e.target.value })}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Comisión 1 $us p/m3 (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustDeductionForm.desc_comision_usd_m3_bs}
+                      onChange={(e) => setAdjustDeductionForm({ ...adjustDeductionForm, desc_comision_usd_m3_bs: e.target.value })}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Comisión 7% (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustDeductionForm.desc_comision_7pct_bs}
+                      onChange={(e) => setAdjustDeductionForm({ ...adjustDeductionForm, desc_comision_7pct_bs: e.target.value })}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">YPFB BOL-GART 7% (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustDeductionForm.desc_comision_ypfb_bolgart_7pct_bs}
+                      onChange={(e) => setAdjustDeductionForm({ ...adjustDeductionForm, desc_comision_ypfb_bolgart_7pct_bs: e.target.value })}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Comisión 3% (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustDeductionForm.desc_comision_3pct_bs}
+                      onChange={(e) => setAdjustDeductionForm({ ...adjustDeductionForm, desc_comision_3pct_bs: e.target.value })}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Hojas de Ruta (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustDeductionForm.desc_hojas_ruta_bs}
+                      onChange={(e) => setAdjustDeductionForm({ ...adjustDeductionForm, desc_hojas_ruta_bs: e.target.value })}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">GPS (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustDeductionForm.desc_gps_bs}
+                      onChange={(e) => setAdjustDeductionForm({ ...adjustDeductionForm, desc_gps_bs: e.target.value })}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Anticipos y Otros (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adjustDeductionForm.desc_anticipos_otros_bs}
+                      onChange={(e) => setAdjustDeductionForm({ ...adjustDeductionForm, desc_anticipos_otros_bs: e.target.value })}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Otros Ajustes / Descuentos (Bs)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={adjustDeductionForm.desc_otros_ajustes_bs}
+                    onChange={(e) => setAdjustDeductionForm({ ...adjustDeductionForm, desc_otros_ajustes_bs: e.target.value })}
+                    placeholder="0.00"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </form>
+
+              <div className="px-6 py-3.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 flex justify-between items-center flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={handleResetDeductionsAdjustments}
+                  className="px-3 py-2 rounded-xl text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 text-xs font-bold transition"
+                >
+                  Restablecer Originales
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdjustDeductionsModal(false)}
+                    className="px-4 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-xs font-bold transition"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    form="adjust-deductions-form"
+                    className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-black transition shadow-sm"
+                  >
+                    Guardar Ajustes
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
 
     </div>
   );

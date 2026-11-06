@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.models.tenant import Viaje, ParametroLiquidacion, UnidadTransporte, Cliente, EmpresaApoyo
 from app.db.session import sanitize_schema_name
-from app.services.calculation_engine import calculate_viaje_values, determine_trip_period
+from app.services.calculation_engine import calculate_viaje_values, determine_trip_period, is_ypfb_client
 
 # -------------------------------------------------------------------------
 # PALABRAS CLAVE PARA CLASIFICACIÓN INTELIGENTE DE CLIENTES Y TRANSPORTISTAS
@@ -113,7 +113,7 @@ def clean_float(val: Any, default: float = 0.0, hint: str = "generic") -> float:
         return default
     if isinstance(val, (int, float)):
         v = float(val)
-        return round(v, 2) if hint == "currency" else round(v, 4) if hint == "volume" else v
+        return round(v, 6) if hint == "rate6" else round(v, 2) if hint == "currency" else round(v, 4) if hint == "volume" else v
     val_str = str(val).strip().upper()
     for prefix in ("BS.", "BS", "BOB", "$US", "USD", "$", "LTS", "LT", "M3"):
         val_str = val_str.replace(prefix, "")
@@ -135,6 +135,8 @@ def clean_float(val: Any, default: float = 0.0, hint: str = "generic") -> float:
 
     try:
         res = float(val_str)
+        if hint == "rate6":
+            return round(res, 6)
         if hint == "currency":
             return round(res, 2)
         if hint == "volume":
@@ -250,15 +252,35 @@ def detect_columns_and_header_row(rows_iter) -> Tuple[Optional[int], Dict[str, i
                     col_map["mic_dta"] = c_idx
                 elif ("MIC" in val or "DTA" in val) and "FECHA" in val:
                     col_map["fecha_mic"] = c_idx
-                elif "CONTRATO" in val:
+                elif "CONTRATO" in val and "contrato" not in col_map:
                     col_map["contrato"] = c_idx
-                elif "MERMA" in val and "DESCONTAR" in val and "BS" in val:
+                elif (("MERMA" in val and "DESCONTAR" in val) or ("A DESCONTAR" in val and "BS" in val) or "MERMA A DESCONTAR" in val) and "merma_descontar" not in col_map:
                     col_map["merma_descontar"] = c_idx
-                elif "PRECIO MERMA" in val:
+                elif (("PRECIO" in val and "MERMA" in val) or ("PRECIO MERMA" in val) or ("MERMA" in val and ("IVA" in val or "BS" in val)) or ("TASA" in val and "MERMA" in val)) and "precio_merma" not in col_map:
                     col_map["precio_merma"] = c_idx
-                elif "LOTE" in val:
+                elif (("DIFERENCIA" in val and ("DESP" in val or "RECE" in val)) or ("DIF" in val and "RECE" in val)) and "diferencia_desp_recep" not in col_map:
+                    col_map["diferencia_desp_recep"] = c_idx
+                elif ("MERMA" in val and ("PERMISIBLE" in val or "TOLERABLE" in val)) and "merma_tolerable" not in col_map:
+                    col_map["merma_tolerable"] = c_idx
+                elif (("MERMA" in val and "LITRO" in val and "PRECIO" not in val and "DESCONTAR" not in val) or val in ("MERMA (LITRO)", "MERMA (LT)", "TOTAL MERMA (LT)", "MERMA T/TR")) and "merma_real" not in col_map:
+                    col_map["merma_real"] = c_idx
+                elif (("COMISION" in val or "COMISIÓN" in val) and ("1" in val or "USD" in val or "$US" in val or "M3" in val) and "7" not in val and "3" not in val) and "comision_usd_m3" not in col_map:
+                    col_map["comision_usd_m3"] = c_idx
+                elif (("COMISION" in val or "COMISIÓN" in val or "RETENCION" in val) and "7" in val and "BOL" not in val and "GART" not in val) and "comision_pct_1" not in col_map:
+                    col_map["comision_pct_1"] = c_idx
+                elif ((("BOL" in val and "GART" in val) or "BOLETA" in val or ("GARANTIA" in val and "7" in val))) and "comision_ypfb_bolgart" not in col_map:
+                    col_map["comision_ypfb_bolgart"] = c_idx
+                elif (("COMISION" in val or "COMISIÓN" in val or "GESTION" in val) and "3" in val) and "comision_pct_2" not in col_map:
+                    col_map["comision_pct_2"] = c_idx
+                elif (("HOJA" in val or "HOJAS" in val) and "RUTA" in val) and "costo_hojas_ruta" not in col_map:
+                    col_map["costo_hojas_ruta"] = c_idx
+                elif ("GPS" in val or "PRECINTO" in val or "PRECINTOS" in val) and "costo_gps" not in col_map:
+                    col_map["costo_gps"] = c_idx
+                elif ("ANTICIPO" in val or "ANTICIPOS" in val) and "anticipos_otros" not in col_map:
+                    col_map["anticipos_otros"] = c_idx
+                elif "LOTE" in val and "lote" not in col_map:
                     col_map["lote"] = c_idx
-                elif "OBS" in val or "OBSERVACI" in val:
+                elif ("OBS" in val or "OBSERVACI" in val) and "obs" not in col_map:
                     col_map["obs"] = c_idx
             break
 
@@ -411,6 +433,16 @@ def limpiar_datos_para_importacion(
         nro_fac_clean = clean_invoice_number(get_c("nro_factura"))
         mic_raw = clean_string(get_c("mic_dta"))
         contrato_raw = clean_string(get_c("contrato"))
+        merma_desc_raw = clean_float(get_c("merma_descontar"), 0.0, hint="currency")
+        precio_merma_raw = clean_float(get_c("precio_merma"), 0.0, hint="rate6")
+        merma_tol_raw = clean_float(get_c("merma_tolerable"), 0.0)
+        c_usd_raw = clean_float(get_c("comision_usd_m3"), -1.0)
+        c_pct1_raw = clean_float(get_c("comision_pct_1"), -1.0)
+        c_bolgart_raw = clean_float(get_c("comision_ypfb_bolgart"), -1.0)
+        c_pct2_raw = clean_float(get_c("comision_pct_2"), -1.0)
+        c_hojas_raw = clean_float(get_c("costo_hojas_ruta"), -1.0)
+        c_gps_raw = clean_float(get_c("costo_gps"), -1.0)
+        c_anticipos_raw = clean_float(get_c("anticipos_otros"), -1.0)
 
         f_carga_raw = get_c("fecha_carga")
         f_descarga_raw = get_c("fecha_descarga")
@@ -579,19 +611,49 @@ def limpiar_datos_para_importacion(
         clean_mic = mic_raw.upper().strip() if mic_raw and mic_raw.upper().strip() not in ("FALTA MIC", "SIN MIC", "NONE", "") else None
         clean_contrato = contrato_raw.strip() if contrato_raw and contrato_raw.strip() not in ("NONE", "NULL", "") else None
 
-        if vol_o > 0 and vol_r > 0:
+        is_ypfb = is_ypfb_client(clean_cliente)
+        if is_ypfb and vol_o > 0 and vol_r > 0:
             m_real = round(vol_r - vol_o, 1)
             prod_u = clean_prod.upper()
-            tol_pct = 0.25 if "GASOLINA" in prod_u else 0.15 if ("DIESEL" in prod_u or prod_u == "DO") else 0.0
-            m_tol = round(vol_o * (tol_pct / 100.0), 1)
+            tol_pct = 0.25 if "GASOLINA" in prod_u else 0.15 if ("DIESEL" in prod_u or prod_u == "DO") else 0.20 if ("IYA" in prod_u or "INSUMO" in prod_u) else 0.0
+            
+            # Merma Permisible: si viene explícita en Excel > 0, respetarla; de lo contrario calcular
+            if merma_tol_raw > 0:
+                m_tol = round(merma_tol_raw, 1)
+            else:
+                m_tol = round(vol_o * (tol_pct / 100.0), 1)
+
             m_exc = max(0.0, round(abs(m_real) - m_tol, 1)) if abs(m_real) > m_tol else 0.0
-            m_desc_bs = round(m_exc * 7.45, 2)
+            p_merma = round(precio_merma_raw, 6) if precio_merma_raw > 0 else 7.450000
+
+            # Descuento por Merma: si viene explícito en Excel > 0, respetarlo exactamente
+            if merma_desc_raw > 0:
+                m_desc_bs = round(merma_desc_raw, 2)
+            else:
+                m_desc_bs = round(m_exc * p_merma, 2)
+
+            c_usd = c_usd_raw if c_usd_raw >= 0 else 1.0
+            c_pct1 = c_pct1_raw if c_pct1_raw >= 0 else 7.0
+            c_bolgart = c_bolgart_raw if c_bolgart_raw >= 0 else 7.0
+            c_pct2 = c_pct2_raw if c_pct2_raw >= 0 else 3.0
+            c_hojas = c_hojas_raw if c_hojas_raw >= 0 else 0.0
+            c_gps = c_gps_raw if c_gps_raw >= 0 else 0.0
+            c_anticipos = c_anticipos_raw if c_anticipos_raw >= 0 else 0.0
         else:
             m_real = 0.0
             tol_pct = 0.0
             m_tol = 0.0
             m_exc = 0.0
             m_desc_bs = 0.0
+            p_merma = 0.0
+            c_usd = 0.0
+            c_pct1 = 0.0
+            c_bolgart = 0.0
+            c_pct2 = 0.0
+            c_hojas = 0.0
+            c_gps = 0.0
+            c_anticipos = 0.0
+
         liq_pagable = round(flete_calculado - m_desc_bs, 2)
 
         rec = {
@@ -625,7 +687,15 @@ def limpiar_datos_para_importacion(
             "tolerancia_pct": tol_pct,
             "merma_tolerable_litros": m_tol,
             "merma_excedente_litros": m_exc,
+            "precio_merma_litro_bs": p_merma,
             "merma_descontar_bs": m_desc_bs,
+            "comision_usd_m3": c_usd,
+            "comision_pct_1": c_pct1,
+            "comision_ypfb_bolgart_pct": c_bolgart,
+            "comision_pct_2": c_pct2,
+            "costo_hojas_de_ruta_bs": c_hojas,
+            "costo_gps_bs": c_gps,
+            "anticipos_otros_pct": c_anticipos,
             "liquido_pagable_bs": liq_pagable,
             "periodo_mes": periodo,
             "is_incompleto": (flete_calculado <= 0 and vol_m3 <= 0),
@@ -1029,6 +1099,11 @@ def execute_import_viajes(
             flete_exacto = float(rec.get("flete_total_bs") or 0.0)
             tipo_t = rec.get("tipo_tarifa") or "BS_POR_M3"
 
+            p_merma_rec = float(rec.get("precio_merma_litro_bs") or 0.0)
+            m_desc_rec = float(rec.get("merma_descontar_bs") or 0.0)
+            m_tol_rec = float(rec.get("merma_tolerable_litros") or 0.0)
+            m_exc_rec = float(rec.get("merma_excedente_litros") or 0.0)
+
             calc = calculate_viaje_values(
                 volumen_origen_litros=vol_o,
                 volumen_recepcionado_litros=vol_r,
@@ -1037,8 +1112,36 @@ def execute_import_viajes(
                 tipo_tarifa=tipo_t,
                 producto=producto,
                 params=params,
-                flete_total_override=flete_exacto if flete_exacto > 0 else None
+                precio_merma_litro_override=p_merma_rec if p_merma_rec > 0 else None,
+                flete_total_override=flete_exacto if flete_exacto > 0 else None,
+                cliente=cliente
             )
+
+            is_ypfb_trip = is_ypfb_client(cliente)
+            if is_ypfb_trip:
+                final_precio_merma = round(p_merma_rec, 6) if p_merma_rec > 0 else calc["precio_merma_litro_bs"]
+                final_merma_desc = round(m_desc_rec, 2) if m_desc_rec > 0 else calc["merma_descontar_bs"]
+                final_merma_tol = round(m_tol_rec, 1) if m_tol_rec > 0 else calc["merma_tolerable_litros"]
+                final_merma_exc = round(m_exc_rec, 1) if m_exc_rec > 0 else calc["merma_excedente_litros"]
+                c_usd_m3 = float(rec.get("comision_usd_m3") if rec.get("comision_usd_m3") is not None else 1.0)
+                c_p1 = float(rec.get("comision_pct_1") if rec.get("comision_pct_1") is not None else 7.0)
+                c_bolgart = float(rec.get("comision_ypfb_bolgart_pct") if rec.get("comision_ypfb_bolgart_pct") is not None else 7.0)
+                c_p2 = float(rec.get("comision_pct_2") if rec.get("comision_pct_2") is not None else 3.0)
+                c_hojas = float(rec.get("costo_hojas_de_ruta_bs") if rec.get("costo_hojas_de_ruta_bs") is not None else 0.0)
+                c_gps = float(rec.get("costo_gps_bs") if rec.get("costo_gps_bs") is not None else 0.0)
+                c_anticipos = float(rec.get("anticipos_otros_pct") if rec.get("anticipos_otros_pct") is not None else 0.0)
+            else:
+                final_precio_merma = 0.0
+                final_merma_desc = 0.0
+                final_merma_tol = 0.0
+                final_merma_exc = 0.0
+                c_usd_m3 = 0.0
+                c_p1 = 0.0
+                c_bolgart = 0.0
+                c_p2 = 0.0
+                c_hojas = 0.0
+                c_gps = 0.0
+                c_anticipos = 0.0
 
             existente = None
             if not overwrite_duplicates:
@@ -1072,13 +1175,20 @@ def execute_import_viajes(
                     existente.volumen_facturado = calc["volumen_facturado"]
                     existente.merma_real_litros = calc["merma_real_litros"]
                     existente.tolerancia_pct = calc["tolerancia_pct"]
-                    existente.merma_tolerable_litros = calc["merma_tolerable_litros"]
-                    existente.merma_excedente_litros = calc["merma_excedente_litros"]
-                    existente.precio_merma_litro_bs = calc["precio_merma_litro_bs"]
-                    existente.merma_descontar_bs = calc["merma_descontar_bs"]
+                    existente.merma_tolerable_litros = final_merma_tol
+                    existente.merma_excedente_litros = final_merma_exc
+                    existente.precio_merma_litro_bs = final_precio_merma
+                    existente.merma_descontar_bs = final_merma_desc
                     existente.tarifa_flete = tarifa
                     existente.tipo_tarifa = tipo_t
                     existente.flete_total_bs = calc["flete_total_bs"]
+                    existente.comision_usd_m3 = c_usd_m3
+                    existente.comision_pct_1 = c_p1
+                    existente.comision_ypfb_bolgart_pct = c_bolgart
+                    existente.comision_pct_2 = c_p2
+                    existente.costo_hojas_de_ruta_bs = c_hojas
+                    existente.costo_gps_bs = c_gps
+                    existente.anticipos_otros_pct = c_anticipos
                     matched_existing_ids.add(existente.id)
                     viajes_actualizados += 1
                 else:
@@ -1101,13 +1211,20 @@ def execute_import_viajes(
                 volumen_facturado=calc["volumen_facturado"],
                 merma_real_litros=calc["merma_real_litros"],
                 tolerancia_pct=calc["tolerancia_pct"],
-                merma_tolerable_litros=calc["merma_tolerable_litros"],
-                merma_excedente_litros=calc["merma_excedente_litros"],
-                precio_merma_litro_bs=calc["precio_merma_litro_bs"],
-                merma_descontar_bs=calc["merma_descontar_bs"],
+                merma_tolerable_litros=final_merma_tol,
+                merma_excedente_litros=final_merma_exc,
+                precio_merma_litro_bs=final_precio_merma,
+                merma_descontar_bs=final_merma_desc,
                 tarifa_flete=tarifa,
                 tipo_tarifa=tipo_t,
                 flete_total_bs=calc["flete_total_bs"],
+                comision_usd_m3=c_usd_m3,
+                comision_pct_1=c_p1,
+                comision_ypfb_bolgart_pct=c_bolgart,
+                comision_pct_2=c_p2,
+                costo_hojas_de_ruta_bs=c_hojas,
+                costo_gps_bs=c_gps,
+                anticipos_otros_pct=c_anticipos,
                 es_apoyo=es_apoyo,
                 empresa_apoyo_nombre=emp_apoyo_nom if es_apoyo else None,
                 empresa_apoyo_id=None,

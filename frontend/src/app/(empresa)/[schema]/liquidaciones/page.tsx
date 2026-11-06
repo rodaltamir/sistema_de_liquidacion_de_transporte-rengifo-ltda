@@ -36,7 +36,9 @@ import {
   Clock,
   Settings,
   History,
-  Calculator
+  Calculator,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { apiFetch } from "@/lib/api";
@@ -46,6 +48,12 @@ import { getSavedState, saveState } from "@/lib/storage";
 import DatePeriodFilter, { DateFilterChangeEvent, FilterMode } from "@/components/DatePeriodFilter";
 import ModalPortal from "@/components/ModalPortal";
 import { useTheme } from "@/context/ThemeContext";
+
+export const isYpfbClient = (clientName?: string | null): boolean => {
+  if (!clientName) return false;
+  const clean = clientName.toUpperCase().replace(/[\.\s\-_]/g, "");
+  return clean.includes("YPFB");
+};
 
 const getVolFactLitros = (v: any) => {
   const raw = Number(v?.volumen_facturado);
@@ -124,8 +132,75 @@ function LiquidacionesContent() {
   const [adjustData, setAdjustData] = useState<any>({});
   const [isHydrated, setIsHydrated] = useState(false);
 
+  // Expansión de filas YPFB para visualización de parámetros y mermas
+  const [expandedYpfbRows, setExpandedYpfbRows] = useState<Set<number>>(new Set());
+  const [refreshingData, setRefreshingData] = useState(false);
+
+  const toggleExpandYpfbRow = (viajeId: number) => {
+    setExpandedYpfbRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(viajeId)) {
+        next.delete(viajeId);
+      } else {
+        next.add(viajeId);
+      }
+      return next;
+    });
+  };
+
+  const handleRefreshData = async () => {
+    setRefreshingData(true);
+    try {
+      await loadLiquidacionesData();
+      const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 2000,
+        timerProgressBar: true,
+        background: swalBg,
+        color: swalColor
+      });
+      Toast.fire({
+        icon: 'success',
+        title: 'Datos actualizados y sincronizados'
+      });
+    } catch (err: any) {
+      console.error("Error al refrescar liquidaciones:", err);
+    } finally {
+      setRefreshingData(false);
+    }
+  };
+
   useEffect(() => {
     loadInitialData();
+  }, [schema]);
+
+  // Sincronización en tiempo real vía StorageEvent para filtros compartidos (Viajes <-> Liquidaciones)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === `transporte_${schema}_filtro_compartido` && e.newValue) {
+        try {
+          const shared = JSON.parse(e.newValue);
+          if (shared.source !== "liquidaciones") {
+            if (shared.periodo !== undefined) setPeriodo(shared.periodo);
+            if (shared.filterMode !== undefined) setFilterMode(shared.filterMode);
+            if (shared.dateFilterQuery !== undefined) setDateFilterQuery(shared.dateFilterQuery);
+            if (shared.activeFilterLabel !== undefined) setActiveFilterLabel(shared.activeFilterLabel);
+            if (shared.metodoFiltro !== undefined) setMetodoFiltro(shared.metodoFiltro);
+            if (shared.modoFactura !== undefined) setModoFactura(shared.modoFactura);
+            if (shared.facturaInput !== undefined) setFacturaInput(shared.facturaInput);
+            if (shared.facturaDesdeInput !== undefined) setFacturaDesdeInput(shared.facturaDesdeInput);
+            if (shared.facturaHastaInput !== undefined) setFacturaHastaInput(shared.facturaHastaInput);
+            if (shared.placa !== undefined) {
+              setSelectedPlaca(shared.placa ? shared.placa : "__TODAS__");
+            }
+          }
+        } catch (err) {}
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
   }, [schema]);
 
   useEffect(() => {
@@ -150,6 +225,22 @@ function LiquidacionesContent() {
       facturaHastaInput,
       activeFleetTab,
       activeTab
+    });
+
+    // Guardar en canal compartido bidireccional para sincronizar con Viajes
+    saveState(`transporte_${schema}_filtro_compartido`, {
+      periodo,
+      activeFilterLabel,
+      dateFilterQuery,
+      filterMode,
+      metodoFiltro,
+      modoFactura,
+      facturaInput,
+      facturaDesdeInput,
+      facturaHastaInput,
+      placa: selectedPlaca === "__TODAS__" ? "" : selectedPlaca,
+      updatedAt: Date.now(),
+      source: "liquidaciones"
     });
   }, [
     isHydrated,
@@ -198,21 +289,31 @@ function LiquidacionesContent() {
       );
       setPlacasViajes(distinctTripPlacas);
 
-      // Memoria Inteligente: restaurar filtros y configuración previa si existe
+      // Memoria Inteligente y Sincronización Compartida:
+      // Primero verificar si existe filtro compartido entre módulos (Viajes <-> Liquidaciones)
+      const shared = getSavedState<any>(`transporte_${schema}_filtro_compartido`, null);
       const saved = getSavedState<any>(`transporte_${schema}_liquidaciones_memoria`, null);
-      if (saved) {
-        if (saved.selectedPlaca !== undefined) setSelectedPlaca(saved.selectedPlaca);
-        if (saved.periodo !== undefined) setPeriodo(saved.periodo);
-        if (saved.filterMode !== undefined) setFilterMode(saved.filterMode);
-        if (saved.dateFilterQuery !== undefined) setDateFilterQuery(saved.dateFilterQuery);
-        if (saved.activeFilterLabel !== undefined) setActiveFilterLabel(saved.activeFilterLabel);
-        if (saved.metodoFiltro !== undefined) setMetodoFiltro(saved.metodoFiltro);
-        if (saved.modoFactura !== undefined) setModoFactura(saved.modoFactura);
-        if (saved.facturaInput !== undefined) setFacturaInput(saved.facturaInput);
-        if (saved.facturaDesdeInput !== undefined) setFacturaDesdeInput(saved.facturaDesdeInput);
-        if (saved.facturaHastaInput !== undefined) setFacturaHastaInput(saved.facturaHastaInput);
-        if (saved.activeFleetTab !== undefined) setActiveFleetTab(saved.activeFleetTab);
-        if (saved.activeTab !== undefined) setActiveTab(saved.activeTab);
+      const effectiveFilter = shared || saved;
+
+      if (effectiveFilter) {
+        if (effectiveFilter.periodo !== undefined) setPeriodo(effectiveFilter.periodo);
+        if (effectiveFilter.filterMode !== undefined) setFilterMode(effectiveFilter.filterMode);
+        if (effectiveFilter.dateFilterQuery !== undefined) setDateFilterQuery(effectiveFilter.dateFilterQuery);
+        if (effectiveFilter.activeFilterLabel !== undefined) setActiveFilterLabel(effectiveFilter.activeFilterLabel);
+        if (effectiveFilter.metodoFiltro !== undefined) setMetodoFiltro(effectiveFilter.metodoFiltro);
+        if (effectiveFilter.modoFactura !== undefined) setModoFactura(effectiveFilter.modoFactura);
+        if (effectiveFilter.facturaInput !== undefined) setFacturaInput(effectiveFilter.facturaInput);
+        if (effectiveFilter.facturaDesdeInput !== undefined) setFacturaDesdeInput(effectiveFilter.facturaDesdeInput);
+        if (effectiveFilter.facturaHastaInput !== undefined) setFacturaHastaInput(effectiveFilter.facturaHastaInput);
+        if (effectiveFilter.placa !== undefined) {
+          setSelectedPlaca(effectiveFilter.placa ? effectiveFilter.placa : "__TODAS__");
+        } else if (saved && saved.selectedPlaca !== undefined) {
+          setSelectedPlaca(saved.selectedPlaca);
+        }
+        if (saved) {
+          if (saved.activeFleetTab !== undefined) setActiveFleetTab(saved.activeFleetTab);
+          if (saved.activeTab !== undefined) setActiveTab(saved.activeTab);
+        }
       } else {
         // Periodo preferido inicial
         let initPeriodo = "";
@@ -1429,27 +1530,28 @@ function LiquidacionesContent() {
             )}
           </div>
 
+          {/* Botón Actualizar Datos Principal */}
           <button
+            type="button"
+            onClick={handleRefreshData}
+            disabled={refreshingData || loading}
+            className={`px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-lg shadow-sm flex items-center gap-1.5 transition active:scale-95 ${refreshingData || loading ? "opacity-60 cursor-not-allowed" : ""}`}
+            title="Recalcular y actualizar todas las liquidaciones en vivo con los cambios y viajes más recientes"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 stroke-[2.5] ${refreshingData ? "animate-spin" : ""}`} />
+            <span>{refreshingData ? "Actualizando Datos..." : "Actualizar Datos"}</span>
+          </button>
+
+          {/* Opción secundaria para archivar en Historial */}
+          <button
+            type="button"
             onClick={handleGenerate}
             disabled={loadingBatch}
-            className={`px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-lg shadow-sm flex items-center gap-1.5 transition active:scale-95 ${loadingBatch ? "opacity-60 cursor-not-allowed" : ""}`}
+            className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition"
+            title="Consolidar y registrar formalmente la liquidación en el Historial"
           >
-            {loadingBatch ? (
-              <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                <span>Generando Lote...</span>
-              </>
-            ) : selectedPlaca === "__TODAS__" ? (
-              <>
-                <Layers className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Liquidar Toda la Flota</span>
-              </>
-            ) : (
-              <>
-                <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                <span>Generar Liquidación</span>
-              </>
-            )}
+            <Layers className="w-3.5 h-3.5 text-amber-500" />
+            <span>{selectedPlaca === "__TODAS__" ? "Consolidar Flota" : "Consolidar Planilla"}</span>
           </button>
 
           {/* Acceso Directo e Interconexión con Historial */}
@@ -1552,6 +1654,7 @@ function LiquidacionesContent() {
       {/* Resumen Ejecutivo de la Flota (cuando está en __TODAS__) */}
       {selectedPlaca === "__TODAS__" && (resumenFlota || activeLiq) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 no-print">
+          {/* Card 1: Cisternas Activas */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Cisternas Activas</span>
@@ -1567,6 +1670,7 @@ function LiquidacionesContent() {
             </div>
           </div>
 
+          {/* Card 2: Flete Bruto Flota */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Flete Bruto Flota</span>
@@ -1580,7 +1684,48 @@ function LiquidacionesContent() {
             </div>
           </div>
 
-          {/* Flete Flota - Mermas (Dato Nuevo Solicitado) */}
+          {/* Card 3: Descuento por Mermas Flota (Explicación y auditoría directa de mermas) */}
+          <div className="bg-white dark:bg-slate-900 border border-rose-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-rose-50/10">
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider block">Descuento por Mermas Flota</span>
+                {mermasFlota > 0 && (
+                  <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300">
+                    {viajesConMermas.length} viajes
+                  </span>
+                )}
+              </div>
+              <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 font-mono mt-0.5">
+                {formatCurrency(mermasFlota)}
+              </div>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <span className="text-[10px] text-slate-400 font-medium">
+                  {mermasFlota > 0 ? "Merma excedente descontada" : "Sin penalización por merma"}
+                </span>
+                {mermasFlota > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowModalAuditoriaMermas(true)}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 px-2 py-0.5 rounded transition cursor-pointer"
+                    title="Ver detalle y respaldo de los viajes con merma"
+                  >
+                    <Search className="w-2.5 h-2.5" />
+                    <span>Ver respaldo</span>
+                  </button>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowModalAuditoriaMermas(true)}
+              className="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-500 flex-shrink-0 cursor-pointer hover:bg-rose-500/25 transition active:scale-95"
+              title="Clic para auditar el cálculo y origen de las mermas"
+            >
+              <Calculator className="w-4.5 h-4.5" />
+            </button>
+          </div>
+
+          {/* Card 4: Flete Flota - Mermas (Flete Bruto menos Descuento por Mermas) */}
           <div className="bg-white dark:bg-slate-900 border border-blue-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-blue-50/10">
             <div>
               <div className="flex items-center gap-1.5">
@@ -1590,46 +1735,16 @@ function LiquidacionesContent() {
               <div className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono mt-0.5">
                 {formatCurrency(fleteFlotaMenosMermas)}
               </div>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <span className="text-[10px] text-slate-400 font-medium">
-                  {mermasFlota > 0 ? `Mermas: -${formatCurrency(mermasFlota)}` : "Sin descuento por merma"}
-                </span>
-                {mermasFlota > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowModalAuditoriaMermas(true)}
-                    className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded transition cursor-pointer"
-                    title="Ver detalle y respaldo de los viajes con merma"
-                  >
-                    <Search className="w-2.5 h-2.5" />
-                    <span>Ver respaldo ({viajesConMermas.length} viajes)</span>
-                  </button>
-                )}
-              </div>
+              <span className="text-[10px] text-slate-400 font-medium">
+                Flete Bruto menos mermas
+              </span>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowModalAuditoriaMermas(true)}
-              className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-500 flex-shrink-0 cursor-pointer hover:bg-blue-500/25 transition active:scale-95"
-              title="Clic para auditar el cálculo y origen de las mermas"
-            >
-              <Calculator className="w-4.5 h-4.5" />
-            </button>
-          </div>
-
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Deducciones Flota</span>
-              <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 font-mono mt-0.5">
-                {formatCurrency(resumenFlota?.total_deducciones_bs ?? resumenFlota?.total_descuentos_bs ?? activeLiq?.total_descuentos_bs ?? totalDeduccionesConsolidado)}
-              </div>
-              <span className="text-[10px] text-slate-400 font-medium">Mermas y comisiones globales</span>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 flex-shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-500 flex-shrink-0">
               <Scale className="w-4.5 h-4.5" />
             </div>
           </div>
 
+          {/* Card 5: Líquido Pagable Flota */}
           <div className="bg-white dark:bg-slate-900 border border-emerald-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-emerald-50/10">
             <div>
               <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Líquido Pagable Flota</span>
@@ -1648,6 +1763,7 @@ function LiquidacionesContent() {
       {/* Resumen Ejecutivo de Cisterna Individual */}
       {selectedPlaca !== "__TODAS__" && activeLiq && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 no-print">
+          {/* Card 1: Flete Bruto */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Flete Bruto</span>
@@ -1661,7 +1777,23 @@ function LiquidacionesContent() {
             </div>
           </div>
 
-          {/* Flete - Mermas Cisterna */}
+          {/* Card 2: Descuento por Merma */}
+          <div className="bg-white dark:bg-slate-900 border border-rose-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-rose-50/10">
+            <div>
+              <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider block">Descuento por Merma</span>
+              <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 font-mono mt-0.5">
+                {formatCurrency(activeLiq.desc_merma_bs ?? activeLiq.descuento_merma_bs ?? 0)}
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {(activeLiq.desc_merma_bs ?? activeLiq.descuento_merma_bs ?? 0) > 0 ? "Merma excedente descontada" : "Sin descuento de merma"}
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-500 flex-shrink-0">
+              <Calculator className="w-4.5 h-4.5" />
+            </div>
+          </div>
+
+          {/* Card 3: Flete - Mermas Cisterna */}
           <div className="bg-white dark:bg-slate-900 border border-blue-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-blue-50/10">
             <div>
               <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Flete - Mermas</span>
@@ -1669,27 +1801,15 @@ function LiquidacionesContent() {
                 {formatCurrency(Math.max(0, (activeLiq.flete_total_bruto_bs || 0) - (activeLiq.desc_merma_bs ?? activeLiq.descuento_merma_bs ?? 0)))}
               </div>
               <span className="text-[10px] text-slate-400 font-medium">
-                {(activeLiq.desc_merma_bs ?? activeLiq.descuento_merma_bs ?? 0) > 0 ? `Merma: -${formatCurrency(activeLiq.desc_merma_bs ?? activeLiq.descuento_merma_bs ?? 0)}` : "Sin descuento de merma"}
+                Flete Bruto menos mermas
               </span>
             </div>
             <div className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-500 flex-shrink-0">
-              <Calculator className="w-4.5 h-4.5" />
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Deducciones</span>
-              <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 font-mono mt-0.5">
-                {formatCurrency(activeLiq.total_descuentos_bs)}
-              </div>
-              <span className="text-[10px] text-slate-400 font-medium">Mermas y comisiones</span>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 flex-shrink-0">
               <Scale className="w-4.5 h-4.5" />
             </div>
           </div>
 
+          {/* Card 4: Líquido Pagable */}
           <div className="bg-white dark:bg-slate-900 border border-emerald-500/30 rounded-xl p-3.5 shadow-sm flex items-center justify-between bg-emerald-50/10">
             <div>
               <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Líquido Pagable</span>
@@ -1741,13 +1861,14 @@ function LiquidacionesContent() {
 
             <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={handleGenerate}
-                disabled={loadingBatch}
+                type="button"
+                onClick={handleRefreshData}
+                disabled={refreshingData || loading}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm transition active:scale-95"
-                title="Generar liquidaciones para todas las cisternas con viajes"
+                title="Recalcular y actualizar la matriz de liquidación con los datos más recientes"
               >
-                <Layers className="w-4 h-4" />
-                <span>Liquidar Toda la Flota</span>
+                <RefreshCw className={`w-4 h-4 ${refreshingData ? "animate-spin" : ""}`} />
+                <span>{refreshingData ? "Actualizando Matriz..." : "Actualizar Datos"}</span>
               </button>
             </div>
           </div>
@@ -2110,12 +2231,6 @@ function LiquidacionesContent() {
                       <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">PRODUCTO</th>
                       <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">N° FACTURA</th>
                       <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300">FECHA FACTURA</th>
-                      <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Volumen en Lt. Origen</th>
-                      <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Volumen Recepcionado/Descargado</th>
-                      <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Merma T/Tr</th>
-                      <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Total Merma (Lt)</th>
-                      <th className="py-2 px-1 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-center">MERMA Tolerable</th>
-                      <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Merma a Descontar Y.P.F.B. Bs.</th>
                       <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Volumen Facturado</th>
                       <th className="py-2 px-1.5 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">TARIFA Bs.</th>
                       <th className="py-2 px-2 border-x border-slate-200 dark:border-slate-800 print:border-slate-300 text-right">Total a pagar en Bob.</th>
@@ -2135,20 +2250,20 @@ function LiquidacionesContent() {
                       if (displayViajes.length === 0) {
                         return (
                           <tr>
-                            <td colSpan={19} className="py-10 text-center text-slate-400 text-xs font-semibold">
+                            <td colSpan={13} className="py-10 text-center text-slate-400 text-xs font-semibold">
                               No hay despachos registrados para este filtro ({filtroMermasTabla === "con_merma" ? "Con Mermas YPFB" : "Sin Mermas"}).
                             </td>
                           </tr>
                         );
                       }
 
-                      // Agrupación de viajes por (tramo, producto, nro_factura)
+                      // Agrupación de viajes por (nro_factura, producto) - Si comparten factura y producto van juntos
                       const groupsMap: { [k: string]: { tramo: string; producto: string; factura: string; items: any[] } } = {};
                       for (const v of displayViajes) {
-                        const t = (v.tramo || "SIN TRAMO").trim().toUpperCase();
                         const p = (v.producto || "SIN PRODUCTO").trim().toUpperCase();
                         const f = (v.nro_factura || "").trim().toUpperCase() || "S/F";
-                        const key = `${t}___${p}___${f}`;
+                        const t = (v.tramo || "VARIOS TRAMOS").trim().toUpperCase();
+                        const key = `${f}___${p}`;
                         if (!groupsMap[key]) {
                           groupsMap[key] = { tramo: t, producto: p, factura: f, items: [] };
                         }
@@ -2156,15 +2271,24 @@ function LiquidacionesContent() {
                       }
 
                       const groups = Object.values(groupsMap).map(g => {
-                        g.items.sort((a, b) => (a.fecha_carga || "").localeCompare(b.fecha_carga || ""));
+                        g.items.sort((a, b) => {
+                          const dA = a.fecha_factura || a.fecha_carga || "";
+                          const dB = b.fecha_factura || b.fecha_carga || "";
+                          return dA.localeCompare(dB);
+                        });
                         return g;
                       });
 
-                      // Ordenar grupos cronológicamente por la fecha más antigua de sus viajes
+                      // Ordenar grupos priorizando cronológicamente por FECHA DE FACTURA ascendente
                       groups.sort((a, b) => {
-                        const dateA = a.items[0]?.fecha_carga || "";
-                        const dateB = b.items[0]?.fecha_carga || "";
-                        return dateA.localeCompare(dateB);
+                        const dateA = a.items.find((x: any) => x.fecha_factura)?.fecha_factura || a.items[0]?.fecha_carga || "";
+                        const dateB = b.items.find((x: any) => x.fecha_factura)?.fecha_factura || b.items[0]?.fecha_carga || "";
+                        if (dateA && dateB && dateA !== dateB) return dateA.localeCompare(dateB);
+                        if (dateA && !dateB) return -1;
+                        if (!dateA && dateB) return 1;
+                        const fA = a.factura === "S/F" ? "ZZZZZ" : a.factura;
+                        const fB = b.factura === "S/F" ? "ZZZZZ" : b.factura;
+                        return fA.localeCompare(fB, undefined, { numeric: true, sensitivity: "base" });
                       });
 
                       let globalIdx = 0;
@@ -2186,12 +2310,32 @@ function LiquidacionesContent() {
                           <Fragment key={gIdx}>
                             {group.items.map((v: any) => {
                               globalIdx++;
+                              const isYpfb = isYpfbClient(v.cliente);
+                              const isExpanded = expandedYpfbRows.has(v.id);
                               return (
+                                <Fragment key={v.id}>
                                 <tr 
-                                  key={v.id} 
-                                  className="border-b border-slate-200 dark:border-slate-800 print:border-slate-200 hover:bg-amber-50/40 dark:hover:bg-slate-800/40 print:hover:bg-slate-50 bg-white dark:bg-slate-900/60"
+                                  className={`border-b border-slate-200 dark:border-slate-800 print:border-slate-200 hover:bg-amber-50/40 dark:hover:bg-slate-800/40 print:hover:bg-slate-50 ${isExpanded ? "bg-amber-500/5 dark:bg-amber-950/20" : "bg-white dark:bg-slate-900/60"}`}
                                 >
-                                  <td className="py-1 px-1 text-center font-bold border-x border-slate-200 dark:border-slate-800 print:border-slate-200 text-slate-700 dark:text-slate-300 print:text-slate-800">{globalIdx}</td>
+                                  <td className="py-1 px-1 text-center font-bold border-x border-slate-200 dark:border-slate-800 print:border-slate-200 text-slate-700 dark:text-slate-300 print:text-slate-800 whitespace-nowrap">
+                                    <div className="flex items-center justify-center gap-1">
+                                      <span>{globalIdx}</span>
+                                      {isYpfb && (
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleExpandYpfbRow(v.id)}
+                                          className={`p-0.5 rounded text-[9px] font-bold transition no-print ${
+                                            isExpanded
+                                              ? "bg-amber-500 text-slate-950 font-black shadow-xs"
+                                              : "bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-500/30"
+                                          }`}
+                                          title={isExpanded ? "Ocultar desglose YPFB" : "Ver parámetros y desglose YPFB"}
+                                        >
+                                          {isExpanded ? <ChevronUp className="w-3 h-3 stroke-[3]" /> : <ChevronDown className="w-3 h-3 stroke-[3]" />}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
                                   <td className="py-1 px-1.5 text-center text-slate-500 dark:text-slate-400 print:text-slate-600 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatDate(v.fecha_carga)}</td>
                                   <td className="py-1 px-1.5 text-center text-slate-500 dark:text-slate-400 print:text-slate-600 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatDate(v.fecha_descarga)}</td>
                                   <td className="py-1 px-1.5 text-center font-mono font-bold text-slate-900 dark:text-white print:text-slate-800 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.mic_dta || "-"}</td>
@@ -2211,20 +2355,103 @@ function LiquidacionesContent() {
                                   <td className="py-1 px-1.5 text-center text-slate-500 dark:text-slate-400 print:text-slate-600 border-x border-slate-200 dark:border-slate-800 print:border-slate-200 whitespace-nowrap font-mono text-[10px]">
                                     {v.fecha_factura ? formatDate(v.fecha_factura) : "-"}
                                   </td>
-                                  <td className="py-1 px-1.5 text-right font-mono text-slate-700 dark:text-slate-200 print:text-slate-800 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.volumen_origen_litros, 0)}</td>
-                                  <td className="py-1 px-1.5 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400 print:text-slate-900 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.volumen_recepcionado_litros, 0)}</td>
-                                  <td className="py-1 px-1 text-right font-mono text-slate-700 dark:text-slate-300 print:text-slate-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">
-                                    {v.merma_real_litros > 0 ? `-${formatNumber(v.merma_real_litros, 1)}` : formatNumber(v.merma_real_litros, 1)}
-                                  </td>
-                                  <td className="py-1 px-1 text-right font-mono text-slate-700 dark:text-slate-300 print:text-slate-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.merma_excedente_litros, 1)}</td>
-                                  <td className="py-1 px-1 text-center font-mono text-slate-500 dark:text-slate-400 print:text-slate-600 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{v.merma_tolerable_litros !== null && v.merma_tolerable_litros !== undefined ? Number(v.merma_tolerable_litros).toFixed(0) : "0"}</td>
-                                  <td className="py-1 px-1.5 text-right font-mono font-semibold text-rose-700 dark:text-rose-400 print:text-red-700 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.merma_descontar_bs, 1)}</td>
                                   <td className="py-1 px-1.5 text-right font-mono font-bold text-sky-700 dark:text-sky-400 print:text-slate-900 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">
                                     {formatNumber(getVolFactLitros(v), 0)}
                                   </td>
                                   <td className="py-1 px-1.5 text-right font-mono text-slate-700 dark:text-slate-300 print:text-slate-800 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.tarifa_flete, 2)}</td>
                                   <td className="py-1 px-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 print:text-slate-950 border-x border-slate-200 dark:border-slate-800 print:border-slate-200">{formatNumber(v.flete_total_bs, 2)}</td>
                                 </tr>
+
+                                {/* Sub-fila Desplegable Exclusiva para Viajes YPFB */}
+                                {isExpanded && isYpfb && (
+                                  <tr className="bg-amber-500/10 dark:bg-amber-950/30 border-b-2 border-amber-500/40 no-print animate-in fade-in text-xs">
+                                    <td colSpan={13} className="p-3">
+                                      <div className="bg-white dark:bg-slate-900 border border-amber-500/30 rounded-xl p-3 shadow-md space-y-2">
+                                        <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className="w-5 h-5 rounded-md bg-amber-500 text-slate-950 font-black flex items-center justify-center text-[10px]">
+                                              Y
+                                            </span>
+                                            <span className="font-black text-amber-800 dark:text-amber-300 text-xs uppercase tracking-wide">
+                                              Desglose Operativo y Parámetros Contractuales YPFB (Despacho #{globalIdx} - Placa: {v.placa})
+                                            </span>
+                                          </div>
+                                          <span className="text-[10px] font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/25">
+                                            Cliente Oficial YPFB
+                                          </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 text-center">
+                                          <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                                            <span className="text-[9px] text-slate-500 uppercase font-bold block">Vol. Despachado 15.56°:</span>
+                                            <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">{formatNumber(v.volumen_origen_litros, 0)} L</span>
+                                          </div>
+                                          <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                                            <span className="text-[9px] text-slate-500 uppercase font-bold block">Vol. Recepcionado 15.56°:</span>
+                                            <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 text-xs">{formatNumber(v.volumen_recepcionado_litros, 0)} L</span>
+                                          </div>
+                                          <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                                            <span className="text-[9px] text-slate-500 uppercase font-bold block">Diferencia Desp - Recep:</span>
+                                            <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                                              {formatNumber(Number(v.volumen_recepcionado_litros || 0) - Number(v.volumen_origen_litros || 0), 1)} L
+                                            </span>
+                                          </div>
+                                          <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                                            <span className="text-[9px] text-slate-500 uppercase font-bold block">Merma Tolerable:</span>
+                                            <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                                              {formatNumber(v.merma_tolerable_litros, 1)} L ({v.tolerancia_pct}%)
+                                            </span>
+                                          </div>
+                                          <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                                            <span className="text-[9px] text-slate-500 uppercase font-bold block">Merma Excedente:</span>
+                                            <span className="font-mono font-bold text-rose-600 dark:text-rose-400 text-xs">
+                                              {formatNumber(v.merma_excedente_litros, 1)} L
+                                            </span>
+                                          </div>
+                                          <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                                            <span className="text-[9px] text-slate-500 uppercase font-bold block">Precio Merma + IVA:</span>
+                                            <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                                              Bs. {formatNumber(v.precio_merma_litro_bs || 7.45, 6)}
+                                            </span>
+                                          </div>
+                                          <div className="p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-500/30">
+                                            <span className="text-[9px] text-rose-700 dark:text-rose-400 uppercase font-black block">Merma a Descontar:</span>
+                                            <span className="font-mono font-black text-rose-700 dark:text-rose-400 text-xs">
+                                              {formatCurrency(v.merma_descontar_bs || 0)}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        {/* Parámetros de Comisión y Deducción aplicables al Viaje */}
+                                        <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center gap-3 text-[10px] text-slate-600 dark:text-slate-300">
+                                          <span className="font-black text-slate-800 dark:text-slate-200 uppercase">Deducciones YPFB configuradas en viaje:</span>
+                                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                            T.C. Dólar: <strong>Bs. {v.tipo_cambio_bs !== undefined && v.tipo_cambio_bs !== null ? v.tipo_cambio_bs : "6.96"}</strong>
+                                          </span>
+                                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                            Comisión 1: <strong>{v.comision_usd_m3 !== undefined && v.comision_usd_m3 !== null ? v.comision_usd_m3 : "1.00"} $us/m³</strong>
+                                          </span>
+                                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                            Comisión 7%: <strong>{v.comision_pct_1 !== undefined && v.comision_pct_1 !== null ? v.comision_pct_1 : "7.00"}%</strong>
+                                          </span>
+                                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                            BOL-GART 7%: <strong>{v.comision_ypfb_bolgart_pct !== undefined && v.comision_ypfb_bolgart_pct !== null ? v.comision_ypfb_bolgart_pct : "7.00"}%</strong>
+                                          </span>
+                                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                            Comisión 3%: <strong>{v.comision_pct_2 !== undefined && v.comision_pct_2 !== null ? v.comision_pct_2 : "3.00"}%</strong>
+                                          </span>
+                                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                            Hojas de Ruta: <strong>Bs. {v.costo_hojas_de_ruta_bs !== undefined && v.costo_hojas_de_ruta_bs !== null ? v.costo_hojas_de_ruta_bs : "0.00"}</strong>
+                                          </span>
+                                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
+                                            GPS: <strong>Bs. {v.costo_gps_bs !== undefined && v.costo_gps_bs !== null ? v.costo_gps_bs : "0.00"}</strong>
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                                </Fragment>
                               );
                             })}
 
@@ -2235,12 +2462,6 @@ function LiquidacionesContent() {
                                 <span className="text-slate-700 dark:text-slate-300 font-medium">| FACTURA: <strong className="font-mono text-slate-900 dark:text-white">{facLabel}</strong></span>
                                 <span className="text-slate-700 dark:text-slate-300 font-medium ml-1">| FECHA FACTURA: <strong className="text-slate-900 dark:text-white">{fechaLabel}</strong></span>
                               </td>
-                              <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-900 dark:text-white">{formatNumber(grpVolOrig, 0)}</td>
-                              <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-emerald-800 dark:text-emerald-300">{formatNumber(grpVolRec, 0)}</td>
-                              <td className="py-2 px-1 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-slate-700 dark:text-slate-300">-{formatNumber(Math.abs(grpMermaReal), 1)}</td>
-                              <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
-                              <td className="py-2 px-1 border-x border-amber-300 dark:border-amber-700"></td>
-                              <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-bold text-rose-700 dark:text-rose-400">{formatNumber(grpMDesc, 2)}</td>
                               <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-sky-800 dark:text-sky-300">{formatNumber(grpVolFact, 0)}</td>
                               <td className="py-2 px-1.5 text-right font-mono border-x border-amber-300 dark:border-amber-700 text-slate-700 dark:text-slate-300">{formatNumber(grpTarifa, 2)}</td>
                               <td className="py-2 px-2 text-right font-mono border-x border-amber-300 dark:border-amber-700 font-black text-amber-900 dark:text-amber-400">
@@ -2278,22 +2499,6 @@ function LiquidacionesContent() {
                         <tr className="bg-slate-100 dark:bg-slate-800/90 print:bg-slate-100 font-black text-slate-900 dark:text-white print:text-slate-900 border-t-2 border-b border-slate-300 dark:border-slate-700 print:border-slate-400 text-xs">
                           <td colSpan={10} className="py-2.5 px-3 text-right uppercase border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
                             {labelTotal}
-                          </td>
-                          <td className="py-2.5 px-1.5 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                            {formatNumber(totVolOrig, 0)}
-                          </td>
-                          <td className="py-2.5 px-1.5 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                            {formatNumber(totVolRec, 0)}
-                          </td>
-                          <td className="py-2.5 px-1 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                            -{formatNumber(totMermaReal, 1)}
-                          </td>
-                          <td className="py-2.5 px-1 text-right font-mono border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                            {formatNumber(totMermaExc, 1)}
-                          </td>
-                          <td className="py-2.5 px-1 border-x border-slate-300 dark:border-slate-700 print:border-slate-300"></td>
-                          <td className="py-2.5 px-1.5 text-right font-mono text-rose-700 dark:text-rose-400 print:text-red-700 border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
-                            {formatNumber(totMermaDesc, 1)}
                           </td>
                           <td className="py-2.5 px-1.5 text-right font-mono font-bold text-sky-800 dark:text-sky-300 border-x border-slate-300 dark:border-slate-700 print:border-slate-300">
                             {formatNumber(totVolFact, 0)}
@@ -2708,65 +2913,6 @@ function LiquidacionesContent() {
 
               {/* Contenido con Scroll */}
               <div className="p-6 overflow-y-auto space-y-6 text-xs text-slate-700 dark:text-slate-300">
-                
-                {/* Cuadro Explicativo de Fórmulas y Diferencia de Tarjetas */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Tarjeta Explicación 1 */}
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
-                    <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-black text-xs uppercase">
-                      <Calculator className="w-4 h-4" />
-                      <span>¿Por qué Flete - Mermas es Bs. {formatNumber(fleteFlotaMenosMermas, 2)}?</span>
-                    </div>
-                    <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
-                      La tarjeta azul <strong>Flete Flota - Mermas</strong> refleja el flete facturado menos únicamente la penalización por combustible evaporado o faltante en ruta:
-                    </p>
-                    <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 font-mono text-[11px] space-y-1">
-                      <div className="flex justify-between">
-                        <span>Flete Bruto Flota:</span>
-                        <strong className="text-amber-600 dark:text-amber-400">Bs. {formatNumber(fleteFlota, 2)}</strong>
-                      </div>
-                      <div className="flex justify-between text-rose-600 dark:text-rose-400">
-                        <span>(-) Mermas Combustible YPFB:</span>
-                        <strong>-Bs. {formatNumber(auditMermasStats.totalMermasBs || mermasFlota, 2)}</strong>
-                      </div>
-                      <div className="flex justify-between pt-1 border-t border-slate-200 dark:border-slate-800 font-bold text-blue-600 dark:text-blue-400">
-                        <span>(=) Flete Flota - Mermas:</span>
-                        <span>Bs. {formatNumber(fleteFlotaMenosMermas, 2)}</span>
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-slate-400 italic">
-                      * El <strong>Líquido Pagable Flota</strong> (Bs. {formatNumber(resumenFlota?.total_liquido_pagable_bs ?? activeLiq?.liquido_pagable_bs ?? 0, 2)}) es menor porque además de las mermas se descuentan las comisiones administrativas de flota (7%, 3%, Bol-Gart 7%, GPS, etc. por Bs. {formatNumber((resumenFlota?.total_deducciones_bs || activeLiq?.total_descuentos_bs || 0) - (auditMermasStats.totalMermasBs || mermasFlota), 2)}).
-                    </p>
-                  </div>
-
-                  {/* Tarjeta Explicación 2 */}
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
-                    <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-black text-xs uppercase">
-                      <Fuel className="w-4 h-4" />
-                      <span>¿De dónde salen los Bs. {formatNumber(auditMermasStats.totalMermasBs || mermasFlota, 2)}?</span>
-                    </div>
-                    <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
-                      En la gestión 2025 se realizaron <strong>{allViajes.length} despachos</strong> en total:
-                    </p>
-                    <ul className="text-[11px] space-y-1 list-disc list-inside text-slate-600 dark:text-slate-400">
-                      <li><strong>{auditMermasStats.sinMermasCount} viajes</strong> son cargas secas (minerales LAMBOL S.A., granos, cebada, fierro) o viajes dentro de tolerancia contractual: <strong>Merma = Bs. 0,00</strong>.</li>
-                      <li><strong>{auditMermasStats.conMermasCount} viajes</strong> son de combustible líquido para <strong>YPFB</strong> (Diesel e Insumos) donde la evaporación superó la tolerancia del 0.15%.</li>
-                    </ul>
-                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[11px] space-y-1">
-                      <div className="font-bold text-amber-900 dark:text-amber-300">Fórmula Contractual YPFB / ANH:</div>
-                      <div className="text-slate-600 dark:text-slate-300">
-                        Merma Excedente = {formatNumber(auditMermasStats.mermaExcedente, 0)} Litros a sancionar
-                      </div>
-                      <div className="text-slate-600 dark:text-slate-300">
-                        Tarifa Regulada = <strong>7,45 Bs / Litro</strong>
-                      </div>
-                      <div className="font-mono font-bold text-rose-700 dark:text-rose-400 pt-1 border-t border-amber-200 dark:border-amber-800">
-                        {formatNumber(auditMermasStats.mermaExcedente, 0)} L × 7,45 Bs/L = Bs. {formatNumber(auditMermasStats.totalMermasBs, 2)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
                 {/* 5 KPIs de Volumen y Mermas */}
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">

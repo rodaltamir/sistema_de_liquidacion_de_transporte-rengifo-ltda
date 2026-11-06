@@ -7,7 +7,6 @@ import {
   Save, 
   ShieldCheck, 
   Fuel, 
-  DollarSign, 
   FileText, 
   Users, 
   CheckCircle2, 
@@ -106,8 +105,8 @@ function ConfiguracionContent() {
     comision_pct_1: 7.0,
     comision_ypfb_bolgart_pct: 7.0,
     comision_pct_2: 3.0,
-    costo_hojas_de_ruta_bs: 240.00,
-    costo_gps_bs: 135.00,
+    costo_hojas_de_ruta_bs: 0.00,
+    costo_gps_bs: 0.00,
     anticipos_otros_pct: 0.0,
     firma_realizado_por: "",
     firma_revisado_por: "",
@@ -140,8 +139,8 @@ function ConfiguracionContent() {
           comision_pct_1: paramData.comision_pct_1 ?? 7.0,
           comision_ypfb_bolgart_pct: paramData.comision_ypfb_bolgart_pct ?? 7.0,
           comision_pct_2: paramData.comision_pct_2 ?? 3.0,
-          costo_hojas_de_ruta_bs: paramData.costo_hojas_de_ruta_bs ?? 240.00,
-          costo_gps_bs: paramData.costo_gps_bs ?? 135.00,
+          costo_hojas_de_ruta_bs: paramData.costo_hojas_de_ruta_bs ?? 0.00,
+          costo_gps_bs: paramData.costo_gps_bs ?? 0.00,
           anticipos_otros_pct: paramData.anticipos_otros_pct ?? 0.0,
           firma_realizado_por: paramData.firma_realizado_por || "",
           firma_revisado_por: paramData.firma_revisado_por || "",
@@ -1068,163 +1067,6 @@ function ConfiguracionContent() {
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">T/C de conversión para tarifas y comisiones (6.96 Bs)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* BLOQUE 2: COMISIONES Y DEDUCCIONES ESTÁNDAR */}
-          <div className="bg-white dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl space-y-4 transition-colors duration-200">
-            <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center">
-                <DollarSign className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                  2. Descuentos y Deducciones del Líquido Pagable
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Comisiones porcentuales, retenciones y costos logísticos</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  Comisión 1 ($us por m³)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.comision_usd_m3}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData({ ...formData, comision_usd_m3: v === "" ? ("" as any) : v });
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
-                      setFormData((prev) => ({ ...prev, comision_usd_m3: 0 }));
-                    }
-                  }}
-                  placeholder="1.00"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">Cobro por metro cúbico (1 $us/m3)</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  Descuento Comisión 7% (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.comision_pct_1}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData({ ...formData, comision_pct_1: v === "" ? ("" as any) : v });
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
-                      setFormData((prev) => ({ ...prev, comision_pct_1: 0 }));
-                    }
-                  }}
-                  placeholder="7.00"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">Retención Impositiva y Logística</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  Descuento YPFB BOL-GART 7% (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.comision_ypfb_bolgart_pct}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData({ ...formData, comision_ypfb_bolgart_pct: v === "" ? ("" as any) : v });
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
-                      setFormData((prev) => ({ ...prev, comision_ypfb_bolgart_pct: 0 }));
-                    }
-                  }}
-                  placeholder="7.00"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">Boleta de Garantía de Transporte</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  Descuento Comisión 3% (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.comision_pct_2}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData({ ...formData, comision_pct_2: v === "" ? ("" as any) : v });
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
-                      setFormData((prev) => ({ ...prev, comision_pct_2: 0 }));
-                    }
-                  }}
-                  placeholder="3.00"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">Gestión Operativa</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  Costo Hojas de Ruta (Bs Fijo)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.costo_hojas_de_ruta_bs}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData({ ...formData, costo_hojas_de_ruta_bs: v === "" ? ("" as any) : v });
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
-                      setFormData((prev) => ({ ...prev, costo_hojas_de_ruta_bs: 0 }));
-                    }
-                  }}
-                  placeholder="240.00"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">Valorado ANH/Tránsito: 240.00 Bs</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  Costo GPS / Precintos (Bs Fijo)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.costo_gps_bs}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData({ ...formData, costo_gps_bs: v === "" ? ("" as any) : v });
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
-                      setFormData((prev) => ({ ...prev, costo_gps_bs: 0 }));
-                    }
-                  }}
-                  placeholder="135.00"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">Monitoreo Satelital: 135.00 Bs</span>
               </div>
             </div>
           </div>

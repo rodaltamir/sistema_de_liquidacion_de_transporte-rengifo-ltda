@@ -77,8 +77,8 @@ class ParametroLiquidacion(Base):
     comision_pct_1 = Column(Float, default=7.0)                  # Descuento Comisión 7% (Retención / Administración)
     comision_ypfb_bolgart_pct = Column(Float, default=7.0)       # Descuento YPFB BOL-GART 7% (Garantía de Transporte)
     comision_pct_2 = Column(Float, default=3.0)                  # Descuento Comisión 3%
-    costo_hojas_de_ruta_bs = Column(Float, default=240.00)       # Hojas de Ruta
-    costo_gps_bs = Column(Float, default=135.00)                 # GPS / Monitoreo Satelital
+    costo_hojas_de_ruta_bs = Column(Float, default=0.00)        # Hojas de Ruta
+    costo_gps_bs = Column(Float, default=0.00)                   # GPS / Monitoreo Satelital (Default 0 Bs)
     anticipos_otros_pct = Column(Float, default=0.0)             # Anticipos y Otros
 
     # Nombres y cargos para las firmas en las planillas (Páginas 2 y 3 del PDF)
@@ -143,6 +143,17 @@ class Viaje(Base):
     total_descuentos_adicionales_bs = Column(Float, default=0.0)
     total_descuentos_mermas_bs = Column(Float, default=0.0)
 
+    # Parámetros y Deducciones contractuales YPFB por viaje
+    comision_usd_m3 = Column(Float, nullable=True, default=1.0)                 # Descuento Comisión 1 $us p/m3
+    tipo_cambio_bs = Column(Float, nullable=True, default=6.96)                 # Tipo de cambio $us -> Bs
+    comision_pct_1 = Column(Float, nullable=True, default=7.0)                  # Descuento Comisión 7%
+    comision_ypfb_bolgart_pct = Column(Float, nullable=True, default=7.0)       # Descuento YPFB BOL-GART 7%
+    comision_pct_2 = Column(Float, nullable=True, default=3.0)                  # Descuento Comisión 3%
+    costo_hojas_de_ruta_bs = Column(Float, nullable=True, default=0.0)         # Hojas de Ruta
+    costo_gps_bs = Column(Float, nullable=True, default=0.0)                    # GPS / Monitoreo Satelital (Default 0 Bs)
+    anticipos_otros_pct = Column(Float, nullable=True, default=0.0)              # Anticipos y Otros %
+    parametros_ypfb_json = Column(Text, nullable=True, default="{}")
+
     # Flete y tarifa
     tarifa_flete = Column(Float, nullable=False)                 # ej. 392.00 Bs o 503.61 $us/m3
     tipo_tarifa = Column(String(50), default="BS_POR_M3")        # "BS_POR_M3", "USD_POR_M3", "BS_TOTAL_VIAJE"
@@ -202,8 +213,8 @@ class Liquidacion(Base):
     desc_comision_7pct_bs = Column(Float, default=0.0)           # 5288.06 Bs
     desc_comision_ypfb_bolgart_7pct_bs = Column(Float, default=0.0) # 5288.06 Bs
     desc_comision_3pct_bs = Column(Float, default=0.0)           # 2266.31 Bs
-    desc_hojas_ruta_bs = Column(Float, default=0.0)              # 240.00 Bs
-    desc_gps_bs = Column(Float, default=0.0)                     # 135.00 Bs
+    desc_hojas_ruta_bs = Column(Float, default=0.0)              # 0.00 Bs
+    desc_gps_bs = Column(Float, default=0.0)                     # 0.00 Bs
     desc_anticipos_otros_bs = Column(Float, default=0.0)         # 0.00 Bs
     desc_otros_ajustes_bs = Column(Float, default=0.0)
 

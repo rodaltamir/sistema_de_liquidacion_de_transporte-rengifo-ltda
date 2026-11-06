@@ -256,6 +256,7 @@ def preview_calculo_viaje(
     volumen_facturado: Optional[float] = None,
     total_descuentos_adicionales: Optional[float] = 0.0,
     total_descuentos_mermas: Optional[float] = 0.0,
+    cliente: Optional[str] = None,
     empresa: Empresa = Depends(verify_tenant_exists)
 ):
     session = get_tenant_session(schema_name)
@@ -274,7 +275,8 @@ def preview_calculo_viaje(
             precio_merma_litro_override=precio_merma_override,
             volumen_facturado=volumen_facturado,
             total_descuentos_adicionales=total_descuentos_adicionales or 0.0,
-            total_descuentos_mermas=total_descuentos_mermas or 0.0
+            total_descuentos_mermas=total_descuentos_mermas or 0.0,
+            cliente=cliente
         )
         return calc
     finally:
@@ -345,7 +347,8 @@ def create_viaje(
             precio_merma_litro_override=viaje_in.precio_merma_litro_bs,
             volumen_facturado=vol_fact,
             total_descuentos_adicionales=total_desc_adic,
-            total_descuentos_mermas=total_desc_mermas
+            total_descuentos_mermas=total_desc_mermas,
+            cliente=viaje_in.cliente
         )
 
         # Buscar unidad_id si existe por la placa
@@ -385,7 +388,16 @@ def create_viaje(
             tipo_tarifa=viaje_in.tipo_tarifa or "BS_POR_M3",
             flete_total_bs=calc["flete_total_bs"],
             estado="Pendiente",
-            observaciones=viaje_in.observaciones
+            observaciones=viaje_in.observaciones,
+            comision_usd_m3=viaje_in.comision_usd_m3,
+            tipo_cambio_bs=viaje_in.tipo_cambio_bs if viaje_in.tipo_cambio_bs is not None else 6.96,
+            comision_pct_1=viaje_in.comision_pct_1,
+            comision_ypfb_bolgart_pct=viaje_in.comision_ypfb_bolgart_pct,
+            comision_pct_2=viaje_in.comision_pct_2,
+            costo_hojas_de_ruta_bs=viaje_in.costo_hojas_de_ruta_bs,
+            costo_gps_bs=viaje_in.costo_gps_bs,
+            anticipos_otros_pct=viaje_in.anticipos_otros_pct,
+            parametros_ypfb_json=viaje_in.parametros_ypfb_json
         )
         session.add(viaje)
         session.commit()
@@ -723,15 +735,16 @@ def update_viaje(
             precio_merma_litro_override=viaje.precio_merma_litro_bs,
             volumen_facturado=vol_fact,
             total_descuentos_adicionales=viaje.total_descuentos_adicionales_bs,
-            total_descuentos_mermas=viaje.total_descuentos_mermas_bs
+            total_descuentos_mermas=viaje.total_descuentos_mermas_bs,
+            cliente=viaje.cliente
         )
         viaje.volumen_facturado = calc["volumen_facturado"]
         viaje.merma_real_litros = calc["merma_real_litros"]
         viaje.tolerancia_pct = calc["tolerancia_pct"]
-        viaje.merma_tolerable_litros = calc["merma_tolerable_litros"]
-        viaje.merma_excedente_litros = calc["merma_excedente_litros"]
-        viaje.precio_merma_litro_bs = calc["precio_merma_litro_bs"]
-        viaje.merma_descontar_bs = calc["merma_descontar_bs"]
+        viaje.merma_tolerable_litros = viaje_in.merma_tolerable_litros if viaje_in.merma_tolerable_litros is not None else calc["merma_tolerable_litros"]
+        viaje.merma_excedente_litros = viaje_in.merma_excedente_litros if viaje_in.merma_excedente_litros is not None else calc["merma_excedente_litros"]
+        viaje.precio_merma_litro_bs = round(viaje_in.precio_merma_litro_bs, 6) if viaje_in.precio_merma_litro_bs is not None else calc["precio_merma_litro_bs"]
+        viaje.merma_descontar_bs = round(viaje_in.merma_descontar_bs, 2) if viaje_in.merma_descontar_bs is not None else calc["merma_descontar_bs"]
         viaje.flete_total_bs = calc["flete_total_bs"]
         if "periodo_mes" in update_data and update_data["periodo_mes"]:
             viaje.periodo_mes = str(update_data["periodo_mes"]).strip()

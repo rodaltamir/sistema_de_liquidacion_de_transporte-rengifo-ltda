@@ -18,8 +18,8 @@ class ParametroBase(BaseModel):
     comision_pct_1: float = 7.0
     comision_ypfb_bolgart_pct: float = 7.0
     comision_pct_2: float = 3.0
-    costo_hojas_de_ruta_bs: float = 240.00
-    costo_gps_bs: float = 135.00
+    costo_hojas_de_ruta_bs: float = 0.00
+    costo_gps_bs: float = 0.00
     anticipos_otros_pct: float = 0.0
 
     firma_realizado_por: str = "JAQUELINE LOVERA TIÑINI"
