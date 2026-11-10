@@ -281,10 +281,10 @@ def export_liquidacion_placa_pdf(liquidacion: Any, viajes: List[Any], empresa: D
     story.append(Spacer(1, 15))
 
     # Firmas
-    f_realizado = getattr(params, 'firma_realizado_por', 'JAQUELINE LOVERA TIÑINI')
-    f_revisado = getattr(params, 'firma_revisado_por', 'JOSE LOVERA TIÑINI / GERENTE GENERAL')
-    f_autorizado = getattr(params, 'firma_autorizado_por', 'DIRECTORIO')
-    f_cancelado = getattr(params, 'firma_cancelado_por', 'TOMASA TIÑINI MITA / APOYO')
+    f_realizado = getattr(params, 'firma_realizado_por', '') or ''
+    f_revisado = getattr(params, 'firma_revisado_por', '') or ''
+    f_autorizado = getattr(params, 'firma_autorizado_por', 'DIRECTORIO') or 'DIRECTORIO'
+    f_cancelado = getattr(params, 'firma_cancelado_por', '') or ''
 
     sign_data = [
         [

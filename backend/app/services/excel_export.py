@@ -222,9 +222,9 @@ def export_liquidacion_placa_excel(
         except Exception:
             pass
     if not realizado_nom:
-        realizado_nom = getattr(params, "firma_realizado_por", None) or "JAQUELINE LOVERA TIÑINI"
+        realizado_nom = getattr(params, "firma_realizado_por", None) or ""
 
-    realizado_nom, _ = parse_firma_entry(realizado_nom, "JAQUELINE LOVERA TIÑINI", "")
+    realizado_nom, _ = parse_firma_entry(realizado_nom, "", "")
 
     revisado_nom = ""
     revisado_carg = ""
@@ -1352,12 +1352,11 @@ def export_viajes_list_excel(
             placa_h1 = "TODAS LAS PLACAS (CONSOLIDADO GENERAL)"
 
     # Firmas oficiales
-    realizado_nom = getattr(params, "firma_realizado_por", None) or "JAQUELINE LOVERA TIÑINI"
-    realizado_nom, _ = parse_firma_entry(realizado_nom, "JAQUELINE LOVERA TIÑINI", "")
+    realizado_nom = getattr(params, "firma_realizado_por", None) or ""
+    realizado_nom, _ = parse_firma_entry(realizado_nom, "", "")
     revisado_nom = getattr(params, "firma_revisado_por", "") or ""
     revisado_carg = ""
-    autorizado_nom = getattr(params, "firma_autorizado_por", "") or ""
-    autorizado_carg = ""
+    autorizado_nom = getattr(params, "firma_autorizado_por", "DIRECTORIO") or "DIRECTORIO"
     cancelado_nom = getattr(params, "firma_cancelado_por", "") or ""
     cancelado_carg = ""
 
@@ -2251,12 +2250,15 @@ def export_resumen_flota_excel(
     ws.row_dimensions[sign_start_row + 1].height = 18
     ws.row_dimensions[sign_start_row + 2].height = 40
 
-    realizado_nom = getattr(params, "firma_realizado_por", "JAQUELINE LOVERA TIÑINI")
+    realizado_nom = getattr(params, "firma_realizado_por", "") or ""
+    revisado_nom = getattr(params, "firma_revisado_por", "") or ""
+    autorizado_nom = getattr(params, "firma_autorizado_por", "DIRECTORIO") or "DIRECTORIO"
+    cancelado_nom = getattr(params, "firma_cancelado_por", "") or ""
     panels = [
         ("A", "C", realizado_nom, " REALIZADO POR:"),
-        ("D", "F", "", " REVISADO POR:"),
-        ("G", "I", "", " AUTORIZADO POR:"),
-        ("J", "L", "", " CANCELADO POR:")
+        ("D", "F", revisado_nom, " REVISADO POR:"),
+        ("G", "I", autorizado_nom, " AUTORIZADO POR:"),
+        ("J", "L", cancelado_nom, " CANCELADO POR:")
     ]
     for col_s, col_e, n_val, l_val in panels:
         if n_val:

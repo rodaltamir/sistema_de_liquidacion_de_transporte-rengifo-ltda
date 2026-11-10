@@ -141,8 +141,9 @@ def resolve_period_and_trips(
         query_viajes = query_viajes.filter(
             or_(
                 Viaje.periodo_mes.startswith(f"{target_year}-"),
-                (Viaje.periodo_mes.is_(None)) & (func.extract('year', Viaje.fecha_carga) == target_year),
-                (Viaje.periodo_mes == "") & (func.extract('year', Viaje.fecha_carga) == target_year)
+                func.extract('year', Viaje.fecha_carga) == target_year,
+                func.extract('year', Viaje.fecha_descarga) == target_year,
+                func.extract('year', Viaje.fecha_factura) == target_year
             )
         )
         periodo_label = f"ANUAL-{target_year}"
@@ -333,10 +334,10 @@ def get_liquidacion_consolidada(
         params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
 
         firmas_default = {
-            "realizado_por": getattr(params, "firma_realizado_por", "JAQUELINE LOVERA TIÑINI"),
-            "revisado_por": getattr(params, "firma_revisado_por", "JOSE LOVERA TIÑINI / GERENTE GENERAL"),
-            "autorizado_por": getattr(params, "firma_autorizado_por", "DIRECTORIO"),
-            "cancelado_por": getattr(params, "firma_cancelado_por", "TOMASA TIÑINI MITA / APOYO")
+            "realizado_por": getattr(params, "firma_realizado_por", "") or "",
+            "revisado_por": getattr(params, "firma_revisado_por", "") or "",
+            "autorizado_por": getattr(params, "firma_autorizado_por", "DIRECTORIO") or "DIRECTORIO",
+            "cancelado_por": getattr(params, "firma_cancelado_por", "") or ""
         }
 
         empresa_dict = {
@@ -365,6 +366,9 @@ def get_liquidacion_consolidada(
 
         viajes_res = [ViajeResponse.model_validate(v) for v in viajes]
 
+        # Calcular siempre el resumen actualizado en vivo sobre todos los viajes existentes en DB
+        resumen = calculate_liquidacion_resumen(viajes, params)
+
         if liq_saved:
             firmas = firmas_default
             if liq_saved.firmas_json:
@@ -372,33 +376,35 @@ def get_liquidacion_consolidada(
                     firmas = json.loads(liq_saved.firmas_json)
                 except Exception:
                     pass
+            # Si el usuario editó deducciones manualmente en un guardado previo, respetar overrides pero flete y volúmenes calculados de viajes reales
             return LiquidacionDetalleResponse(
                 id=liq_saved.id,
                 codigo=liq_saved.codigo,
                 periodo_mes=liq_saved.periodo_mes,
                 placa=liq_saved.placa,
                 fecha_emision=liq_saved.fecha_emision,
-                total_viajes=len(viajes) if viajes else liq_saved.total_viajes,
-                total_volumen_origen_litros=liq_saved.total_volumen_origen_litros,
-                total_volumen_recepcionado_litros=liq_saved.total_volumen_recepcionado_litros,
-                total_merma_real_litros=liq_saved.total_merma_real_litros,
-                total_merma_excedente_litros=liq_saved.total_merma_excedente_litros,
-                flete_total_bruto_bs=liq_saved.flete_total_bruto_bs,
-                desc_merma_bs=liq_saved.desc_merma_bs,
-                desc_comision_usd_m3_bs=liq_saved.desc_comision_usd_m3_bs,
-                desc_comision_7pct_bs=liq_saved.desc_comision_7pct_bs,
-                desc_comision_ypfb_bolgart_7pct_bs=liq_saved.desc_comision_ypfb_bolgart_7pct_bs,
-                desc_comision_3pct_bs=liq_saved.desc_comision_3pct_bs,
-                desc_hojas_ruta_bs=liq_saved.desc_hojas_ruta_bs,
-                desc_gps_bs=liq_saved.desc_gps_bs,
-                desc_anticipos_otros_bs=liq_saved.desc_anticipos_otros_bs,
-                desc_otros_ajustes_bs=liq_saved.desc_otros_ajustes_bs,
-                total_descuentos_bs=liq_saved.total_descuentos_bs,
-                liquido_pagable_bs=liq_saved.liquido_pagable_bs,
+                total_viajes=len(viajes),
+                total_volumen_origen_litros=resumen["total_volumen_origen_litros"],
+                total_volumen_recepcionado_litros=resumen["total_volumen_recepcionado_litros"],
+                total_merma_real_litros=resumen["total_merma_real_litros"],
+                total_merma_excedente_litros=resumen["total_merma_excedente_litros"],
+                flete_total_bruto_bs=resumen["flete_total_bruto_bs"],
+                desc_merma_bs=liq_saved.desc_merma_bs if liq_saved.desc_merma_bs is not None else resumen["desc_merma_bs"],
+                desc_comision_usd_m3_bs=liq_saved.desc_comision_usd_m3_bs if liq_saved.desc_comision_usd_m3_bs is not None else resumen["desc_comision_usd_m3_bs"],
+                desc_comision_7pct_bs=liq_saved.desc_comision_7pct_bs if liq_saved.desc_comision_7pct_bs is not None else resumen["desc_comision_7pct_bs"],
+                desc_comision_ypfb_bolgart_7pct_bs=liq_saved.desc_comision_ypfb_bolgart_7pct_bs if liq_saved.desc_comision_ypfb_bolgart_7pct_bs is not None else resumen["desc_comision_ypfb_bolgart_7pct_bs"],
+                desc_comision_3pct_bs=liq_saved.desc_comision_3pct_bs if liq_saved.desc_comision_3pct_bs is not None else resumen["desc_comision_3pct_bs"],
+                desc_hojas_ruta_bs=liq_saved.desc_hojas_ruta_bs if liq_saved.desc_hojas_ruta_bs is not None else resumen["desc_hojas_ruta_bs"],
+                desc_gps_bs=liq_saved.desc_gps_bs if liq_saved.desc_gps_bs is not None else resumen["desc_gps_bs"],
+                desc_anticipos_otros_bs=liq_saved.desc_anticipos_otros_bs if liq_saved.desc_anticipos_otros_bs is not None else resumen["desc_anticipos_otros_bs"],
+                desc_otros_ajustes_bs=liq_saved.desc_otros_ajustes_bs if liq_saved.desc_otros_ajustes_bs is not None else resumen["desc_otros_ajustes_bs"],
+                total_descuentos_bs=resumen["total_descuentos_bs"],
+                liquido_pagable_bs=resumen["liquido_pagable_bs"],
                 firmas_json=liq_saved.firmas_json,
                 estado=liq_saved.estado,
                 notas=liq_saved.notas,
                 created_at=liq_saved.created_at,
+                updated_at=liq_saved.updated_at,
                 viajes=viajes_res,
                 empresa=empresa_dict,
                 firmas=firmas
@@ -659,10 +665,10 @@ def generate_liquidaciones_batch(
         fecha_emision = batch_in.fecha_emision or date.today()
 
         firmas_dict = {
-            "realizado_por": getattr(params, "firma_realizado_por", "JAQUELINE LOVERA TIÑINI"),
-            "revisado_por": getattr(params, "firma_revisado_por", "JOSE LOVERA TIÑINI / GERENTE GENERAL"),
-            "autorizado_por": getattr(params, "firma_autorizado_por", "DIRECTORIO"),
-            "cancelado_por": getattr(params, "firma_cancelado_por", "TOMASA TIÑINI MITA / APOYO")
+            "realizado_por": getattr(params, "firma_realizado_por", "") or "",
+            "revisado_por": getattr(params, "firma_revisado_por", "") or "",
+            "autorizado_por": getattr(params, "firma_autorizado_por", "DIRECTORIO") or "DIRECTORIO",
+            "cancelado_por": getattr(params, "firma_cancelado_por", "") or ""
         }
 
         # Agrupar viajes por placa
@@ -678,49 +684,13 @@ def generate_liquidaciones_batch(
         tot_desc = 0.0
         tot_liq = 0.0
 
-        for p_placa in placas_procesadas:
-            p_viajes = trips_by_placa[p_placa]
-            p_codigo = f"LIQ-{periodo_label}-{p_placa}"
-            p_resumen = calculate_liquidacion_resumen(p_viajes, params)
-
-            tot_flete += p_resumen["flete_total_bruto_bs"]
-            tot_desc += p_resumen["total_descuentos_bs"]
-            tot_liq += p_resumen["liquido_pagable_bs"]
-
-            liq = session.query(Liquidacion).filter(
-                or_(
-                    Liquidacion.codigo == p_codigo,
-                    (Liquidacion.periodo_mes == periodo_label) & (Liquidacion.placa == p_placa)
-                )
-            ).first()
-
-            if not liq:
-                liq = Liquidacion(
-                    codigo=p_codigo,
-                    periodo_mes=periodo_label,
-                    placa=p_placa,
-                    fecha_emision=fecha_emision,
-                    firmas_json=json.dumps(firmas_dict),
-                    estado="Generada",
-                    notas=f"Generada en lote para {display_label}",
-                    **p_resumen
-                )
-                session.add(liq)
-                session.flush()
-            else:
-                liq.fecha_emision = fecha_emision
-                liq.estado = "Editada"
-                liq.updated_at = datetime.now(timezone.utc)
-                for k, val in p_resumen.items():
-                    setattr(liq, k, val)
-                session.flush()
-
-            for v in p_viajes:
-                v.liquidacion_id = liq.id
-                v.estado = "Liquidado"
-
-        # Actualizar o crear también el registro consolidado "TODAS"
+        # Consolidar flete y deducciones de toda la flota
         resumen_consolidado = calculate_liquidacion_resumen(viajes_todos, params)
+        tot_flete = resumen_consolidado["flete_total_bruto_bs"]
+        tot_desc = resumen_consolidado["total_descuentos_bs"]
+        tot_liq = resumen_consolidado["liquido_pagable_bs"]
+
+        # Crear o actualizar un único registro oficial consolidado para la flota (sin fragmentar por placa)
         liq_todas = session.query(Liquidacion).filter(
             or_(
                 Liquidacion.codigo == codigo_consolidado,
@@ -740,12 +710,27 @@ def generate_liquidaciones_batch(
                 **resumen_consolidado
             )
             session.add(liq_todas)
+            session.flush()
         else:
             liq_todas.fecha_emision = fecha_emision
             liq_todas.estado = "Consolidado General"
             liq_todas.updated_at = datetime.now(timezone.utc)
             for k, val in resumen_consolidado.items():
                 setattr(liq_todas, k, val)
+            session.flush()
+
+        # Asociar todos los viajes de la flota al registro consolidado
+        for v in viajes_todos:
+            v.liquidacion_id = liq_todas.id
+            # v.estado permanece normal
+            pass
+
+        # Limpiar cualquier liquidación individual fragmentada previa de este período
+        session.query(Liquidacion).filter(
+            Liquidacion.periodo_mes == periodo_label,
+            Liquidacion.placa != "TODAS",
+            Liquidacion.id != liq_todas.id
+        ).delete(synchronize_session=False)
 
         session.commit()
 
@@ -876,10 +861,10 @@ def generate_liquidacion(
         resumen = calculate_liquidacion_resumen(viajes, params, overrides)
 
         firmas_dict = {
-            "realizado_por": getattr(params, "firma_realizado_por", "JAQUELINE LOVERA TIÑINI"),
-            "revisado_por": getattr(params, "firma_revisado_por", "JOSE LOVERA TIÑINI / GERENTE GENERAL"),
-            "autorizado_por": getattr(params, "firma_autorizado_por", "DIRECTORIO"),
-            "cancelado_por": getattr(params, "firma_cancelado_por", "TOMASA TIÑINI MITA / APOYO")
+            "realizado_por": getattr(params, "firma_realizado_por", "") or "",
+            "revisado_por": getattr(params, "firma_revisado_por", "") or "",
+            "autorizado_por": getattr(params, "firma_autorizado_por", "DIRECTORIO") or "DIRECTORIO",
+            "cancelado_por": getattr(params, "firma_cancelado_por", "") or ""
         }
 
         # Verificar si ya existe una liquidación para ese código o período y placa
@@ -920,16 +905,28 @@ def generate_liquidacion(
             liq.fecha_emision = fecha_emision
             liq.firmas_json = json.dumps(firmas_dict)
             liq.notas = liq_in.notas or liq.notas
-            liq.estado = "Consolidado General" if is_todas else ("Editada con Ajustes" if overrides else "Editada")
+            if is_todas:
+                liq.estado = "Consolidado Editado" if overrides else "Consolidado General"
+            else:
+                liq.estado = "Editada con Ajustes" if overrides else "Editada"
             liq.updated_at = datetime.now(timezone.utc)
             session.commit()
             session.refresh(liq)
 
-        # Asociar los viajes a esta liquidación (si no es TODAS o si no tienen liq_id)
+        # Asociar los viajes a esta liquidación
         for v in viajes:
-            if not is_todas or v.liquidacion_id is None:
-                v.liquidacion_id = liq.id
-                v.estado = "Liquidado"
+            v.liquidacion_id = liq.id
+            # v.estado permanece normal
+            pass
+
+        # Si es TODAS, asegurar que no queden liquidaciones fragmentadas por cisterna en Historial
+        if is_todas:
+            session.query(Liquidacion).filter(
+                Liquidacion.periodo_mes == periodo_label,
+                Liquidacion.placa != "TODAS",
+                Liquidacion.id != liq.id
+            ).delete(synchronize_session=False)
+
         session.commit()
         session.refresh(liq)
 
@@ -994,6 +991,13 @@ def get_liquidacion_detalle(schema_name: str, id: int, empresa: Empresa = Depend
             raise HTTPException(status_code=404, detail="Liquidación no encontrada")
 
         viajes = session.query(Viaje).filter(Viaje.liquidacion_id == id).order_by(Viaje.fecha_carga.asc()).all()
+        if not viajes:
+            viajes, _, _, _ = resolve_period_and_trips(
+                session=session,
+                placa_clean=liq.placa,
+                periodo_mes=liq.periodo_mes,
+                tipo_periodo="factura" if "FAC" in (liq.periodo_mes or "") else "mes"
+            )
         params = session.query(ParametroLiquidacion).first() or ParametroLiquidacion()
 
         firmas = {}
@@ -1004,10 +1008,10 @@ def get_liquidacion_detalle(schema_name: str, id: int, empresa: Empresa = Depend
                 pass
         if not firmas:
             firmas = {
-                "realizado_por": getattr(params, "firma_realizado_por", "JAQUELINE LOVERA TIÑINI"),
-                "revisado_por": getattr(params, "firma_revisado_por", "JOSE LOVERA TIÑINI / GERENTE GENERAL"),
-                "autorizado_por": getattr(params, "firma_autorizado_por", "DIRECTORIO"),
-                "cancelado_por": getattr(params, "firma_cancelado_por", "TOMASA TIÑINI MITA / APOYO")
+                "realizado_por": getattr(params, "firma_realizado_por", "") or "",
+                "revisado_por": getattr(params, "firma_revisado_por", "") or "",
+                "autorizado_por": getattr(params, "firma_autorizado_por", "DIRECTORIO") or "DIRECTORIO",
+                "cancelado_por": getattr(params, "firma_cancelado_por", "") or ""
             }
 
         empresa_dict = {
@@ -1047,6 +1051,7 @@ def get_liquidacion_detalle(schema_name: str, id: int, empresa: Empresa = Depend
             estado=liq.estado,
             notas=liq.notas,
             created_at=liq.created_at,
+            updated_at=liq.updated_at,
             viajes=viajes_res,
             empresa=empresa_dict,
             firmas=firmas

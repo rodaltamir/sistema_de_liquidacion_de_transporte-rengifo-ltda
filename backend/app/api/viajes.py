@@ -195,7 +195,14 @@ def list_viajes(
                 query = query.filter(Viaje.periodo_mes == periodo_mes)
 
         if anio:
-            query = query.filter(Viaje.periodo_mes.startswith(f"{anio}-"))
+            query = query.filter(
+                or_(
+                    Viaje.periodo_mes.startswith(f"{anio}-"),
+                    func.extract('year', Viaje.fecha_carga) == anio,
+                    func.extract('year', Viaje.fecha_descarga) == anio,
+                    func.extract('year', Viaje.fecha_factura) == anio
+                )
+            )
         if fecha_desde:
             query = query.filter(Viaje.fecha_carga >= fecha_desde)
         if fecha_hasta:

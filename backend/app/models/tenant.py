@@ -82,10 +82,10 @@ class ParametroLiquidacion(Base):
     anticipos_otros_pct = Column(Float, default=0.0)             # Anticipos y Otros
 
     # Nombres y cargos para las firmas en las planillas (Páginas 2 y 3 del PDF)
-    firma_realizado_por = Column(String(200), default="JAQUELINE LOVERA TIÑINI")
-    firma_revisado_por = Column(String(200), default="JOSE LOVERA TIÑINI / GERENTE GENERAL")
+    firma_realizado_por = Column(String(200), default="")
+    firma_revisado_por = Column(String(200), default="")
     firma_autorizado_por = Column(String(200), default="DIRECTORIO")
-    firma_cancelado_por = Column(String(200), default="TOMASA TIÑINI MITA / APOYO")
+    firma_cancelado_por = Column(String(200), default="")
 
     # Cláusula legal que rige la liquidación
     leyenda_legal = Column(Text, default="Conforme lo establece la Ley 843 en su Art. 4 y de acuerdo a la cláusula contractual de Facturación y Pago, el momento en que finalizará la ejecución o la prestación del Servicio se origina después de realizada la Conciliación (Acta de Conformidad por la Comisión de Recepción) y emitida la planilla de Liquidación.")

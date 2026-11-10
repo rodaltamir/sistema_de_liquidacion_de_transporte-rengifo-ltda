@@ -54,17 +54,16 @@ function ConfiguracionContent() {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
   const tabParam = searchParams.get("tab");
-  const [activeTab, setActiveTab] = useState<"empresa" | "parametros" | "tema">(
-    tabParam === "parametros" || tabParam === "tema" ? tabParam : "empresa"
+  const [activeTab, setActiveTab] = useState<"empresa" | "tema">(
+    tabParam === "tema" ? "tema" : "empresa"
   );
 
   useEffect(() => {
-    if (tabParam === "parametros" || tabParam === "tema" || tabParam === "empresa") {
+    if (tabParam === "tema" || tabParam === "empresa") {
       setActiveTab(tabParam);
     }
   }, [tabParam]);
   const [loading, setLoading] = useState(true);
-  const [savingParametros, setSavingParametros] = useState(false);
   const [savingEmpresa, setSavingEmpresa] = useState(false);
 
   // Lista de asociaciones disponibles para selector
@@ -401,54 +400,6 @@ function ConfiguracionContent() {
     }
   };
 
-  // Guardar parámetros de liquidación
-  const handleSaveParametros = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingParametros(true);
-    const sanitizedForm = {
-      ...formData,
-      merma_tolerancia_diesel_pct: Number(formData.merma_tolerancia_diesel_pct) || 0,
-      merma_tolerancia_gasolina_pct: Number(formData.merma_tolerancia_gasolina_pct) || 0,
-      merma_tolerancia_iya_pct: Number(formData.merma_tolerancia_iya_pct) || 0,
-      merma_tolerancia_otro_pct: Number(formData.merma_tolerancia_otro_pct) || 0,
-      precio_merma_general_bs: Number(formData.precio_merma_general_bs) || 0,
-      tipo_cambio_usd_bob: Number(formData.tipo_cambio_usd_bob) || 6.96,
-      comision_usd_m3: Number(formData.comision_usd_m3) || 0,
-      comision_pct_1: Number(formData.comision_pct_1) || 0,
-      comision_ypfb_bolgart_pct: Number(formData.comision_ypfb_bolgart_pct) || 0,
-      comision_pct_2: Number(formData.comision_pct_2) || 0,
-      costo_hojas_de_ruta_bs: Number(formData.costo_hojas_de_ruta_bs) || 0,
-      costo_gps_bs: Number(formData.costo_gps_bs) || 0,
-    };
-    try {
-      await apiFetch(`/tenants/${schema}/parametros/`, {
-        method: "PUT",
-        body: JSON.stringify(sanitizedForm)
-      });
-      Swal.fire({
-        icon: "success",
-        title: "Parámetros Guardados",
-        text: "Los porcentajes y deducciones se aplicarán a los cálculos de flete y planillas.",
-        background: resolvedTheme === "dark" ? "#0f172a" : "#ffffff",
-        color: resolvedTheme === "dark" ? "#f8fafc" : "#0f172a",
-        confirmButtonColor: "#f59e0b",
-        timer: 1800,
-        showConfirmButton: false
-      });
-    } catch (err: any) {
-      Swal.fire({
-        icon: "error",
-        title: "Error al guardar parámetros",
-        text: err.message,
-        background: resolvedTheme === "dark" ? "#0f172a" : "#ffffff",
-        color: resolvedTheme === "dark" ? "#f8fafc" : "#0f172a",
-        confirmButtonColor: "#f59e0b"
-      });
-    } finally {
-      setSavingParametros(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex flex-col justify-center items-center py-32 gap-3">
@@ -510,19 +461,6 @@ function ConfiguracionContent() {
           >
             <Sun className="w-3.5 h-3.5" />
             <span>Tema y Modo</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("parametros")}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg transition ${
-              activeTab === "parametros"
-                ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black"
-                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-            }`}
-          >
-            <Fuel className="w-3.5 h-3.5" />
-            <span>Parámetros</span>
           </button>
         </div>
       </div>
@@ -698,7 +636,7 @@ function ConfiguracionContent() {
                     setEmpresaData({ ...empresaData, representante_legal: e.target.value });
                     if (empresaErrors.representante_legal) setEmpresaErrors({ ...empresaErrors, representante_legal: "" });
                   }}
-                  placeholder="Ej. JAQUELINE LOVERA TIÑINI"
+                  placeholder="Ej. Juan Pérez / Gerente General"
                   className={`w-full bg-slate-50 dark:bg-slate-950 border rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none transition ${
                     empresaErrors.representante_legal ? "border-rose-500 focus:border-rose-500" : "border-slate-300 dark:border-slate-800 focus:border-amber-500"
                   }`}
@@ -906,184 +844,6 @@ function ConfiguracionContent() {
           </div>
 
         </div>
-      )}
-
-      {/* ======================================================== */}
-      {/* PESTAÑA 3: PARÁMETROS TÉCNICOS EDITABLES                 */}
-      {/* ======================================================== */}
-      {activeTab === "parametros" && (
-        <form onSubmit={handleSaveParametros} className="space-y-6">
-          
-          {/* BLOQUE 1: TOLERANCIAS DE MERMA Y PRECIOS */}
-          <div className="bg-white dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl space-y-4 transition-colors duration-200">
-            <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center">
-                <Fuel className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                  1. Porcentajes de Tolerancia de Merma y Factores de Descuento
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Límites permisibles de evaporación y transporte por tipo de producto</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  Tolerancia Diesel (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.merma_tolerancia_diesel_pct}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData({ ...formData, merma_tolerancia_diesel_pct: v === "" ? ("" as any) : v });
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
-                      setFormData((prev) => ({ ...prev, merma_tolerancia_diesel_pct: 0 }));
-                    }
-                  }}
-                  placeholder="0.15"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">Estándar YPFB: 0.15%</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  Tolerancia Gasolina (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.merma_tolerancia_gasolina_pct}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData({ ...formData, merma_tolerancia_gasolina_pct: v === "" ? ("" as any) : v });
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
-                      setFormData((prev) => ({ ...prev, merma_tolerancia_gasolina_pct: 0 }));
-                    }
-                  }}
-                  placeholder="0.25"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">Estándar YPFB: 0.25%</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  Tolerancia Insumos y Aditivos (IYA %)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.merma_tolerancia_iya_pct}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData({ ...formData, merma_tolerancia_iya_pct: v === "" ? ("" as any) : v });
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
-                      setFormData((prev) => ({ ...prev, merma_tolerancia_iya_pct: 0 }));
-                    }
-                  }}
-                  placeholder="0.20"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">Estándar: 0.20%</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  Tolerancia Otra / Otros (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.merma_tolerancia_otro_pct}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData({ ...formData, merma_tolerancia_otro_pct: v === "" ? ("" as any) : v });
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
-                      setFormData((prev) => ({ ...prev, merma_tolerancia_otro_pct: 0 }));
-                    }
-                  }}
-                  placeholder="0.00"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">Productos sin tasa específica</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  Factor Precio Merma General (Bs/Litro)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.precio_merma_general_bs}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData({ ...formData, precio_merma_general_bs: v === "" ? ("" as any) : v });
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
-                      setFormData((prev) => ({ ...prev, precio_merma_general_bs: 0 }));
-                    }
-                  }}
-                  placeholder="7.45"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">Valor contractual aplicado en Hoja 2 del PDF (7.45 Bs)</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
-                  Tipo de Cambio Oficial (USD a BOB)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.tipo_cambio_usd_bob}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData({ ...formData, tipo_cambio_usd_bob: v === "" ? ("" as any) : v });
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "" || isNaN(Number(e.target.value))) {
-                      setFormData((prev) => ({ ...prev, tipo_cambio_usd_bob: 6.96 }));
-                    }
-                  }}
-                  placeholder="6.96"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-amber-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">T/C de conversión para tarifas y comisiones (6.96 Bs)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Botón Guardar Parámetros Inferior */}
-          <div className="flex justify-end pt-2">
-            <button
-              type="submit"
-              disabled={savingParametros}
-              className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-lg shadow-amber-500/20 flex items-center gap-2 transition active:scale-95 disabled:opacity-50"
-            >
-              <Save className="w-4 h-4 stroke-[3]" />
-              <span>{savingParametros ? "Guardando..." : "Guardar Todos los Parámetros"}</span>
-            </button>
-          </div>
-
-        </form>
       )}
 
     </div>

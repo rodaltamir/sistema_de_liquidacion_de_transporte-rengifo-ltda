@@ -365,6 +365,14 @@ function ViajesContent() {
     desc_otros_ajustes_bs: ""
   });
 
+  // Firmas oficiales editables directamente en Viajes y sincronizadas con Liquidaciones
+  const [firmas, setFirmas] = useState({
+    realizado_por: "",
+    revisado_por: "",
+    autorizado_por: "DIRECTORIO",
+    cancelado_por: ""
+  });
+
   // Expansión de filas YPFB para visualización de parámetros y mermas en viajes
   const [expandedYpfbRows, setExpandedYpfbRows] = useState<Set<number>>(new Set());
 
@@ -691,21 +699,46 @@ function ViajesContent() {
     catalogProductosDetalle
   ]);
 
+  const sanitizeFirma = (val: any, fallback: string = "") => {
+    if (typeof val !== "string" || !val) return fallback;
+    if (val.includes("LOVERA") || val.includes("TIÑINI")) return fallback;
+    return val;
+  };
+
   const loadInitialData = async () => {
     try {
-      const [uData, uApoyoData, pData, cData, catData, fData] = await Promise.all([
+      const [uData, uApoyoData, pData, cData, catData, fData, paramData] = await Promise.all([
         apiFetch(`/tenants/${schema}/unidades/`).catch(() => []),
         apiFetch(`/tenants/${schema}/apoyo/unidades/todas`).catch(() => []),
         apiFetch(`/tenants/${schema}/viajes/periodos`).catch(() => []),
         apiFetch(`/tenants/${schema}/clientes/`).catch(() => []),
         apiFetch(`/tenants/${schema}/parametros/catalogos`).catch(() => null),
-        apiFetch(`/tenants/${schema}/viajes/facturas-disponibles`).catch(() => [])
+        apiFetch(`/tenants/${schema}/viajes/facturas-disponibles`).catch(() => []),
+        apiFetch(`/tenants/${schema}/parametros/`).catch(() => null)
       ]);
       setUnidades(Array.isArray(uData) ? uData : []);
       setUnidadesApoyo(Array.isArray(uApoyoData) ? uApoyoData : []);
       setPeriodosDisponibles(Array.isArray(pData) ? pData : []);
       setClientes(Array.isArray(cData) ? cData : []);
       setFacturasDisponibles(Array.isArray(fData) ? fData : []);
+
+      // Cargar firmas guardadas en memoria o parámetros del tenant
+      const savedFirmas = getSavedState<any>(`transporte_${schema}_firmas`, null);
+      if (savedFirmas) {
+        setFirmas({
+          realizado_por: sanitizeFirma(savedFirmas.realizado_por, ""),
+          revisado_por: sanitizeFirma(savedFirmas.revisado_por, ""),
+          autorizado_por: sanitizeFirma(savedFirmas.autorizado_por, "DIRECTORIO"),
+          cancelado_por: sanitizeFirma(savedFirmas.cancelado_por, "")
+        });
+      } else if (paramData) {
+        setFirmas({
+          realizado_por: sanitizeFirma(paramData.firma_realizado_por, ""),
+          revisado_por: sanitizeFirma(paramData.firma_revisado_por, ""),
+          autorizado_por: sanitizeFirma(paramData.firma_autorizado_por, "DIRECTORIO"),
+          cancelado_por: sanitizeFirma(paramData.firma_cancelado_por, "")
+        });
+      }
       if (catData) {
         if (Array.isArray(catData.productos) && catData.productos.length > 0) {
           setCatalogProductos(catData.productos);
@@ -1113,27 +1146,152 @@ function ViajesContent() {
     }
   };
 
+  const [savingViajes, setSavingViajes] = useState(false);
+
+  const handleSaveAndSyncViajes = async () => {
+    setSavingViajes(true);
+    try {
+      const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+      const swalBg = isDark ? "#0f172a" : "#ffffff";
+      const swalColor = isDark ? "#f8fafc" : "#0f172a";
+
+      const sharedPeriodo = filterMode === "mes" ? periodo :
+        filterMode === "semestral" ? (periodo || `${new Date().getFullYear()}-S1`) :
+        filterMode === "anual" ? (periodo || `ANUAL-${new Date().getFullYear()}`) :
+        filterMode === "personalizado" ? periodo : "";
+
+      saveState(`transporte_${schema}_viajes_memoria`, {
+        periodo,
+        activeFilterLabel,
+        dateFilterQuery,
+        filterMode,
+        metodoFiltro,
+        modoFactura,
+        facturaInput,
+        facturaDesdeInput,
+        facturaHastaInput,
+        placaFiltro,
+        productoFiltro,
+        sortBy,
+        sortDir,
+        pageSize,
+        activeMainTab,
+        tablaModo,
+        historialFacturadoFilter
+      });
+
+      saveState(`transporte_${schema}_filtro_compartido`, {
+        periodo: sharedPeriodo,
+        activeFilterLabel,
+        dateFilterQuery,
+        filterMode,
+        metodoFiltro,
+        modoFactura,
+        facturaInput,
+        facturaDesdeInput,
+        facturaHastaInput,
+        placa: "",
+        updatedAt: Date.now(),
+        source: "viajes"
+      });
+
+      // Guardar firmas oficiales editables en memoria y en base de datos
+      saveState(`transporte_${schema}_firmas`, firmas);
+      try {
+        await apiFetch(`/tenants/${schema}/parametros/`, {
+          method: "PUT",
+          body: JSON.stringify({
+            firma_realizado_por: firmas.realizado_por || "",
+            firma_revisado_por: firmas.revisado_por || "",
+            firma_autorizado_por: firmas.autorizado_por || "DIRECTORIO",
+            firma_cancelado_por: firmas.cancelado_por || ""
+          })
+        });
+      } catch (paramErr) {
+        console.warn("No se pudieron guardar firmas en tenant_parameters:", paramErr);
+      }
+
+      if (typeof window !== "undefined") {
+        (window as any).__UNSAVED_CHANGES__ = null;
+        window.dispatchEvent(new CustomEvent("viajes-actualizados"));
+        window.dispatchEvent(new CustomEvent("firmas-actualizadas", { detail: firmas }));
+      }
+
+      await Promise.all([
+        loadViajes(),
+        loadPeriodos()
+      ]);
+
+      const Toast = Swal.mixin({
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 2500,
+        timerProgressBar: true,
+        background: swalBg,
+        color: swalColor
+      });
+      Toast.fire({
+        icon: "success",
+        title: "¡Datos de viajes guardados y sincronizados correctamente!"
+      });
+    } catch (err: any) {
+      console.error("Error al guardar viajes:", err);
+      const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+      Swal.fire({
+        icon: "error",
+        title: "Error al guardar",
+        text: err?.message || "No se pudieron guardar los datos.",
+        background: isDark ? "#0f172a" : "#ffffff",
+        color: isDark ? "#f8fafc" : "#0f172a"
+      });
+    } finally {
+      setSavingViajes(false);
+    }
+  };
+
   const handleDateFilterChange = (filter: DateFilterChangeEvent) => {
     setFilterMode(filter.mode);
     setActiveFilterLabel(filter.label);
     let q = "";
+    let pVal = "";
+
     if (filter.mode === "mes" && filter.periodo_mes) {
       q = `periodo_mes=${filter.periodo_mes}`;
-      setPeriodo(filter.periodo_mes);
+      pVal = filter.periodo_mes;
     } else if (filter.mode === "semestral" && filter.fecha_desde && filter.fecha_hasta) {
       q = `fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`;
-      setPeriodo("");
+      pVal = `${filter.anio || new Date().getFullYear()}-S${filter.semestre || 1}`;
     } else if (filter.mode === "anual" && filter.anio) {
       q = `anio=${filter.anio}`;
-      setPeriodo("");
+      pVal = `ANUAL-${filter.anio}`;
     } else if (filter.mode === "personalizado" && filter.fecha_desde && filter.fecha_hasta) {
       q = `fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`;
-      setPeriodo("");
+      pVal = `${filter.fecha_desde}_${filter.fecha_hasta}`;
     } else if (filter.mode === "historico") {
       q = "";
-      setPeriodo("");
+      pVal = "";
     }
+    setPeriodo(pVal);
     setDateFilterQuery(q);
+
+    // Guardar en canal compartido bidireccional
+    if (schema) {
+      saveState(`transporte_${schema}_filtro_compartido`, {
+        periodo: pVal,
+        activeFilterLabel: filter.label,
+        dateFilterQuery: q,
+        filterMode: filter.mode,
+        metodoFiltro: "periodo",
+        modoFactura,
+        facturaInput,
+        facturaDesdeInput,
+        facturaHastaInput,
+        placa: "",
+        updatedAt: Date.now(),
+        source: "viajes"
+      });
+    }
   };
 
   const handlePlacaChange = (val: string) => {
@@ -2492,8 +2650,8 @@ function ViajesContent() {
               : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800"
           }`}
         >
-          <History className="w-4 h-4" />
-          <span>Historial de Viajes & Facturas</span>
+          <Receipt className="w-4 h-4" />
+          <span>Auditoría de Facturación</span>
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeMainTab === "historial" ? "bg-slate-950/20 text-slate-950 font-black" : "bg-slate-100 dark:bg-slate-800 text-slate-500"}`}>
             {histFacturados.length} facturados
           </span>
@@ -4019,23 +4177,114 @@ function ViajesContent() {
                 </div>
               )}
 
-              {/* Bloque de Firmas Página 3 */}
+              {/* Bloque de Firmas Oficiales Página 3 (Editables directamente y sincronizadas con Liquidaciones) */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-center text-xs">
-                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60">
-                  <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 mb-6">REALIZADO POR:</div>
-                  <div className="font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-800 pt-1 text-[11px]">JAQUELINE LOVERA TIÑINI</div>
+                {/* REALIZADO POR */}
+                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 flex flex-col justify-between shadow-xs hover:border-amber-500/30 transition">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400">REALIZADO POR:</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-800 text-slate-500 font-mono">Editable</span>
+                  </div>
+                  <div className="min-h-[28px] mb-2 flex items-center justify-center">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-600 italic select-none">Firma y Sello</span>
+                  </div>
+                  <div className="border-t border-slate-300 dark:border-slate-700 pt-1">
+                    <input
+                      type="text"
+                      value={firmas.realizado_por}
+                      onChange={(e) => {
+                        const updated = { ...firmas, realizado_por: e.target.value };
+                        setFirmas(updated);
+                        saveState(`transporte_${schema}_firmas`, updated);
+                        if (typeof window !== "undefined") {
+                          (window as any).__UNSAVED_CHANGES__ = "firmas oficiales";
+                        }
+                      }}
+                      placeholder="En blanco (Opcional)"
+                      className="w-full text-center bg-transparent focus:bg-amber-500/5 focus:ring-1 focus:ring-amber-500/40 rounded px-1 py-0.5 font-bold text-slate-900 dark:text-white text-[11px] focus:outline-none placeholder:text-slate-400/60 placeholder:font-normal placeholder:italic transition"
+                    />
+                  </div>
                 </div>
-                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60">
-                  <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 mb-6">REVISADO POR:</div>
-                  <div className="font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-800 pt-1 text-[11px]">JOSE LOVERA TIÑINI / GERENTE GENERAL</div>
+
+                {/* REVISADO POR */}
+                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 flex flex-col justify-between shadow-xs hover:border-amber-500/30 transition">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400">REVISADO POR:</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-800 text-slate-500 font-mono">Editable</span>
+                  </div>
+                  <div className="min-h-[28px] mb-2 flex items-center justify-center">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-600 italic select-none">Firma y Sello</span>
+                  </div>
+                  <div className="border-t border-slate-300 dark:border-slate-700 pt-1">
+                    <input
+                      type="text"
+                      value={firmas.revisado_por}
+                      onChange={(e) => {
+                        const updated = { ...firmas, revisado_por: e.target.value };
+                        setFirmas(updated);
+                        saveState(`transporte_${schema}_firmas`, updated);
+                        if (typeof window !== "undefined") {
+                          (window as any).__UNSAVED_CHANGES__ = "firmas oficiales";
+                        }
+                      }}
+                      placeholder="En blanco (Opcional)"
+                      className="w-full text-center bg-transparent focus:bg-amber-500/5 focus:ring-1 focus:ring-amber-500/40 rounded px-1 py-0.5 font-bold text-slate-900 dark:text-white text-[11px] focus:outline-none placeholder:text-slate-400/60 placeholder:font-normal placeholder:italic transition"
+                    />
+                  </div>
                 </div>
-                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60">
-                  <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 mb-6">AUTORIZADO POR:</div>
-                  <div className="font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-800 pt-1 text-[11px]">DIRECTORIO</div>
+
+                {/* AUTORIZADO POR */}
+                <div className="border border-amber-500/20 dark:border-amber-500/30 rounded-2xl p-3 bg-amber-500/5 dark:bg-amber-500/10 flex flex-col justify-between shadow-xs hover:border-amber-500/40 transition">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="font-bold text-[10px] uppercase text-amber-700 dark:text-amber-400">AUTORIZADO POR:</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono">Directorio</span>
+                  </div>
+                  <div className="min-h-[28px] mb-2 flex items-center justify-center">
+                    <span className="text-[10px] text-amber-600/60 dark:text-amber-400/50 italic select-none">Aprobación Directiva</span>
+                  </div>
+                  <div className="border-t border-amber-300 dark:border-amber-600/50 pt-1">
+                    <input
+                      type="text"
+                      value={firmas.autorizado_por}
+                      onChange={(e) => {
+                        const updated = { ...firmas, autorizado_por: e.target.value };
+                        setFirmas(updated);
+                        saveState(`transporte_${schema}_firmas`, updated);
+                        if (typeof window !== "undefined") {
+                          (window as any).__UNSAVED_CHANGES__ = "firmas oficiales";
+                        }
+                      }}
+                      placeholder="DIRECTORIO"
+                      className="w-full text-center bg-transparent focus:bg-amber-500/10 focus:ring-1 focus:ring-amber-500/50 rounded px-1 py-0.5 font-bold text-amber-900 dark:text-amber-200 text-[11px] focus:outline-none transition"
+                    />
+                  </div>
                 </div>
-                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60">
-                  <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 mb-6">CANCELADO POR:</div>
-                  <div className="font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-800 pt-1 text-[11px]">TOMASA TIÑINI MITA / APOYO</div>
+
+                {/* CANCELADO POR */}
+                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 flex flex-col justify-between shadow-xs hover:border-amber-500/30 transition">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400">CANCELADO POR:</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-800 text-slate-500 font-mono">Editable</span>
+                  </div>
+                  <div className="min-h-[28px] mb-2 flex items-center justify-center">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-600 italic select-none">Firma y Sello</span>
+                  </div>
+                  <div className="border-t border-slate-300 dark:border-slate-700 pt-1">
+                    <input
+                      type="text"
+                      value={firmas.cancelado_por}
+                      onChange={(e) => {
+                        const updated = { ...firmas, cancelado_por: e.target.value };
+                        setFirmas(updated);
+                        saveState(`transporte_${schema}_firmas`, updated);
+                        if (typeof window !== "undefined") {
+                          (window as any).__UNSAVED_CHANGES__ = "firmas oficiales";
+                        }
+                      }}
+                      placeholder="En blanco (Opcional)"
+                      className="w-full text-center bg-transparent focus:bg-amber-500/5 focus:ring-1 focus:ring-amber-500/40 rounded px-1 py-0.5 font-bold text-slate-900 dark:text-white text-[11px] focus:outline-none placeholder:text-slate-400/60 placeholder:font-normal placeholder:italic transition"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -4213,6 +4462,46 @@ function ViajesContent() {
           </div>
         )
       )}
+
+      {/* ============================================================== */}
+      {/* TARJETA FINAL DE GUARDADO Y SINCRONIZACIÓN DE DATOS (VIAJES)   */}
+      {/* ============================================================== */}
+      <div className="mt-8 pt-4 border-t-2 border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 rounded-2xl p-5 shadow-sm no-print">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center flex-shrink-0 shadow-md">
+            <Save className="w-6 h-6 stroke-[2.5]" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+              Control Oficial de Despachos y Fletes
+            </div>
+            <div className="text-base font-black text-slate-900 dark:text-white mt-0.5">
+              Guardar y Sincronizar Datos de Viajes
+            </div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Confirma todas las ediciones realizadas en despachos y deducciones para sincronizarlas en vivo con las planillas de liquidación.
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleSaveAndSyncViajes}
+          disabled={savingViajes || loading}
+          className="w-full sm:w-auto px-7 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-sm rounded-xl flex items-center justify-center gap-2.5 transition shadow-lg hover:shadow-xl active:scale-95 cursor-pointer whitespace-nowrap"
+        >
+          {savingViajes ? (
+            <>
+              <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
+              <span>Guardando datos...</span>
+            </>
+          ) : (
+            <>
+              <Save className="w-5 h-5 stroke-[2.5]" />
+              <span>Guardar Datos</span>
+            </>
+          )}
+        </button>
+      </div>
 
       {/* Modal de Inspección Detallada de Viaje (Historial) */}
       {selectedViajeDetail && (

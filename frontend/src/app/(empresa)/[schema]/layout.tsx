@@ -1,5 +1,7 @@
 "use client";
 
+import Swal from "sweetalert2";
+
 import { useState, useEffect } from "react";
 import { useRouter, usePathname, useParams } from "next/navigation";
 import Link from "next/link";
@@ -95,6 +97,80 @@ export default function EmpresaLayout({
     router.push("/");
   };
 
+  const handleNavClick = async (e: React.MouseEvent, targetHref: string) => {
+    if (typeof window !== "undefined" && (window as any).__UNSAVED_CHANGES__) {
+      const unsaved = (window as any).__UNSAVED_CHANGES__;
+      if (unsaved && unsaved.hasChanges) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const swalBg = resolvedTheme === "dark" ? "#0f172a" : "#ffffff";
+        const swalColor = resolvedTheme === "dark" ? "#f8fafc" : "#0f172a";
+        const swalCancelColor = resolvedTheme === "dark" ? "#334155" : "#94a3b8";
+
+        const result = await Swal.fire({
+          title: "¿Deseas guardar los cambios antes de salir?",
+          html: `
+            <div style="text-align: left; font-size: 0.875rem; line-height: 1.5;">
+              <p>Tienes modificaciones pendientes en <strong>${unsaved.moduleName || "este módulo"}</strong>.</p>
+              ${unsaved.details && unsaved.details.length > 0 ? `
+                <div style="margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); font-size: 0.8rem;">
+                  <strong style="color: #f59e0b;">Detalle de lo que se cambió:</strong>
+                  <ul style="margin-top: 5px; padding-left: 18px; list-style-type: disc;">
+                    ${unsaved.details.map((d: string) => `<li style="margin-bottom: 3px;">${d}</li>`).join("")}
+                  </ul>
+                </div>
+              ` : ""}
+              <p style="margin-top: 8px; font-size: 0.75rem; opacity: 0.85;">
+                ¿Deseas guardar estas modificaciones ahora o descartarlas para cambiar de módulo?
+              </p>
+            </div>
+          `,
+          icon: "question",
+          showCancelButton: true,
+          showDenyButton: true,
+          confirmButtonColor: "#10b981",
+          denyButtonColor: "#ef4444",
+          cancelButtonColor: swalCancelColor,
+          confirmButtonText: "💾 Sí, guardar cambios",
+          denyButtonText: "Descartar cambios",
+          cancelButtonText: "Seguir editando",
+          background: swalBg,
+          color: swalColor
+        });
+
+        if (result.isConfirmed) {
+          if (typeof unsaved.onSave === "function") {
+            try {
+              await unsaved.onSave();
+            } catch (err: any) {
+              Swal.fire({
+                icon: "error",
+                title: "Error al guardar cambios",
+                text: err.message || "Ocurrió un error al intentar guardar.",
+                background: swalBg,
+                color: swalColor
+              });
+              return;
+            }
+          }
+          (window as any).__UNSAVED_CHANGES__ = null;
+          setSidebarOpen(false);
+          router.push(targetHref);
+        } else if (result.isDenied) {
+          if (typeof unsaved.onDiscard === "function") {
+            unsaved.onDiscard();
+          }
+          (window as any).__UNSAVED_CHANGES__ = null;
+          setSidebarOpen(false);
+          router.push(targetHref);
+        }
+        return;
+      }
+    }
+    setSidebarOpen(false);
+  };
+
   const navLinks = [
     {
       name: "Dashboard",
@@ -116,13 +192,6 @@ export default function EmpresaLayout({
       icon: FileSpreadsheet,
       description: "Planillas oficiales y cálculo",
       isActive: (path: string) => path.startsWith(`/${schema}/liquidaciones`)
-    },
-    {
-      name: "Historial",
-      href: `/${schema}/historial`,
-      icon: History,
-      description: "Historial de liquidaciones emitidas",
-      isActive: (path: string) => path.startsWith(`/${schema}/historial`)
     },
     {
       name: "Flota y Clientes",
@@ -147,7 +216,6 @@ export default function EmpresaLayout({
     pathname.startsWith(`/${schema}/apoyo`) ? "Flota de Apoyo" :
     pathname.startsWith(`/${schema}/clientes`) ? "Clientes" :
     pathname.startsWith(`/${schema}/flota`) ? "Flota Propia" :
-    pathname.startsWith(`/${schema}/historial`) ? "Historial de Liquidaciones" :
     pathname.startsWith(`/${schema}/viajes`) ? "Viajes" :
     pathname.startsWith(`/${schema}/liquidaciones`) ? "Liquidaciones" :
     pathname.startsWith(`/${schema}/configuracion`) ? "Configuración" :
@@ -241,6 +309,7 @@ export default function EmpresaLayout({
                 <Link
                   key={link.name}
                   href={link.href}
+                  onClick={(e) => handleNavClick(e, link.href)}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group ${
                     isActive
                       ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 shadow-xs border border-amber-500/30 font-bold"
@@ -387,7 +456,7 @@ export default function EmpresaLayout({
                     <Link
                       key={link.name}
                       href={link.href}
-                      onClick={() => setSidebarOpen(false)}
+                      onClick={(e) => handleNavClick(e, link.href)}
                       className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition ${
                         isActive 
                           ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold border border-amber-500/30" 
@@ -524,9 +593,9 @@ export default function EmpresaLayout({
                           return (
                             <button
                               key={e.id}
-                              onClick={() => {
+                              onClick={(evt) => {
                                 setEmpresaDropdownOpen(false);
-                                router.push(`/${e.schema_name}/dashboard`);
+                                handleNavClick(evt, `/${e.schema_name}/dashboard`);
                               }}
                               className={`w-full text-left px-3 py-2.5 text-xs flex items-start justify-between gap-2 hover:bg-slate-100 dark:hover:bg-slate-800 transition ${
                                 isCurrent

@@ -132,6 +132,50 @@ function LiquidacionesContent() {
   const [adjustData, setAdjustData] = useState<any>({});
   const [isHydrated, setIsHydrated] = useState(false);
 
+  // Firmas oficiales (sincronizadas desde Viajes o configuradas en parámetros)
+  const [customFirmas, setCustomFirmas] = useState({
+    realizado_por: "",
+    revisado_por: "",
+    autorizado_por: "DIRECTORIO",
+    cancelado_por: ""
+  });
+
+  const sanitizeFirma = (val: any, fallback: string = "") => {
+    if (typeof val !== "string" || !val) return fallback;
+    if (val.includes("LOVERA") || val.includes("TIÑINI")) return fallback;
+    return val;
+  };
+
+  // Sincronización en tiempo real de firmas con el módulo de Viajes
+  useEffect(() => {
+    const handleSync = (e: any) => {
+      if (e?.detail) {
+        setCustomFirmas({
+          realizado_por: sanitizeFirma(e.detail.realizado_por, ""),
+          revisado_por: sanitizeFirma(e.detail.revisado_por, ""),
+          autorizado_por: sanitizeFirma(e.detail.autorizado_por, "DIRECTORIO"),
+          cancelado_por: sanitizeFirma(e.detail.cancelado_por, "")
+        });
+      } else {
+        const saved = getSavedState<any>(`transporte_${schema}_firmas`, null);
+        if (saved) {
+          setCustomFirmas({
+            realizado_por: sanitizeFirma(saved.realizado_por, ""),
+            revisado_por: sanitizeFirma(saved.revisado_por, ""),
+            autorizado_por: sanitizeFirma(saved.autorizado_por, "DIRECTORIO"),
+            cancelado_por: sanitizeFirma(saved.cancelado_por, "")
+          });
+        }
+      }
+    };
+    window.addEventListener("firmas-actualizadas", handleSync);
+    window.addEventListener("viajes-actualizados", handleSync);
+    return () => {
+      window.removeEventListener("firmas-actualizadas", handleSync);
+      window.removeEventListener("viajes-actualizados", handleSync);
+    };
+  }, [schema]);
+
   // Expansión de filas YPFB para visualización de parámetros y mermas
   const [expandedYpfbRows, setExpandedYpfbRows] = useState<Set<number>>(new Set());
   const [refreshingData, setRefreshingData] = useState(false);
@@ -261,13 +305,14 @@ function LiquidacionesContent() {
 
   const loadInitialData = async () => {
     try {
-      const [uData, uApoyoData, vData, lData, pData, fData] = await Promise.all([
+      const [uData, uApoyoData, vData, lData, pData, fData, paramData] = await Promise.all([
         apiFetch(`/tenants/${schema}/unidades/`).catch(() => []),
         apiFetch(`/tenants/${schema}/apoyo/unidades/todas`).catch(() => []),
         apiFetch(`/tenants/${schema}/viajes/`).catch(() => []),
         apiFetch(`/tenants/${schema}/liquidaciones/`).catch(() => []),
         apiFetch(`/tenants/${schema}/viajes/periodos`).catch(() => []),
-        apiFetch(`/tenants/${schema}/liquidaciones/facturas-disponibles`).catch(() => [])
+        apiFetch(`/tenants/${schema}/liquidaciones/facturas-disponibles`).catch(() => []),
+        apiFetch(`/tenants/${schema}/parametros/`).catch(() => null)
       ]);
 
       const validUnidades = Array.isArray(uData) ? uData : [];
@@ -282,6 +327,24 @@ function LiquidacionesContent() {
       setLiquidaciones(validLiqs);
       setPeriodosDisponibles(validPeriodos);
       setFacturasDisponibles(validFacturas);
+
+      // Sincronizar firmas de tenant / localStorage
+      const savedFirmas = getSavedState<any>(`transporte_${schema}_firmas`, null);
+      if (savedFirmas) {
+        setCustomFirmas({
+          realizado_por: sanitizeFirma(savedFirmas.realizado_por, ""),
+          revisado_por: sanitizeFirma(savedFirmas.revisado_por, ""),
+          autorizado_por: sanitizeFirma(savedFirmas.autorizado_por, "DIRECTORIO"),
+          cancelado_por: sanitizeFirma(savedFirmas.cancelado_por, "")
+        });
+      } else if (paramData) {
+        setCustomFirmas({
+          realizado_por: sanitizeFirma(paramData.firma_realizado_por, ""),
+          revisado_por: sanitizeFirma(paramData.firma_revisado_por, ""),
+          autorizado_por: sanitizeFirma(paramData.firma_autorizado_por, "DIRECTORIO"),
+          cancelado_por: sanitizeFirma(paramData.firma_cancelado_por, "")
+        });
+      }
 
       // Extraer todas las placas presentes en viajes
       const distinctTripPlacas: string[] = Array.from(
@@ -333,7 +396,7 @@ function LiquidacionesContent() {
         setSelectedPlaca("__TODAS__");
       }
 
-      // Priorizar parámetros si viene redirigido desde el Historial u otro módulo
+      // Priorizar parámetros si viene de URL u otro módulo
       const urlPlaca = searchParams.get("placa");
       const urlPeriodo = searchParams.get("periodo");
       const urlFactura = searchParams.get("factura");
@@ -363,30 +426,49 @@ function LiquidacionesContent() {
   const handleDateFilterChange = (filter: DateFilterChangeEvent) => {
     setFilterMode(filter.mode);
     setActiveFilterLabel(filter.label);
+    let q = "";
+    let pVal = "";
 
     if (filter.mode === "mes" && filter.periodo_mes) {
-      setPeriodo(filter.periodo_mes);
-      setDateFilterQuery(`periodo_mes=${filter.periodo_mes}`);
+      pVal = filter.periodo_mes;
+      q = `periodo_mes=${filter.periodo_mes}`;
     } else if (filter.mode === "semestral") {
-      const q = [
+      q = [
         filter.anio ? `anio=${filter.anio}` : "",
         filter.semestre ? `semestre=${filter.semestre}` : "",
         filter.fecha_desde ? `fecha_desde=${filter.fecha_desde}` : "",
         filter.fecha_hasta ? `fecha_hasta=${filter.fecha_hasta}` : ""
       ].filter(Boolean).join("&");
-      setDateFilterQuery(q);
-      if (filter.anio && filter.semestre) {
-        setPeriodo(`${filter.anio}-S${filter.semestre}`);
-      }
+      pVal = `${filter.anio || new Date().getFullYear()}-S${filter.semestre || 1}`;
     } else if (filter.mode === "anual" && filter.anio) {
-      setDateFilterQuery(`anio=${filter.anio}`);
-      setPeriodo(`ANUAL-${filter.anio}`);
+      q = `anio=${filter.anio}`;
+      pVal = `ANUAL-${filter.anio}`;
     } else if (filter.mode === "personalizado" && filter.fecha_desde && filter.fecha_hasta) {
-      setDateFilterQuery(`fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`);
-      setPeriodo(`${filter.fecha_desde}_${filter.fecha_hasta}`);
+      q = `fecha_desde=${filter.fecha_desde}&fecha_hasta=${filter.fecha_hasta}`;
+      pVal = `${filter.fecha_desde}_${filter.fecha_hasta}`;
     } else if (filter.mode === "historico") {
-      setDateFilterQuery("");
-      setPeriodo("");
+      q = "";
+      pVal = "";
+    }
+    setPeriodo(pVal);
+    setDateFilterQuery(q);
+
+    // Persistencia bilateral inmediata para Viajes <-> Liquidaciones
+    if (schema) {
+      saveState(`transporte_${schema}_filtro_compartido`, {
+        periodo: pVal,
+        activeFilterLabel: filter.label,
+        dateFilterQuery: q,
+        filterMode: filter.mode,
+        metodoFiltro: "periodo",
+        modoFactura,
+        facturaInput,
+        facturaDesdeInput,
+        facturaHastaInput,
+        placa: "",
+        updatedAt: Date.now(),
+        source: "liquidaciones"
+      });
     }
   };
 
@@ -998,11 +1080,12 @@ function LiquidacionesContent() {
   };
 
   const empresaNombre = activeLiq?.empresa?.name || "EMPRESA DE TRANSPORTE";
-  const firmas = activeLiq?.firmas || {
-    realizado_por: "JAQUELINE LOVERA TIÑINI",
-    revisado_por: "JOSE LOVERA TIÑINI / GERENTE GENERAL",
-    autorizado_por: "DIRECTORIO",
-    cancelado_por: "TOMASA TIÑINI MITA / APOYO"
+  const rawFirmas = activeLiq?.firmas || customFirmas;
+  const firmas = {
+    realizado_por: sanitizeFirma(rawFirmas.realizado_por, customFirmas.realizado_por || ""),
+    revisado_por: sanitizeFirma(rawFirmas.revisado_por, customFirmas.revisado_por || ""),
+    autorizado_por: sanitizeFirma(rawFirmas.autorizado_por, customFirmas.autorizado_por || "DIRECTORIO"),
+    cancelado_por: sanitizeFirma(rawFirmas.cancelado_por, customFirmas.cancelado_por || "")
   };
 
   // KPIs consolidados para el rango seleccionado
@@ -1233,6 +1316,7 @@ function LiquidacionesContent() {
         <div className="no-print">
           <DatePeriodFilter
             currentPeriodoMes={periodo}
+            initialMode={filterMode}
             periodosDisponibles={periodosDisponibles}
             onChange={handleDateFilterChange}
           />
@@ -1542,51 +1626,7 @@ function LiquidacionesContent() {
             <span>{refreshingData ? "Actualizando Datos..." : "Actualizar Datos"}</span>
           </button>
 
-          {/* Opción secundaria para archivar en Historial */}
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={loadingBatch}
-            className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition"
-            title="Consolidar y registrar formalmente la liquidación en el Historial"
-          >
-            <Layers className="w-3.5 h-3.5 text-amber-500" />
-            <span>{selectedPlaca === "__TODAS__" ? "Consolidar Flota" : "Consolidar Planilla"}</span>
-          </button>
 
-          {/* Acceso Directo e Interconexión con Historial */}
-          <button
-            type="button"
-            onClick={() => router.push(`/${schema}/historial?placa=${encodeURIComponent(selectedPlaca === "__TODAS__" ? "TODAS" : selectedPlaca)}&periodo=${encodeURIComponent(periodo)}`)}
-            className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 cursor-pointer"
-            title="Ver historial de liquidaciones emitidas"
-          >
-            <History className="w-3.5 h-3.5 text-amber-500" />
-            <span>Ver en Historial</span>
-          </button>
-
-          {/* Indicador de Etapa / Estado en Historial */}
-          {activeLiq && activeLiq.id > 0 ? (
-            <button
-              type="button"
-              onClick={() => router.push(`/${schema}/historial?placa=${encodeURIComponent(activeLiq.placa)}&periodo=${encodeURIComponent(activeLiq.periodo_mes)}`)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 text-xs font-bold cursor-pointer hover:bg-emerald-500/20 transition"
-              title="Esta liquidación está registrada y consolidada en el Historial. Clic para inspeccionar."
-            >
-              <Pin className="w-3 h-3 fill-emerald-500 text-emerald-500 -rotate-45" />
-              <span>Registrada en Historial ({activeLiq.codigo})</span>
-              {activeLiq.updated_at && (
-                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono">
-                  • Editada
-                </span>
-              )}
-            </button>
-          ) : activeLiq && activeLiq.viajes && activeLiq.viajes.length > 0 ? (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-xs font-semibold">
-              <Clock className="w-3 h-3 text-amber-500" />
-              <span>Preliminar (Pendiente de Generar)</span>
-            </div>
-          ) : null}
         </div>
 
         {/* Pestañas de Visualización */}
@@ -2516,21 +2556,29 @@ function LiquidacionesContent() {
 
               {/* Bloque de Firmas Página 2 */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-10 text-center text-xs">
-                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white">
+                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white flex flex-col justify-between min-h-[92px]">
                   <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 print:text-slate-500 mb-6">REALIZADO POR:</div>
-                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px]">{firmas.realizado_por}</div>
+                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px] min-h-[22px] flex items-center justify-center">
+                    {firmas.realizado_por || <span className="opacity-0 select-none">-</span>}
+                  </div>
                 </div>
-                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white">
+                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white flex flex-col justify-between min-h-[92px]">
                   <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 print:text-slate-500 mb-6">REVISADO POR:</div>
-                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px]">{firmas.revisado_por}</div>
+                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px] min-h-[22px] flex items-center justify-center">
+                    {firmas.revisado_por || <span className="opacity-0 select-none">-</span>}
+                  </div>
                 </div>
-                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white">
+                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white flex flex-col justify-between min-h-[92px]">
                   <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 print:text-slate-500 mb-6">AUTORIZADO POR:</div>
-                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px]">{firmas.autorizado_por}</div>
+                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px] min-h-[22px] flex items-center justify-center">
+                    {firmas.autorizado_por || "DIRECTORIO"}
+                  </div>
                 </div>
-                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white">
+                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white flex flex-col justify-between min-h-[92px]">
                   <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 print:text-slate-500 mb-6">CANCELADO POR:</div>
-                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px]">{firmas.cancelado_por}</div>
+                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px] min-h-[22px] flex items-center justify-center">
+                    {firmas.cancelado_por || <span className="opacity-0 select-none">-</span>}
+                  </div>
                 </div>
               </div>
 
@@ -2645,21 +2693,29 @@ function LiquidacionesContent() {
 
               {/* Bloque de Firmas Página 3 */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-12 text-center text-xs">
-                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white">
+                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white flex flex-col justify-between min-h-[92px]">
                   <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 print:text-slate-500 mb-6">REALIZADO POR:</div>
-                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px]">{firmas.realizado_por}</div>
+                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px] min-h-[22px] flex items-center justify-center">
+                    {firmas.realizado_por || <span className="opacity-0 select-none">-</span>}
+                  </div>
                 </div>
-                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white">
+                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white flex flex-col justify-between min-h-[92px]">
                   <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 print:text-slate-500 mb-6">REVISADO POR:</div>
-                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px]">{firmas.revisado_por}</div>
+                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px] min-h-[22px] flex items-center justify-center">
+                    {firmas.revisado_por || <span className="opacity-0 select-none">-</span>}
+                  </div>
                 </div>
-                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white">
+                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white flex flex-col justify-between min-h-[92px]">
                   <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 print:text-slate-500 mb-6">AUTORIZADO POR:</div>
-                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px]">{firmas.autorizado_por}</div>
+                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px] min-h-[22px] flex items-center justify-center">
+                    {firmas.autorizado_por || "DIRECTORIO"}
+                  </div>
                 </div>
-                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white">
+                <div className="border border-slate-200 dark:border-slate-800 print:border-slate-300 rounded-2xl p-3 bg-slate-50 dark:bg-slate-950/60 print:bg-white flex flex-col justify-between min-h-[92px]">
                   <div className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400 print:text-slate-500 mb-6">CANCELADO POR:</div>
-                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px]">{firmas.cancelado_por}</div>
+                  <div className="font-bold text-slate-900 dark:text-white print:text-slate-900 border-t border-slate-200 dark:border-slate-800 print:border-slate-300 pt-1 text-[11px] min-h-[22px] flex items-center justify-center">
+                    {firmas.cancelado_por || <span className="opacity-0 select-none">-</span>}
+                  </div>
                 </div>
               </div>
 
